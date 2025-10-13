@@ -1,0 +1,44 @@
+{
+  "name": "ssb-backend",
+  "version": "1.0.0",
+  "description": "Smart School Bus Tracking System - Backend API",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "test": "jest",
+    "test:coverage": "jest --coverage"
+  },
+  "keywords": [
+    "school-bus",
+    "tracking",
+    "gps",
+    "realtime",
+    "nodejs",
+    "express",
+    "mysql",
+    "firebase",
+    "socket.io"
+  ],
+  "author": "SSB Development Team",
+  "license": "MIT",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "firebase-admin": "^13.5.0",
+    "helmet": "^7.1.0",
+    "joi": "^17.11.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.1",
+    "mysql2": "^3.15.2",
+    "nodemailer": "^6.9.7",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "nodemon": "^3.1.10",
+    "supertest": "^6.3.3"
+  }
+}
