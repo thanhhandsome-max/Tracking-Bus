@@ -4,10 +4,9 @@
   "description": "Smart School Bus Tracking System - Backend API",
   "main": "src/server.js",
   "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node src/server.js",
-    "dev": "nodemon src/server.js",
-    "test": "jest",
-    "test:coverage": "jest --coverage"
+    "dev": "nodemon src/server.js"
   },
   "keywords": [
     "school-bus",

@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Kiểm tra Socket.IO</title>
+  </head>
+  <body>
+    <h1>Mở Console (F12) để xem kết quả kết nối</h1>
+
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script>
+      console.log("Đang thử kết nối đến http://localhost:3001...");
+
+      const socket = io("http://localhost:3001");
+
+      // Sự kiện khi kết nối thành công
+      socket.on("connect", () => {
+        console.log(
+          "✅ Đã kết nối thành công đến server!",
+          "Socket ID:",
+          socket.id
+        );
+      });
+
+      // Sự kiện khi có lỗi kết nối
+      socket.on("connect_error", (error) => {
+        console.error("❌ Lỗi kết nối:", error.message);
+      });
+
+      // Sự kiện khi mất kết nối
+      socket.on("disconnect", () => {
+        console.warn("🔌 Đã mất kết nối với server.");
+      });
+    </script>
+  </body>
+</html>
