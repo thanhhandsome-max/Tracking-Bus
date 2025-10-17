@@ -7,7 +7,6 @@ import { Bus, Calendar, MapPin, AlertTriangle, FileText } from "lucide-react"
 
 const navigation = [
   { name: "Lịch trình hôm nay", href: "/driver", icon: Calendar },
-  { name: "Chi tiết chuyến đi", href: "/driver/trip", icon: MapPin },
   { name: "Báo cáo Sự cố", href: "/driver/incidents", icon: AlertTriangle },
   { name: "Lịch sử chuyến đi", href: "/driver/history", icon: FileText },
 ]
