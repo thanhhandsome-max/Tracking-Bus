@@ -15,6 +15,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { IncidentForm } from "@/components/driver/incident-form"
+import { DashboardLayout } from "@/components/layout/dashboard-layout"
+import { DriverSidebar } from "@/components/driver/driver-sidebar"
 import {
   AlertTriangle,
   Plus,
@@ -161,7 +163,8 @@ export default function DriverIncidentsPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <DashboardLayout sidebar={<DriverSidebar />}>
+      <div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -180,7 +183,7 @@ export default function DriverIncidentsPage() {
               <DialogTitle>Báo cáo Sự cố Mới</DialogTitle>
               <DialogDescription>Điền thông tin chi tiết về sự cố đã xảy ra</DialogDescription>
             </DialogHeader>
-            <IncidentForm onClose={() => setIsFormOpen(false)} />
+            <IncidentForm onClose={() => setIsFormOpen(false)} tripId="" />
           </DialogContent>
         </Dialog>
       </div>
@@ -429,5 +432,6 @@ export default function DriverIncidentsPage() {
         )}
       </div>
     </div>
+  </DashboardLayout>
   )
 }
