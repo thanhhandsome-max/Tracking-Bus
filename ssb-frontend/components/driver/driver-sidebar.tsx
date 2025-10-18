@@ -29,7 +29,7 @@ export function DriverSidebar() {
       </div>
 
       <nav className="flex-1 overflow-y-auto py-4 px-3">
-        <div className="space-y-1">
+        <div className="space-y-2">
           {navigation.map((item) => {
             const isActive = pathname === item.href
             return (

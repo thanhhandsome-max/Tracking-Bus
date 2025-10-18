@@ -27,8 +27,6 @@ import {
   Fuel,
   Gauge,
   Thermometer,
-  MessageSquare,
-  Send,
   Phone,
   Navigation2,
   TrendingUp,
@@ -44,8 +42,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { IncidentForm } from "@/components/driver/incident-form"
-import { Input } from "@/components/ui/input"
-import { ScrollArea } from "@/components/ui/scroll-area"
+// Input and ScrollArea removed (old admin chat UI deleted)
 
 const mockTrip = {
   id: "1",
@@ -162,18 +159,13 @@ const mockTrip = {
   ],
 }
 
-const mockMessages = [
-  { id: "1", sender: "Admin", message: "Chuyến đi có suôn sẻ không?", time: "06:25", isDriver: false },
-  { id: "2", sender: "Tài xế", message: "Vâng, mọi thứ ổn", time: "06:26", isDriver: true },
-]
 
 export default function TripDetailPage() {
   const router = useRouter()
   const [trip, setTrip] = useState(mockTrip)
   const [isIncidentDialogOpen, setIsIncidentDialogOpen] = useState(false)
   const [stopNotes, setStopNotes] = useState<Record<string, string>>({})
-  const [messages, setMessages] = useState(mockMessages)
-  const [newMessage, setNewMessage] = useState("")
+  // old admin chat state removed
 
   const currentStop = trip.stops[trip.currentStop]
   const progress = ((trip.currentStop + 1) / trip.stops.length) * 100
@@ -230,20 +222,7 @@ export default function TripDetailPage() {
     }
   }
 
-  const handleSendMessage = () => {
-    if (!newMessage.trim()) return
-
-    const message = {
-      id: String(messages.length + 1),
-      sender: "Tài xế",
-      message: newMessage,
-      time: new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
-      isDriver: true,
-    }
-
-    setMessages([...messages, message])
-    setNewMessage("")
-  }
+  // chat handler removed
 
   return (
     <DashboardLayout sidebar={<DriverSidebar />}>
@@ -478,44 +457,7 @@ export default function TripDetailPage() {
               </CardContent>
             </Card>
 
-            <Card className="border-border/50">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <MessageSquare className="w-5 h-5 text-primary" />
-                  Liên lạc với Admin
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <ScrollArea className="h-[200px] pr-4">
-                  <div className="space-y-3">
-                    {messages.map((msg) => (
-                      <div key={msg.id} className={`flex ${msg.isDriver ? "justify-end" : "justify-start"}`}>
-                        <div
-                          className={`max-w-[70%] rounded-lg p-3 ${
-                            msg.isDriver ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
-                          }`}
-                        >
-                          <p className="text-sm font-medium mb-1">{msg.sender}</p>
-                          <p className="text-sm">{msg.message}</p>
-                          <p className="text-xs opacity-70 mt-1">{msg.time}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </ScrollArea>
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Nhập tin nhắn..."
-                    value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
-                    onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
-                  />
-                  <Button onClick={handleSendMessage} size="icon" className="bg-primary hover:bg-primary/90">
-                    <Send className="w-4 h-4" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+            {/* Old inline 'Liên lạc với Admin' chat removed - use floating widget instead */}
           </div>
 
           {/* Route Overview */}
