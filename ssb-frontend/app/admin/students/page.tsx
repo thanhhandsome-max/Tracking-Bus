@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/dialog"
 import { Plus, Search, Edit, Trash2, Eye, User } from "lucide-react"
 import { StudentForm } from "@/components/admin/student-form"
-
+// tạo dữ liệu giả cho các học sinh
 const mockStudents = [
   {
     id: "1",
