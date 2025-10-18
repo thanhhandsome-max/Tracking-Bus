@@ -83,7 +83,7 @@ export default function DriverDashboard() {
         </div>
 
         {/* Today's Trips */}
-        <div className="space-y-4">
+        <div className="space-y-5">
           <h2 className="text-xl font-semibold text-foreground">Chuyến đi hôm nay</h2>
           {todayTrips.map((trip) => (
             <Card key={trip.id} className="border-border/50">
@@ -112,7 +112,7 @@ export default function DriverDashboard() {
                 </div>
 
                 <Button
-                  className="w-full bg-primary hover:bg-primary/90"
+                  className="w-full bg-primary hover:bg-primary/90 cursor-pointer"
                   onClick={() => router.push(`/driver/trip/${trip.id}`)}
                 >
                   <Play className="w-4 h-4 mr-2" />
