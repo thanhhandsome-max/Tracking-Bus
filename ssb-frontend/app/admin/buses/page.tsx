@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/dialog"
 import { Plus, Search, Edit, Trash2, Eye } from "lucide-react"
 import { BusForm } from "@/components/admin/bus-form"
-
+// tạo dữ liệu giả cho các xe buýt
 const mockBuses = [
   { id: "1", plateNumber: "51A-12345", capacity: 45, status: "active", currentRoute: "Tuyến 1", trips: 156 },
   { id: "2", plateNumber: "51B-67890", capacity: 40, status: "active", currentRoute: "Tuyến 3", trips: 142 },
