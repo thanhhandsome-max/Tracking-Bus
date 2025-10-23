@@ -1,26 +1,8 @@
 "use client"
 
-import {  Dialog as ProfileDialog,
-          DialogContent as ProfileDialogContent,
-          DialogHeader as ProfileDialogHeader, 
-          DialogTitle as ProfileDialogTitle,
-          DialogDescription as ProfileDialogDescription,
-          DialogFooter as ProfileDialogFooter
-        } from "@/components/ui/dialog"
-
-// Import thêm cho dialog hồ sơ
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-
 import { useState, type ReactNode } from "react"
 import { useAuth } from "@/lib/auth-context"
-import { SettingsDialog } from "@/components/settings-dialog"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
@@ -43,8 +25,7 @@ interface DashboardLayoutProps {
 
 export function DashboardLayout({ children, sidebar }: DashboardLayoutProps) {
   const { user, logout } = useAuth()
-  const [isProfileOpen, setIsProfileOpen] = useState(false)
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const router = useRouter()
 
 
   return (
@@ -104,12 +85,12 @@ export function DashboardLayout({ children, sidebar }: DashboardLayoutProps) {
                 <DropdownMenuLabel>Tài khoản của tôi</DropdownMenuLabel>
                 <DropdownMenuSeparator />
 
-                <DropdownMenuItem onClick={() => setIsProfileOpen(true)}>
+                <DropdownMenuItem onClick={() => router.push(`/${user?.role}/profile`)}>
                   <User className="w-4 h-4 mr-2" />
                   Hồ sơ cá nhân
                 </DropdownMenuItem>
 
-                <DropdownMenuItem onClick={() => setIsSettingsOpen(true)}>
+                <DropdownMenuItem onClick={() => router.push(`/${user?.role}/settings`)}>
                   <Settings className="w-4 h-4 mr-2" />
                   Cài đặt
                 </DropdownMenuItem>
@@ -130,51 +111,6 @@ export function DashboardLayout({ children, sidebar }: DashboardLayoutProps) {
         <main className="flex-1 overflow-auto p-6">{children}</main>
       </div>
 
-      {/* Hồ sơ cá nhân (Dialog) */}
-      <ProfileDialog open={isProfileOpen} onOpenChange={setIsProfileOpen}>
-        <ProfileDialogContent className="max-w-md">
-          <ProfileDialogHeader>
-            <ProfileDialogTitle>Hồ sơ cá nhân</ProfileDialogTitle>
-            <ProfileDialogDescription>
-              Thông tin tài khoản hiện tại của bạn.
-            </ProfileDialogDescription>
-          </ProfileDialogHeader>
-
-          {user ? (
-            <div className="space-y-3 mt-2 text-sm">
-              <p>
-                <b>Tên:</b> {user.name || "Chưa có"}
-              </p>
-              <p>
-                <b>Email:</b> {user.email || "Chưa có"}
-              </p>
-              <p>
-                <b>Vai trò:</b> {user.role || "Chưa xác định"}
-              </p>
-            </div>
-          ) : (
-            <p className="text-muted-foreground text-sm">
-              Không tìm thấy thông tin người dùng.
-            </p>
-          )}
-
-          <ProfileDialogFooter className="mt-4">
-            <Button variant="secondary" onClick={() => setIsProfileOpen(false)}>
-              Đóng
-            </Button>
-          </ProfileDialogFooter>
-        </ProfileDialogContent>
-      </ProfileDialog>
-
-      {/* Cài đặt hệ thống (Dialog) */}
-      <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Cài đặt hệ thống</DialogTitle>
-          </DialogHeader>
-          <SettingsDialog />
-        </DialogContent>
-      </Dialog>
 
     </div>
   )
