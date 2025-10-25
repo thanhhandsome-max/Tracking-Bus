@@ -1,3 +1,11 @@
+# Bỏ qua các file bí mật
+ssb-backend/.env
+ssb-backend/src/config/serviceAccountKey.json
+
+# Bỏ qua các thư viện (RẤT QUAN TRỌNG)
+/node_modules
+ssb-backend/node_modules
+ssb-frontend/node_modules
 # dependencies
 /node_modules
 **/node_modules/
