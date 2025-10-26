@@ -12,6 +12,10 @@ import { errorHandler, notFoundHandler, successResponse } from './middlewares/er
 import { API_PREFIX } from './constants/http.js';
 import { SOCKET_EVENTS } from './constants/realtime.js';
 import authRoutes from './routes/api/auth.route.js';
+import busRoutes from './routes/bus.route.js';
+import tripRoutes from './routes/api/trip.route.js';
+
+import { verifyWsJWT } from './middlewares/socketAuth.js';
 
 // Create Express app
 const app = express();
@@ -147,22 +151,55 @@ async function checkRedisHealth(): Promise<string> {
 // API Routes
 app.use(`${API_PREFIX}/auth`, authRoutes);
 
-app.use(`${API_PREFIX}/buses`, (_req, res) => {
-  res.json({
-    success: true,
-    message: 'Bus routes will be implemented in Day 2',
-    data: {
-      availableEndpoints: [
-        'GET /buses',
-        'POST /buses',
-        'GET /buses/:id',
-        'PUT /buses/:id',
-        'DELETE /buses/:id',
-        'POST /buses/:id/position',
-      ],
-    },
-  });
-});
+
+// app.use(`${API_PREFIX}/buses`, (_req, res) => {
+//   res.json({
+//     success: true,
+//     message: 'Bus routes will be implemented in Day 2',
+//     data: {
+//       availableEndpoints: [
+//         'GET /buses',
+//         'POST /buses',
+//         'GET /buses/:id',
+//         'PUT /buses/:id',
+//         'DELETE /buses/:id',
+//         'POST /buses/:id/position',
+//       ],
+//     },
+//   });
+// });
+
+// app.use(`${API_PREFIX}/trips`, (_req, res) => {
+//   res.json({
+//     success: true,
+//     message: 'Trip routes will be implemented in Day 2',
+//     data: {
+//       availableEndpoints: [
+//         'GET /trips',
+//         'POST /trips/:id/start',
+//         'POST /trips/:id/end',
+//         'POST /trips/:id/students/:studentId/status',
+//       ],
+//     },
+//   });
+// });
+
+// app.use(`${API_PREFIX}/reports`, (_req, res) => {
+//   res.json({
+//     success: true,
+//     message: 'Report routes will be implemented in Day 2',
+//     data: {
+//       availableEndpoints: [
+//         'GET /reports/buses/stats',
+//         'GET /reports/trips/stats',
+//         'GET /reports/students/stats',
+//       ],
+//     },
+//   });
+// });
+
+app.use(`${API_PREFIX}/reports/buses`, busRoutes);
+app.use(`${API_PREFIX}/reports/trips`, tripRoutes);
 
 app.use(`${API_PREFIX}/drivers`, (_req, res) => {
   res.json({
@@ -213,34 +250,9 @@ app.use(`${API_PREFIX}/schedules`, (_req, res) => {
   });
 });
 
-app.use(`${API_PREFIX}/trips`, (_req, res) => {
-  res.json({
-    success: true,
-    message: 'Trip routes will be implemented in Day 2',
-    data: {
-      availableEndpoints: [
-        'GET /trips',
-        'POST /trips/:id/start',
-        'POST /trips/:id/end',
-        'POST /trips/:id/students/:studentId/status',
-      ],
-    },
-  });
-});
 
-app.use(`${API_PREFIX}/reports`, (_req, res) => {
-  res.json({
-    success: true,
-    message: 'Report routes will be implemented in Day 2',
-    data: {
-      availableEndpoints: [
-        'GET /reports/buses/stats',
-        'GET /reports/trips/stats',
-        'GET /reports/students/stats',
-      ],
-    },
-  });
-});
+
+
 
 // 404 handler for API routes (catch-all middleware for Express 5)
 app.use(`${API_PREFIX}`, (req, res, next) => {
@@ -269,26 +281,54 @@ const server = createServer(app);
 // Create Socket.IO server
 const io = new SocketIOServer(server, {
   cors: {
-    origin: config.socket.corsOrigin,
+    origin: "*",
     methods: ['GET', 'POST'],
     credentials: true,
   },
   transports: ['websocket', 'polling'],
 });
 
-// Socket.IO authentication middleware
-io.use((_socket, next) => {
-  // TODO: Implement JWT authentication for Socket.IO
-  // For now, allow all connections
-  next();
-});
+// // Socket.IO authentication middleware
+// io.use((_socket, next) => {
+//   // TODO: Implement JWT authentication for Socket.IO
+//   // For now, allow all connections
+//   next();
+// });
+
+// // Socket.IO connection handling
+// io.on(SOCKET_EVENTS.CONNECTION, (socket: any) => {
+//   console.log(`✅ Socket connected: ${socket.id}`);
+
+  // // Handle room joining
+  // socket.on(SOCKET_EVENTS.JOIN_ROOM, (roomName: any) => {
+  //   socket.join(roomName);
+  //   socket.emit(SOCKET_EVENTS.JOINED_ROOM, { room: roomName });
+  //   console.log(`📱 Socket ${socket.id} joined room: ${roomName}`);
+  // });
+
+  
+  io.use(verifyWsJWT); // <-- THAY THẾ code cũ
 
 // Socket.IO connection handling
 io.on(SOCKET_EVENTS.CONNECTION, (socket: any) => {
-  console.log(`✅ Socket connected: ${socket.id}`);
+  console.log(`✅ Socket connected: ${socket.id} (User: ${socket.data.user.id}, Role: ${socket.data.user.role})`);
 
   // Handle room joining
   socket.on(SOCKET_EVENTS.JOIN_ROOM, (roomName: any) => {
+    // === BỔ SUNG RBAC (KIỂM TRA QUYỀN) === [cite: 43, 79]
+    const user = socket.data.user;
+
+    // Ví dụ kiểm tra quyền (bạn cần làm chi tiết hơn)
+    if (roomName.startsWith('bus-') && user.role === 'phu_huynh') {
+       // Tạm thời chặn phụ huynh join phòng bus (ví dụ)
+       // (Logic thật: check xem phụ huynh có con trên bus đó không)
+       // return socket.emit(SOCKET_EVENTS.ERROR, { message: 'Forbidden: Parents cannot join bus rooms directly' });
+    }
+    
+    if (roomName.startsWith('trip-') && user.role === 'tai_xe') {
+      // (Logic thật: check xem tài xế có lái chuyến đó không)
+    }
+
     socket.join(roomName);
     socket.emit(SOCKET_EVENTS.JOINED_ROOM, { room: roomName });
     console.log(`📱 Socket ${socket.id} joined room: ${roomName}`);

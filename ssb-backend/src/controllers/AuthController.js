@@ -4,6 +4,9 @@ import jwt from "jsonwebtoken";
 import NguoiDungModel from "../models/NguoiDungModel.js";
 import TaiXeModel from "../models/TaiXeModel.js";
 
+
+
+
 class AuthController {
   // Đăng ký tài khoản mới
   static async register(req, res) {
@@ -247,6 +250,30 @@ class AuthController {
         { expiresIn: "7d" }
       );
 
+
+      // (1) Tạo Access Token (Ngắn hạn) [cite: 45, 109]
+      const accessToken = jwt.sign(
+        {
+          userId: user.maNguoiDung,
+          email: user.email,
+          vaiTro: user.vaiTro,
+        },
+        process.env.JWT_SECRET,
+        { expiresIn: "15m" } // Sửa từ 7d thành 15 phút
+      );
+
+      // (2) Tạo Refresh Token (Dài hạn) [cite: 109]
+      const refreshToken = jwt.sign(
+        {
+          userId: user.maNguoiDung,
+          email: user.email,
+        },
+        process.env.JWT_REFRESH_SECRET, // Dùng secret khác
+        { expiresIn: "7d" } // Thời hạn dài
+      );
+      
+      
+
       // Lấy thông tin tài xế nếu có
       let driverInfo = null;
       if (user.vaiTro === "tai_xe") {
@@ -261,9 +288,11 @@ class AuthController {
             matKhau: undefined, // Không trả về mật khẩu
           },
           driverInfo,
-          token,
+          token: accessToken, // Trả về Access Token
+          refreshToken,       // Trả về Refresh Token
         },
         message: "Đăng nhập thành công",
+
       });
     } catch (error) {
       console.error("Error in AuthController.login:", error);
@@ -625,48 +654,69 @@ class AuthController {
   // Refresh token
   static async refreshToken(req, res) {
     try {
-      const userId = req.user.userId;
+      // 1. Lấy Refresh Token từ header
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({
+          success: false,
+          code: "AUTH_REFRESH_401",
+          message: "Refresh token không được cung cấp",
+        });
+      }
 
-      // Lấy thông tin người dùng
+      const refreshToken = authHeader.substring(7);
+      console.log("--- DEBUG REFRESH ---");
+      console.log("Token received:", refreshToken); 
+      console.log("Secret being used:", process.env.JWT_REFRESH_SECRET);
+      console.log("--- END DEBUG ---");
+
+      // 2. Xác thực Refresh Token bằng REFRESH_SECRET
+      let decoded;
+      try {
+        decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+      } catch (error) {
+        return res.status(401).json({
+          success: false,
+          code: "AUTH_REFRESH_401",
+          message: "Refresh token không hợp lệ hoặc đã hết hạn",
+        });
+      }
+
+      const userId = decoded.userId;
       const user = await NguoiDungModel.getById(userId);
-      if (!user) {
-        return res.status(404).json({
+      if (!user || !user.trangThai) {
+        return res.status(401).json({
           success: false,
-          message: "Không tìm thấy người dùng",
+          code: "AUTH_REFRESH_401",
+          message: "Người dùng không tồn tại hoặc tài khoản bị khóa",
         });
       }
+      
+      
 
-      // Kiểm tra trạng thái tài khoản
-      if (!user.trangThai) {
-        return res.status(403).json({
-          success: false,
-          message: "Tài khoản đã bị khóa",
-        });
-      }
-
-      // Tạo token mới
-      const newToken = jwt.sign(
+      const newAccessToken = jwt.sign(
         {
           userId: user.maNguoiDung,
           email: user.email,
           vaiTro: user.vaiTro,
         },
         process.env.JWT_SECRET,
-        { expiresIn: "7d" }
+        { expiresIn: "15m" } 
       );
 
       res.status(200).json({
         success: true,
         data: {
-          token: newToken,
+          accessToken: newAccessToken, 
         },
-        message: "Refresh token thành công",
+        message: "Làm mới token thành công",
       });
     } catch (error) {
       console.error("Error in AuthController.refreshToken:", error);
       res.status(500).json({
         success: false,
-        message: "Lỗi server khi refresh token",
+        code: "INTERNAL_500",
+        message: "Lỗi server khi làm mới token",
         error: error.message,
       });
     }

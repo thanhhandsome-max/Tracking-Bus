@@ -1,4 +1,3 @@
-// TripController - Controller chuyên nghiệp cho xử lý vận hành chuyến đi
 import ChuyenDiModel from "../models/ChuyenDiModel.js";
 import LichTrinhModel from "../models/LichTrinhModel.js";
 import TrangThaiHocSinhModel from "../models/TrangThaiHocSinhModel.js";
@@ -833,90 +832,50 @@ class TripController {
   // Lấy thống kê chuyến đi
   static async getStats(req, res) {
     try {
-      const { ngayBatDau, ngayKetThuc } = req.query;
+      const { from, to } = req.query;
 
-      let trips = await ChuyenDiModel.getAll();
-
-      // Lọc theo khoảng thời gian
-      if (ngayBatDau && ngayKetThuc) {
-        trips = trips.filter((trip) => {
-          const tripDate = new Date(trip.ngayChay);
-          const startDate = new Date(ngayBatDau);
-          const endDate = new Date(ngayKetThuc);
-          return tripDate >= startDate && tripDate <= endDate;
+      if (!from || !to) {
+        return res.status(400).json({
+          success: false,
+          code: "VALIDATION_400",
+          message: "Vui lòng cung cấp ngày bắt đầu (from) và ngày kết thúc (to)",
         });
       }
 
-      const stats = {
-        total: trips.length,
-        byStatus: {
-          chua_khoi_hanh: trips.filter(
-            (trip) => trip.trangThai === "chua_khoi_hanh"
-          ).length,
-          dang_chay: trips.filter((trip) => trip.trangThai === "dang_chay")
-            .length,
-          da_hoan_thanh: trips.filter(
-            (trip) => trip.trangThai === "da_hoan_thanh"
-          ).length,
-          bi_huy: trips.filter((trip) => trip.trangThai === "bi_huy").length,
-        },
-        byRoute: {},
-        byBus: {},
-        byDriver: {},
-        completionRate: 0,
-        averageDuration: 0,
-      };
+      // 1. Gọi hàm Model đã tối ưu
+      const stats = await ChuyenDiModel.getStats(from, to);
 
-      // Tính tỷ lệ hoàn thành
-      const completedTrips = stats.byStatus.da_hoan_thanh;
-      stats.completionRate =
-        trips.length > 0
-          ? Math.round((completedTrips / trips.length) * 100)
+      // 2. Xử lý và tính toán
+      const totalTrips = parseFloat(stats.totalTrips || 0);
+      const completedTrips = parseFloat(stats.completedTrips || 0);
+      const onTimeTrips = parseFloat(stats.onTimeTrips || 0);
+
+      // Tính onTimePercentage (dựa trên số chuyến đã hoàn thành)
+      const onTimePercentage =
+        completedTrips > 0
+          ? (onTimeTrips / completedTrips) * 100
           : 0;
-
-      // Thống kê theo tuyến đường, xe buýt, tài xế
-      for (const trip of trips) {
-        const schedule = await LichTrinhModel.getById(trip.maLichTrinh);
-        if (schedule) {
-          // Theo tuyến đường
-          const routeName = schedule.tenTuyen || "Unknown";
-          stats.byRoute[routeName] = (stats.byRoute[routeName] || 0) + 1;
-
-          // Theo xe buýt
-          const busPlate = schedule.bienSoXe || "Unknown";
-          stats.byBus[busPlate] = (stats.byBus[busPlate] || 0) + 1;
-
-          // Theo tài xế
-          const driverName = schedule.tenTaiXe || "Unknown";
-          stats.byDriver[driverName] = (stats.byDriver[driverName] || 0) + 1;
-        }
-      }
-
-      // Tính thời gian trung bình
-      const tripsWithDuration = trips.filter(
-        (trip) => trip.gioBatDauThucTe && trip.gioKetThucThucTe
-      );
-
-      if (tripsWithDuration.length > 0) {
-        const totalMinutes = tripsWithDuration.reduce((sum, trip) => {
-          const start = new Date(`2000-01-01T${trip.gioBatDauThucTe}`);
-          const end = new Date(`2000-01-01T${trip.gioKetThucThucTe}`);
-          return sum + (end - start) / (1000 * 60);
-        }, 0);
-        stats.averageDuration = Math.round(
-          totalMinutes / tripsWithDuration.length
-        );
-      }
+      
+      // 3. Tạo response data khớp 100% với openapi.yaml
+      const responseData = {
+        totalTrips: totalTrips,
+        completedTrips: completedTrips,
+        cancelledTrips: parseFloat(stats.cancelledTrips || 0),
+        delayedTrips: parseFloat(stats.delayedTrips || 0),
+        averageDuration: parseFloat((stats.averageDurationInSeconds || 0) / 60), // Chuyển sang phút
+        onTimePercentage: parseFloat(onTimePercentage.toFixed(2)), // Làm tròn 2 chữ số
+      };
 
       res.status(200).json({
         success: true,
-        data: stats,
-        message: "Lấy thống kê chuyến đi thành công",
+        meta: { queryRange: { from, to } },
+        data: responseData,
       });
     } catch (error) {
       console.error("Error in TripController.getStats:", error);
       res.status(500).json({
         success: false,
+        code: "INTERNAL_500",
         message: "Lỗi server khi lấy thống kê chuyến đi",
         error: error.message,
       });

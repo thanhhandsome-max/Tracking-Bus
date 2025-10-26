@@ -19,6 +19,61 @@ const ChuyenDiModel = {
     return rows;
   },
 
+
+  async getStats(ngayBatDau, ngayKetThuc) {
+    const [rows] = await pool.query(
+      `
+      SELECT
+        COUNT(cd.maChuyen) AS totalTrips,
+        
+        SUM(CASE 
+          WHEN cd.trangThai = 'hoan_thanh' THEN 1 ELSE 0 
+        END) AS completedTrips,
+        
+        SUM(CASE 
+          WHEN cd.trangThai = 'huy' THEN 1 ELSE 0  -- Sửa từ 'bi_huy' thành 'huy' nếu DB dùng 'huy'
+        END) AS cancelledTrips,
+        
+        SUM(CASE 
+          WHEN cd.trangThai = 'hoan_thanh' AND cd.gioBatDauThucTe > lt.gioKhoiHanh 
+          THEN 1 ELSE 0 
+        END) AS delayedTrips,
+        
+        SUM(CASE 
+          WHEN cd.trangThai = 'hoan_thanh' AND cd.gioBatDauThucTe <= lt.gioKhoiHanh 
+          THEN 1 ELSE 0 
+        END) AS onTimeTrips,
+        
+        AVG(
+          CASE 
+            WHEN cd.trangThai = 'hoan_thanh' AND cd.gioBatDauThucTe IS NOT NULL AND cd.gioKetThucThucTe IS NOT NULL
+            THEN TIME_TO_SEC(TIMEDIFF(cd.gioKetThucThucTe, cd.gioBatDauThucTe)) 
+            ELSE NULL 
+          END
+        ) AS averageDurationInSeconds
+
+      FROM ChuyenDi cd
+      JOIN LichTrinh lt ON cd.maLichTrinh = lt.maLichTrinh
+      WHERE cd.ngayChay BETWEEN ? AND ?
+      `,
+      [ngayBatDau, ngayKetThuc]
+    );
+    
+    // Nếu không có chuyến nào trong khoảng ngày, query có thể trả về nulls
+    // Xử lý để đảm bảo trả về object với giá trị 0
+    const result = rows[0];
+    return {
+      totalTrips: result.totalTrips || 0,
+      completedTrips: result.completedTrips || 0,
+      cancelledTrips: result.cancelledTrips || 0,
+      delayedTrips: result.delayedTrips || 0,
+      onTimeTrips: result.onTimeTrips || 0,
+      averageDurationInSeconds: result.averageDurationInSeconds || 0,
+    };
+  },
+
+  
+
   // Lấy chuyến đi theo mã
   async getById(id) {
     const [rows] = await pool.query(

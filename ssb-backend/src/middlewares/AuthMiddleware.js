@@ -2,6 +2,7 @@
 import jwt from "jsonwebtoken";
 import NguoiDungModel from "../models/NguoiDungModel.js";
 
+
 class AuthMiddleware {
   // Middleware xác thực JWT token
   static async authenticate(req, res, next) {
