@@ -1,0 +1,435 @@
+{
+  "info": {
+    "name": "SSB 1.0 API",
+    "description": "Smart School Bus Tracking System API Collection",
+    "version": "1.0.0",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:4000/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            },
+            "description": "Check if the API is running"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Login",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"quantri@schoolbus.vn\",\n  \"password\": \"password\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Authenticate user and return JWT token"
+          },
+          "response": []
+        },
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"hoTen\": \"Nguyễn Văn A\",\n  \"email\": \"user@school.edu.vn\",\n  \"password\": \"password123\",\n  \"soDienThoai\": \"0901234567\",\n  \"vaiTro\": \"phu_huynh\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "register"]
+            },
+            "description": "Register a new user"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Profile",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "profile"]
+            },
+            "description": "Get current user's profile information"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Buses",
+      "item": [
+        {
+          "name": "Get All Buses",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/buses?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["buses"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Retrieve a list of all buses with pagination"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Bus",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bienSoXe\": \"51A-12345\",\n  \"dongXe\": \"Hyundai County\",\n  \"sucChua\": 30,\n  \"trangThai\": \"hoat_dong\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/buses",
+              "host": ["{{baseUrl}}"],
+              "path": ["buses"]
+            },
+            "description": "Create a new bus record"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Bus by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/buses/1",
+              "host": ["{{baseUrl}}"],
+              "path": ["buses", "1"]
+            },
+            "description": "Retrieve a specific bus by its ID"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Bus Position",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lat\": 10.762622,\n  \"lng\": 106.660172,\n  \"speed\": 45.5,\n  \"heading\": 180\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/buses/1/position",
+              "host": ["{{baseUrl}}"],
+              "path": ["buses", "1", "position"]
+            },
+            "description": "Update the GPS position of a bus"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Drivers",
+      "item": [
+        {
+          "name": "Get All Drivers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/drivers?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["drivers"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Retrieve a list of all drivers with pagination"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Students",
+      "item": [
+        {
+          "name": "Get All Students",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/students?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["students"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Retrieve a list of all students with pagination"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Routes",
+      "item": [
+        {
+          "name": "Get All Routes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/routes?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["routes"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Retrieve a list of all routes with pagination"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Route Stops",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/routes/1/stops",
+              "host": ["{{baseUrl}}"],
+              "path": ["routes", "1", "stops"]
+            },
+            "description": "Retrieve all stops for a specific route"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Schedules",
+      "item": [
+        {
+          "name": "Create Schedule",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"maTaiXe\": 1,\n  \"maXe\": 1,\n  \"gioBatDau\": \"2024-01-15T06:00:00Z\",\n  \"gioKetThuc\": \"2024-01-15T18:00:00Z\",\n  \"moTa\": \"Lịch trình buổi sáng\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/schedules",
+              "host": ["{{baseUrl}}"],
+              "path": ["schedules"]
+            },
+            "description": "Create a new schedule with conflict checking"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Trips",
+      "item": [
+        {
+          "name": "Start Trip",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"gioBatDauThucTe\": \"2024-01-15T06:30:00Z\",\n  \"ghiChu\": \"Bắt đầu chuyến đi\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/trips/1/start",
+              "host": ["{{baseUrl}}"],
+              "path": ["trips", "1", "start"]
+            },
+            "description": "Start a scheduled trip"
+          },
+          "response": []
+        },
+        {
+          "name": "End Trip",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"gioKetThucThucTe\": \"2024-01-15T17:30:00Z\",\n  \"ghiChu\": \"Kết thúc chuyến đi\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/trips/1/end",
+              "host": ["{{baseUrl}}"],
+              "path": ["trips", "1", "end"]
+            },
+            "description": "End a running trip"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Reports",
+      "item": [
+        {
+          "name": "Get Bus Statistics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/reports/buses/stats",
+              "host": ["{{baseUrl}}"],
+              "path": ["reports", "buses", "stats"]
+            },
+            "description": "Retrieve bus performance statistics"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Trip Statistics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/reports/trips/stats",
+              "host": ["{{baseUrl}}"],
+              "path": ["reports", "trips", "stats"]
+            },
+            "description": "Retrieve trip performance statistics"
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Auto-set token from login response",
+          "if (pm.response && pm.response.json() && pm.response.json().data && pm.response.json().data.token) {",
+          "    pm.collectionVariables.set('token', pm.response.json().data.token);",
+          "}"
+        ]
+      }
+    }
+  ]
+}

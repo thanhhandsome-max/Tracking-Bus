@@ -48,7 +48,11 @@ cp .env.example .env
 ```bash
 # Tạo database MySQL
 mysql -u root -p
-CREATE DATABASE smart_school_bus;
+CREATE DATABASE school_bus_system;
+
+# Import database schema và sample data
+mysql -u root -p school_bus_system < ../database/init_db.sql
+mysql -u root -p school_bus_system < ../database/sample_data.sql
 ```
 
 ### 4. Chạy server
@@ -57,7 +61,19 @@ CREATE DATABASE smart_school_bus;
 npm run dev
 
 # Production
+npm run build
 npm start
+```
+
+### 5. Test API
+```bash
+# Health check
+curl http://localhost:4000/api/v1/health
+
+# Login test
+curl -X POST http://localhost:4000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"quantri@schoolbus.vn","password":"password"}'
 ```
 
 ## 📡 API Endpoints
@@ -119,12 +135,33 @@ Authorization: Bearer <your_jwt_token>
 - **notifications** - Thông báo
 
 ## 🧪 Testing
+
+### Postman Collection
+1. Import file `docs/postman_collection_v3.json` vào Postman
+2. Import file `env/postman_environment_v3.json` làm environment
+3. Chọn environment "SSB Local Development"
+4. Chạy request "Login" để lấy token
+5. Token sẽ tự động được set vào biến `{{token}}`
+
+### Unit Tests
 ```bash
 # Chạy tất cả tests
 npm test
 
 # Chạy tests với coverage
 npm run test:coverage
+```
+
+### Manual Testing
+```bash
+# Test login endpoint
+curl -X POST http://localhost:4000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"quantri@schoolbus.vn","password":"password"}'
+
+# Test buses endpoint (cần token)
+curl -X GET http://localhost:4000/api/v1/buses \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE"
 ```
 
 ## 📝 Logs

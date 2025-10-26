@@ -678,6 +678,122 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /drivers:
+    get:
+      summary: Get all drivers
+      description: Retrieve a list of all drivers with pagination
+      tags:
+        - Drivers
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Search'
+        - $ref: '#/components/parameters/Sort'
+      responses:
+        '200':
+          description: Drivers retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeOk'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /students:
+    get:
+      summary: Get all students
+      description: Retrieve a list of all students with pagination
+      tags:
+        - Students
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Search'
+        - $ref: '#/components/parameters/Sort'
+      responses:
+        '200':
+          description: Students retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeOk'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /routes:
+    get:
+      summary: Get all routes
+      description: Retrieve a list of all routes with pagination
+      tags:
+        - Routes
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Search'
+        - $ref: '#/components/parameters/Sort'
+      responses:
+        '200':
+          description: Routes retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeOk'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /routes/{id}/stops:
+    get:
+      summary: Get route stops
+      description: Retrieve all stops for a specific route
+      tags:
+        - Routes
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Route ID
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Route stops retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeOk'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Route not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
 components:
   securitySchemes:
     bearerAuth:
