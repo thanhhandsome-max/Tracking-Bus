@@ -1,12 +1,12 @@
-const express = require("express");
-const cors = require("cors");
-const helmet = require("helmet");
-const morgan = require("morgan");
+import express from "express";
+import cors from "cors";
+import helmet from "helmet";
+import morgan from "morgan";
 
 // Import routes
-const busRoutes = require("./routes/api/bus");
-const driverRoutes = require("./routes/api/driver");
-const scheduleRoutes = require("./routes/api/schedule");
+import busRoutes from "./routes/api/bus.js";
+import driverRoutes from "./routes/api/driver.js";
+import scheduleRoutes from "./routes/api/schedule.js";
 
 // Import middlewares
 // const errorHandler = require('./middlewares/errorHandler');
@@ -21,9 +21,9 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Routes
-app.use("/api/buses", require("./routes/api/bus"));
-app.use("/api/drivers", require("./routes/api/driver"));
-app.use("/api/schedules", require("./routes/api/schedule"));
+app.use("/api/buses", busRoutes);
+app.use("/api/drivers", driverRoutes);
+app.use("/api/schedules", scheduleRoutes);
 // Error handling middleware
 // app.use(errorHandler);
 
@@ -36,4 +36,4 @@ app.get("/health", (req, res) => {
   });
 });
 
-module.exports = app;
+export default app;

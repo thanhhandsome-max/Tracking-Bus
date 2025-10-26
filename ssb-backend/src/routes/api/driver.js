@@ -1,11 +1,11 @@
 // Import các module và đối tượng cần thiết.
-const express = require("express");
-const {
+import express from "express";
+import {
   drivers,      // Đối tượng Map() để lưu trữ danh sách tài xế.
   schedules,    // Đối tượng Map() để lưu trữ danh sách lịch trình.
   toArray,      // Hàm tiện ích để chuyển Map thành Array.
   generateId,   // Hàm để tạo ID duy nhất.
-} = require("../../services/inMemoryStore");
+} from "../../services/inMemoryStore.js";
 
 // Tạo một router mới cho các endpoint liên quan đến tài xế.
 const router = express.Router();
@@ -130,4 +130,4 @@ router.get("/:id/assignments", (req, res) => {
 
 
 // Xuất router để sử dụng trong file server chính.
-module.exports = router;
+export default router;

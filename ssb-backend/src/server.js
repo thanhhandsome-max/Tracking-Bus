@@ -1,14 +1,16 @@
 // Smart School Bus Tracking System - Backend Server
 // File này khởi tạo server Express và Socket.IO
 
-const express = require("express");
-const http = require("http");
-const { Server } = require("socket.io");
-const cors = require("cors");
-require("dotenv").config();
+import express from "express";
+import http from "http";
+import { Server } from "socket.io";
+import cors from "cors";
+import dotenv from "dotenv";
 
 // Import app từ file app.js
-const app = require("./app");
+import app from "./app.js";
+
+dotenv.config();
 
 const PORT = process.env.PORT || 3001;
 

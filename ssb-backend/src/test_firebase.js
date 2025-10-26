@@ -1,4 +1,7 @@
-const admin = require('firebase-admin');
+import admin from 'firebase-admin';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
 
 // 1. Nạp file "khóa" bí mật bạn vừa tải về
 const serviceAccount = require('./config/serviceAccountKey.json');
