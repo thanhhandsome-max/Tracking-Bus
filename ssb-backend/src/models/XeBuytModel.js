@@ -15,6 +15,27 @@ const XeBuytModel = {
     return rows[0];
   },
 
+  async getStats() {
+    // Lấy thông tin cơ bản về số lượng xe theo trạng thái
+    const [busCounts] = await pool.query(
+      `SELECT trangThai, COUNT(*) as count 
+       FROM XeBuyt 
+       GROUP BY trangThai`
+    );
+    
+    // Lấy tổng số xe
+    const [totalResult] = await pool.query(
+      `SELECT COUNT(*) as total FROM XeBuyt`
+    );
+    const totalBuses = totalResult[0].total || 0;
+
+    // Trả về dữ liệu thô để Controller xử lý
+    return {
+      busCounts: busCounts || [], // Mảng [{ trangThai: 'hoat_dong', count: 5 }, ...]
+      totalBuses: totalBuses,
+    };
+  },
+  
   // Thêm xe buýt mới
   async create(data) {
     const { bienSoXe, dongXe, sucChua, trangThai } = data;

@@ -545,45 +545,48 @@ class BusController {
   // Lấy thống kê xe buýt
   static async getStats(req, res) {
     try {
-      const allBuses = await XeBuytModel.getAll();
+      // 1. Lấy thông tin cơ bản về xe từ Model
+      const busData = await XeBuytModel.getStats();
 
-      const stats = {
-        total: allBuses.length,
-        byStatus: {
-          hoat_dong: allBuses.filter((bus) => bus.trangThai === "hoat_dong")
-            .length,
-          bao_tri: allBuses.filter((bus) => bus.trangThai === "bao_tri").length,
-          ngung_hoat_dong: allBuses.filter(
-            (bus) => bus.trangThai === "ngung_hoat_dong"
-          ).length,
-        },
-        byCapacity: {
-          small: allBuses.filter((bus) => bus.sucChua <= 30).length,
-          medium: allBuses.filter(
-            (bus) => bus.sucChua > 30 && bus.sucChua <= 50
-          ).length,
-          large: allBuses.filter((bus) => bus.sucChua > 50).length,
-        },
-        averageCapacity: 0,
-        totalCapacity: 0,
+      // 2. Xử lý số lượng xe theo trạng thái
+      let activeBuses = 0;
+      let maintenanceBuses = 0;
+      busData.busCounts.forEach(row => {
+        if (row.trangThai === 'hoat_dong') {
+          activeBuses = row.count;
+        } else if (row.trangThai === 'bao_tri') {
+          maintenanceBuses = row.count;
+        }
+        // OpenAPI không yêu cầu inactiveBuses nên ta bỏ qua
+      });
+
+      // 3. Lấy thông tin thống kê chuyến đi TỔNG (tạm thời lấy tổng hệ thống)
+      // Để tính averageUtilization cho từng xe cần query phức tạp hơn
+      const today = new Date().toISOString().split('T')[0]; // Lấy ngày hôm nay
+      const tripStatsOverall = await ChuyenDiModel.getStats(today, today); // Lấy stats hôm nay
+
+      // 4. Tạo response data khớp với openapi.yaml
+      const responseData = {
+        totalBuses: busData.totalBuses,
+        activeBuses: activeBuses,
+        maintenanceBuses: maintenanceBuses,
+        // --- Các trường này cần tính toán phức tạp hơn để chính xác ---
+        averageUtilization: 0, // Tạm thời để 0, cần logic tính % thời gian xe chạy
+        totalTrips: tripStatsOverall.totalTrips || 0, // Lấy tổng trip hệ thống
+        completedTrips: tripStatsOverall.completedTrips || 0, // Lấy tổng trip hoàn thành hệ thống
+        delayedTrips: tripStatsOverall.delayedTrips || 0, // Lấy tổng trip trễ hệ thống
+        // --- Hết phần cần tính toán phức tạp ---
       };
-
-      // Tính tổng và trung bình sức chứa
-      stats.totalCapacity = allBuses.reduce((sum, bus) => sum + bus.sucChua, 0);
-      stats.averageCapacity =
-        allBuses.length > 0
-          ? Math.round(stats.totalCapacity / allBuses.length)
-          : 0;
-
+      
       res.status(200).json({
         success: true,
-        data: stats,
-        message: "Lấy thống kê xe buýt thành công",
+        data: responseData,
       });
     } catch (error) {
       console.error("Error in BusController.getStats:", error);
       res.status(500).json({
         success: false,
+        code: "INTERNAL_500",
         message: "Lỗi server khi lấy thống kê xe buýt",
         error: error.message,
       });

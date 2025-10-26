@@ -15,4 +15,10 @@ router.get(
   AuthController.getProfile
 );
 
+router.post(
+  "/refresh", 
+  // AuthMiddleware.authenticate, // <-- THÊM MIDDLEWARE VÀO ĐÂY
+  AuthController.refreshToken
+);
+
 export default router;
