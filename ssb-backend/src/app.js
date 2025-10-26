@@ -7,6 +7,7 @@ import morgan from "morgan";
 import busRoutes from "./routes/api/bus.js";
 import driverRoutes from "./routes/api/driver.js";
 import scheduleRoutes from "./routes/api/schedule.js";
+import authRouters from "./routes/api/auth.route.js";
 
 // Import middlewares
 
@@ -20,6 +21,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Routes
+app.use("/api/auth", authRouters);
 app.use("/api/buses", busRoutes);
 app.use("/api/drivers", driverRoutes);
 app.use("/api/schedules", scheduleRoutes);

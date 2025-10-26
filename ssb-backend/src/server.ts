@@ -11,6 +11,7 @@ import { corsMiddleware, corsHandler, securityHeaders, rateLimitHeaders } from '
 import { errorHandler, notFoundHandler, successResponse } from './middlewares/error.js';
 import { API_PREFIX } from './constants/http.js';
 import { SOCKET_EVENTS } from './constants/realtime.js';
+import authRoutes from './routes/api/auth.route.js';
 
 // Create Express app
 const app = express();
@@ -142,22 +143,9 @@ async function checkRedisHealth(): Promise<string> {
   }
 }
 
-// API routes (placeholder - will be implemented in Day 2)
-app.use(`${API_PREFIX}/auth`, (_req, res) => {
-  res.json({
-    success: true,
-    message: 'Auth routes will be implemented in Day 2',
-    data: {
-      availableEndpoints: [
-        'POST /auth/login',
-        'POST /auth/register',
-        'GET /auth/profile',
-        'POST /auth/refresh',
-        'POST /auth/logout',
-      ],
-    },
-  });
-});
+
+// API Routes
+app.use(`${API_PREFIX}/auth`, authRoutes);
 
 app.use(`${API_PREFIX}/buses`, (_req, res) => {
   res.json({
