@@ -1,4 +1,4 @@
-import pool from "../config/db.config.js";
+import pool from "../config/db.js";
 
 const XeBuytModel = {
   // Lấy tất cả xe buýt

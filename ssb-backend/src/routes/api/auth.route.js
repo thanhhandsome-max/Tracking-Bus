@@ -15,10 +15,7 @@ router.get(
   AuthController.getProfile
 );
 
-router.post(
-  "/refresh", 
-  // AuthMiddleware.authenticate, // <-- THÊM MIDDLEWARE VÀO ĐÂY
-  AuthController.refreshToken
-);
+// Refresh token doesn't need authenticate middleware - it validates the refresh token itself
+router.post("/refresh", AuthController.refreshToken);
 
 export default router;

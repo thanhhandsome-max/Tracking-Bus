@@ -126,12 +126,13 @@ app.get(`${API_PREFIX}/health/detailed`, async (_req, res) => {
 // Database health check
 async function checkDatabaseHealth(): Promise<string> {
   try {
-    // TODO: Implement actual database health check
-    // const connection = await pool.getConnection();
-    // await connection.ping();
-    // connection.release();
+    const pool = (await import('./config/db.js')).default;
+    const connection = await pool.getConnection();
+    await connection.ping();
+    connection.release();
     return 'up';
   } catch (error) {
+    console.error('Database health check failed:', error);
     return 'down';
   }
 }
@@ -281,7 +282,7 @@ const server = createServer(app);
 // Create Socket.IO server
 const io = new SocketIOServer(server, {
   cors: {
-    origin: "*",
+    origin: config.frontend.origin,
     methods: ['GET', 'POST'],
     credentials: true,
   },

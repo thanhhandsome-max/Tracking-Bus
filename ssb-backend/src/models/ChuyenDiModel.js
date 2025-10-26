@@ -1,4 +1,4 @@
-import pool from "../config/db.config.js";
+import pool from "../config/db.js";
 
 const ChuyenDiModel = {
   // Lấy tất cả chuyến đi (kèm thông tin lịch trình, tuyến, xe, tài xế)

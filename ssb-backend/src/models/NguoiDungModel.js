@@ -1,4 +1,4 @@
-import pool from "../config/db.config.js";
+import pool from "../config/db.js";
 
 const NguoiDungModel = {
   // Lấy tất cả người dùng

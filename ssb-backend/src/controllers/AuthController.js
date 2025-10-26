@@ -235,23 +235,12 @@ class AuthController {
       if (!isPasswordValid) {
         return res.status(401).json({
           success: false,
+          code: "AUTH_INVALID_CREDENTIALS",
           message: "Email hoặc mật khẩu không đúng",
         });
       }
 
-      // Tạo JWT token
-      const token = jwt.sign(
-        {
-          userId: user.maNguoiDung,
-          email: user.email,
-          vaiTro: user.vaiTro,
-        },
-        process.env.JWT_SECRET,
-        { expiresIn: "7d" }
-      );
-
-
-      // (1) Tạo Access Token (Ngắn hạn) [cite: 45, 109]
+      // (1) Tạo Access Token (Ngắn hạn)
       const accessToken = jwt.sign(
         {
           userId: user.maNguoiDung,
@@ -259,20 +248,18 @@ class AuthController {
           vaiTro: user.vaiTro,
         },
         process.env.JWT_SECRET,
-        { expiresIn: "15m" } // Sửa từ 7d thành 15 phút
+        { expiresIn: "15m" }
       );
 
-      // (2) Tạo Refresh Token (Dài hạn) [cite: 109]
+      // (2) Tạo Refresh Token (Dài hạn)
       const refreshToken = jwt.sign(
         {
           userId: user.maNguoiDung,
           email: user.email,
         },
-        process.env.JWT_REFRESH_SECRET, // Dùng secret khác
-        { expiresIn: "7d" } // Thời hạn dài
+        process.env.JWT_REFRESH_SECRET,
+        { expiresIn: "7d" }
       );
-      
-      
 
       // Lấy thông tin tài xế nếu có
       let driverInfo = null;
@@ -283,16 +270,21 @@ class AuthController {
       res.status(200).json({
         success: true,
         data: {
+          token: accessToken,
+          refreshToken,
           user: {
-            ...user,
-            matKhau: undefined, // Không trả về mật khẩu
+            maNguoiDung: user.maNguoiDung,
+            hoTen: user.hoTen,
+            email: user.email,
+            soDienThoai: user.soDienThoai,
+            anhDaiDien: user.anhDaiDien,
+            vaiTro: user.vaiTro,
+            trangThai: user.trangThai,
+            ngayTao: user.ngayTao,
+            ngayCapNhat: user.ngayCapNhat,
           },
-          driverInfo,
-          token: accessToken, // Trả về Access Token
-          refreshToken,       // Trả về Refresh Token
         },
         message: "Đăng nhập thành công",
-
       });
     } catch (error) {
       console.error("Error in AuthController.login:", error);
@@ -707,7 +699,7 @@ class AuthController {
       res.status(200).json({
         success: true,
         data: {
-          accessToken: newAccessToken, 
+          token: newAccessToken, 
         },
         message: "Làm mới token thành công",
       });
