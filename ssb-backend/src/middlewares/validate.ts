@@ -1,10 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
 import Joi from 'joi';
-import { errorResponse, ERROR_CODES } from './error';
+import { errorResponse, ERROR_CODES } from './error.js';
 
 // Validation middleware factory
 export const validate = (schema: Joi.ObjectSchema) => {
-  return (req: Request, res: Response, next: NextFunction) => {
+  return (req: Request, res: Response, next: NextFunction): void => {
     const { error, value } = schema.validate(req.body, {
       abortEarly: false,
       stripUnknown: true,
@@ -19,13 +19,14 @@ export const validate = (schema: Joi.ObjectSchema) => {
         type: detail.type,
       }));
 
-      return errorResponse(
+      errorResponse(
         res,
         'Validation Error',
         ERROR_CODES.VALIDATION_422,
         422,
         errors
       );
+      return;
     }
 
     // Replace req.body with validated and sanitized data
@@ -36,7 +37,7 @@ export const validate = (schema: Joi.ObjectSchema) => {
 
 // Query validation middleware
 export const validateQuery = (schema: Joi.ObjectSchema) => {
-  return (req: Request, res: Response, next: NextFunction) => {
+  return (req: Request, res: Response, next: NextFunction): void => {
     const { error, value } = schema.validate(req.query, {
       abortEarly: false,
       stripUnknown: true,
@@ -51,13 +52,14 @@ export const validateQuery = (schema: Joi.ObjectSchema) => {
         type: detail.type,
       }));
 
-      return errorResponse(
+      errorResponse(
         res,
         'Query Validation Error',
         ERROR_CODES.VALIDATION_422,
         422,
         errors
       );
+      return;
     }
 
     req.query = value;
@@ -67,7 +69,7 @@ export const validateQuery = (schema: Joi.ObjectSchema) => {
 
 // Params validation middleware
 export const validateParams = (schema: Joi.ObjectSchema) => {
-  return (req: Request, res: Response, next: NextFunction) => {
+  return (req: Request, res: Response, next: NextFunction): void => {
     const { error, value } = schema.validate(req.params, {
       abortEarly: false,
       stripUnknown: true,
@@ -82,13 +84,14 @@ export const validateParams = (schema: Joi.ObjectSchema) => {
         type: detail.type,
       }));
 
-      return errorResponse(
+      errorResponse(
         res,
         'Params Validation Error',
         ERROR_CODES.VALIDATION_422,
         422,
         errors
       );
+      return;
     }
 
     req.params = value;

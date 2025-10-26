@@ -67,7 +67,7 @@ export const errorHandler = (
   error: ApiError,
   req: Request,
   res: Response,
-  next: NextFunction
+  _next: NextFunction
 ): void => {
   let statusCode = error.statusCode || 500;
   let code = error.code || ERROR_CODES.INTERNAL_500;
