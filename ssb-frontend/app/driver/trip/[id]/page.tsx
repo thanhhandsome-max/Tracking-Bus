@@ -42,6 +42,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { IncidentForm } from "@/components/driver/incident-form"
+import TripMap from "@/components/driver/trip-map"
 // Input and ScrollArea removed (old admin chat UI deleted)
 
 const mockTrip = {
@@ -348,15 +349,17 @@ export default function TripDetailPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <Card className="border-border/50 bg-muted/30">
-                  <CardContent className="p-4">
-                    <div className="aspect-video bg-muted rounded-lg flex items-center justify-center relative overflow-hidden">
-                      <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-success/10" />
-                      <div className="relative z-10 text-center space-y-2">
-                        <MapPinned className="w-12 h-12 text-primary mx-auto animate-pulse" />
-                        <p className="text-sm font-medium text-foreground">Bản đồ thời gian thực</p>
-                        <p className="text-xs text-muted-foreground">Khoảng cách: 1.2 km • Thời gian: 3 phút</p>
-                      </div>
-                    </div>
+                      <CardContent className="p-4">
+                        {/* Real Trip Map - uses NEXT_PUBLIC_GOOGLE_MAPS_API_KEY if available */}
+                        <TripMap
+                          center={{ lat: 10.762622, lng: 106.660172 }}
+                          zoom={13}
+                          markers={[
+                            { id: "vehicle", lat: 10.762622, lng: 106.660172, label: `${trip.vehicle.plateNumber} - ${trip.route}` },
+                            // Add current stop marker
+                            { id: `stop-${currentStop.id}`, lat: 10.765, lng: 106.661, label: currentStop.name },
+                          ]}
+                        />
                     <div className="mt-3 space-y-2">
                       <div className="flex items-start gap-2 text-sm">
                         <Navigation2 className="w-4 h-4 text-primary mt-0.5" />

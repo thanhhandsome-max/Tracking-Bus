@@ -9,15 +9,19 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { User, Mail, Phone, MapPin, Bell, Shield, Save } from "lucide-react"
+import { toast } from "@/hooks/use-toast"
+
 import { Switch } from "@/components/ui/switch"
 
 export default function ParentProfile() {
   const { user } = useAuth()
   const router = useRouter()
   const [isEditing, setIsEditing] = useState(false)
+  const [openPasswordDialog, setOpenPasswordDialog] = useState(false)
 
   useEffect(() => {
     if (user && user.role !== "parent") {
@@ -180,14 +184,43 @@ export default function ParentProfile() {
                 <CardTitle className="text-base">Bảo mật</CardTitle>
               </CardHeader>
               <CardContent>
-                <Button variant="outline" className="w-full gap-2 bg-transparent">
+                <Button variant="outline" className="w-full gap-2 bg-transparent" onClick={() => setOpenPasswordDialog(true)}>
                   <Shield className="w-4 h-4" />
                   Đổi mật khẩu
                 </Button>
               </CardContent>
             </Card>
+
+            
           </div>
+
+          
         </div>
+
+        {/* Popup đổi mật khẩu */}
+        <Dialog open={openPasswordDialog} onOpenChange={setOpenPasswordDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Đổi mật khẩu</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 py-3">
+              <Input type="password" placeholder="Mật khẩu hiện tại" />
+              <Input type="password" placeholder="Mật khẩu mới" />
+              <Input type="password" placeholder="Xác nhận mật khẩu mới" />
+            </div>
+            <DialogFooter>
+              <Button
+                onClick={() => {
+                  toast({ title: "Thành công", description: "Mật khẩu đã được thay đổi." })
+                  setOpenPasswordDialog(false)
+                }}
+              >
+                Lưu thay đổi
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
 
         {/* Children Information */}
         <Card className="border-border/50">
@@ -229,58 +262,8 @@ export default function ParentProfile() {
           </CardContent>
         </Card>
 
-        {/* Notification Settings */}
-        <Card className="border-border/50">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Bell className="w-5 h-5 text-primary" />
-              Cài đặt thông báo
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-4 rounded-lg bg-muted/20">
-                <div>
-                  <p className="font-medium text-foreground">Thông báo đón</p>
-                  <p className="text-sm text-muted-foreground">Nhận thông báo khi con được đón</p>
-                </div>
-                <Switch defaultChecked={profile.notifications.pickup} />
-              </div>
 
-              <div className="flex items-center justify-between p-4 rounded-lg bg-muted/20">
-                <div>
-                  <p className="font-medium text-foreground">Thông báo trả</p>
-                  <p className="text-sm text-muted-foreground">Nhận thông báo khi con được trả</p>
-                </div>
-                <Switch defaultChecked={profile.notifications.dropoff} />
-              </div>
-
-              <div className="flex items-center justify-between p-4 rounded-lg bg-muted/20">
-                <div>
-                  <p className="font-medium text-foreground">Thông báo trễ</p>
-                  <p className="text-sm text-muted-foreground">Nhận thông báo khi xe buýt bị trễ</p>
-                </div>
-                <Switch defaultChecked={profile.notifications.delay} />
-              </div>
-
-              <div className="flex items-center justify-between p-4 rounded-lg bg-muted/20">
-                <div>
-                  <p className="font-medium text-foreground">Thông báo sự cố</p>
-                  <p className="text-sm text-muted-foreground">Nhận thông báo khi có sự cố xảy ra</p>
-                </div>
-                <Switch defaultChecked={profile.notifications.incident} />
-              </div>
-
-              <div className="flex items-center justify-between p-4 rounded-lg bg-muted/20">
-                <div>
-                  <p className="font-medium text-foreground">Thông báo lịch trình</p>
-                  <p className="text-sm text-muted-foreground">Nhận thông báo khi có thay đổi lịch trình</p>
-                </div>
-                <Switch defaultChecked={profile.notifications.schedule} />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        
       </div>
     </DashboardLayout>
   )

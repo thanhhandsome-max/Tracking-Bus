@@ -1,6 +1,6 @@
 // src/config/db.js
-const mysql = require('mysql2/promise');
-const dotenv = require('dotenv');
+import mysql from 'mysql2/promise';
+import dotenv from 'dotenv';
 
 // Load biến môi trường từ file .env
 dotenv.config();
@@ -16,4 +16,4 @@ const pool = mysql.createPool({
   queueLimit: 0
 });
 
-module.exports = pool;
+export default pool;

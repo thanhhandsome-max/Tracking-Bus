@@ -1,0 +1,931 @@
+openapi: 3.0.0
+info:
+  title: SSB 1.0 API
+  version: 1.0.0
+  description: Smart School Bus Tracking System API
+  contact:
+    name: SSB Development Team
+    email: dev@ssb.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:4000/api/v1
+    description: Development server
+  - url: https://api.ssb.com/v1
+    description: Production server
+
+security:
+  - bearerAuth: []
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      description: Check if the API is running
+      tags:
+        - Health
+      responses:
+        '200':
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        example: "ok"
+                      timestamp:
+                        type: string
+                        format: date-time
+                      uptime:
+                        type: number
+                      environment:
+                        type: string
+                        example: "development"
+                      version:
+                        type: string
+                        example: "1.0.0"
+                      services:
+                        type: object
+                        properties:
+                          database:
+                            type: string
+                            example: "up"
+                          redis:
+                            type: string
+                            example: "up"
+                          socketio:
+                            type: string
+                            example: "up"
+
+  /auth/login:
+    post:
+      summary: User login
+      description: Authenticate user and return JWT token
+      tags:
+        - Authentication
+      security: []  # No auth required for login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: "admin@school.edu.vn"
+                password:
+                  type: string
+                  minLength: 6
+                  example: "password123"
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      token:
+                        type: string
+                        example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                      refreshToken:
+                        type: string
+                        example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                      user:
+                        $ref: '#/components/schemas/User'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/register:
+    post:
+      summary: User registration
+      description: Register a new user
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - hoTen
+                - email
+                - password
+                - vaiTro
+              properties:
+                hoTen:
+                  type: string
+                  minLength: 2
+                  maxLength: 100
+                  example: "Nguyễn Văn A"
+                email:
+                  type: string
+                  format: email
+                  example: "user@school.edu.vn"
+                password:
+                  type: string
+                  minLength: 6
+                  example: "password123"
+                soDienThoai:
+                  type: string
+                  pattern: "^[0-9+\\-\\s()]+$"
+                  example: "0901234567"
+                vaiTro:
+                  type: string
+                  enum: [quan_tri, tai_xe, phu_huynh]
+                  example: "phu_huynh"
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/User'
+        '409':
+          description: User already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/profile:
+    get:
+      summary: Get user profile
+      description: Get current user's profile information
+      tags:
+        - Authentication
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/User'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /buses:
+    get:
+      summary: Get all buses
+      description: Retrieve a list of all buses with pagination
+      tags:
+        - Buses
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Search'
+        - $ref: '#/components/parameters/Sort'
+      responses:
+        '200':
+          description: Buses retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeOk'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      summary: Create a new bus
+      description: Create a new bus record
+      tags:
+        - Buses
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - bienSoXe
+                - dongXe
+                - sucChua
+              properties:
+                bienSoXe:
+                  type: string
+                  minLength: 5
+                  maxLength: 15
+                  example: "51A-12345"
+                dongXe:
+                  type: string
+                  minLength: 2
+                  maxLength: 50
+                  example: "Hyundai County"
+                sucChua:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+                  example: 30
+                trangThai:
+                  type: string
+                  enum: [hoat_dong, bao_tri, ngung_hoat_dong]
+                  default: hoat_dong
+      responses:
+        '201':
+          description: Bus created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Bus'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Bus already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /buses/{id}:
+    get:
+      summary: Get bus by ID
+      description: Retrieve a specific bus by its ID
+      tags:
+        - Buses
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Bus ID
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Bus retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Bus'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Bus not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /buses/{id}/position:
+    post:
+      summary: Update bus position
+      description: Update the GPS position of a bus
+      tags:
+        - Buses
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Bus ID
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - lat
+                - lng
+              properties:
+                lat:
+                  type: number
+                  minimum: -90
+                  maximum: 90
+                  example: 10.762622
+                lng:
+                  type: number
+                  minimum: -180
+                  maximum: 180
+                  example: 106.660172
+                speed:
+                  type: number
+                  minimum: 0
+                  maximum: 200
+                  example: 45.5
+                heading:
+                  type: number
+                  minimum: 0
+                  maximum: 360
+                  example: 180
+      responses:
+        '200':
+          description: Position updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        example: "Position updated"
+                      timestamp:
+                        type: string
+                        format: date-time
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Bus not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /trips/{id}/start:
+    post:
+      summary: Start a trip
+      description: Start a scheduled trip
+      tags:
+        - Trips
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Trip ID
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                gioBatDauThucTe:
+                  type: string
+                  format: date-time
+                ghiChu:
+                  type: string
+                  maxLength: 500
+      responses:
+        '200':
+          description: Trip started successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        example: "Trip started"
+                      tripId:
+                        type: integer
+                      startTime:
+                        type: string
+                        format: date-time
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Trip not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /trips/{id}/end:
+    post:
+      summary: End a trip
+      description: End a running trip
+      tags:
+        - Trips
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Trip ID
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                gioKetThucThucTe:
+                  type: string
+                  format: date-time
+                ghiChu:
+                  type: string
+                  maxLength: 500
+      responses:
+        '200':
+          description: Trip ended successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        example: "Trip completed"
+                      tripId:
+                        type: integer
+                      endTime:
+                        type: string
+                        format: date-time
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Trip not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /reports/buses/stats:
+    get:
+      summary: Get bus statistics
+      description: Retrieve bus performance statistics
+      tags:
+        - Reports
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/BusStats'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /schedules:
+    post:
+      summary: Create a new schedule
+      description: Create a new schedule with conflict checking
+      tags:
+        - Schedules
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - maTaiXe
+                - maXe
+                - gioBatDau
+              properties:
+                maTaiXe:
+                  type: integer
+                  example: 1
+                maXe:
+                  type: integer
+                  example: 1
+                gioBatDau:
+                  type: string
+                  format: date-time
+                  example: "2024-01-15T06:00:00Z"
+                gioKetThuc:
+                  type: string
+                  format: date-time
+                  example: "2024-01-15T18:00:00Z"
+                moTa:
+                  type: string
+                  maxLength: 500
+                  example: "Lịch trình buổi sáng"
+      responses:
+        '201':
+          description: Schedule created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeOk'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Schedule conflict (driver/bus/time)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /reports/trips/stats:
+    get:
+      summary: Get trip statistics
+      description: Retrieve trip performance statistics
+      tags:
+        - Reports
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/TripStats'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    Page:
+      name: page
+      in: query
+      description: Page number
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    Limit:
+      name: limit
+      in: query
+      description: Number of items per page
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 20
+    Sort:
+      name: sort
+      in: query
+      description: Sort order
+      schema:
+        type: string
+        example: "updatedAt:desc"
+    Search:
+      name: search
+      in: query
+      description: Search term
+      schema:
+        type: string
+
+  schemas:
+    EnvelopeOk:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data: {}
+        meta:
+          type: object
+          additionalProperties: true
+    User:
+      type: object
+      properties:
+        maNguoiDung:
+          type: integer
+          example: 1
+        hoTen:
+          type: string
+          example: "Nguyễn Văn A"
+        email:
+          type: string
+          format: email
+          example: "admin@school.edu.vn"
+        soDienThoai:
+          type: string
+          example: "0901234567"
+        anhDaiDien:
+          type: string
+          example: "https://example.com/avatar.jpg"
+        vaiTro:
+          type: string
+          enum: [quan_tri, tai_xe, phu_huynh]
+          example: "quan_tri"
+        trangThai:
+          type: boolean
+          example: true
+        ngayTao:
+          type: string
+          format: date-time
+        ngayCapNhat:
+          type: string
+          format: date-time
+
+    Bus:
+      type: object
+      properties:
+        maXe:
+          type: integer
+          example: 1
+        bienSoXe:
+          type: string
+          example: "51A-12345"
+        dongXe:
+          type: string
+          example: "Hyundai County"
+        sucChua:
+          type: integer
+          example: 30
+        trangThai:
+          type: string
+          enum: [hoat_dong, bao_tri, ngung_hoat_dong]
+          example: "hoat_dong"
+        ngayTao:
+          type: string
+          format: date-time
+        position:
+          type: object
+          properties:
+            lat:
+              type: number
+              example: 10.762622
+            lng:
+              type: number
+              example: 106.660172
+            speed:
+              type: number
+              example: 45.5
+            heading:
+              type: number
+              example: 180
+            timestamp:
+              type: string
+              format: date-time
+
+    BusStats:
+      type: object
+      properties:
+        totalBuses:
+          type: integer
+          example: 10
+        activeBuses:
+          type: integer
+          example: 8
+        maintenanceBuses:
+          type: integer
+          example: 2
+        averageUtilization:
+          type: number
+          example: 85.5
+        totalTrips:
+          type: integer
+          example: 150
+        completedTrips:
+          type: integer
+          example: 145
+        delayedTrips:
+          type: integer
+          example: 5
+
+    TripStats:
+      type: object
+      properties:
+        totalTrips:
+          type: integer
+          example: 150
+        completedTrips:
+          type: integer
+          example: 145
+        cancelledTrips:
+          type: integer
+          example: 3
+        delayedTrips:
+          type: integer
+          example: 5
+        averageDuration:
+          type: number
+          example: 45.5
+        onTimePercentage:
+          type: number
+          example: 96.7
+
+    PaginationMeta:
+      type: object
+      properties:
+        page:
+          type: integer
+          example: 1
+        limit:
+          type: integer
+          example: 10
+        total:
+          type: integer
+          example: 100
+        totalPages:
+          type: integer
+          example: 10
+        hasNext:
+          type: boolean
+          example: true
+        hasPrev:
+          type: boolean
+          example: false
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        code:
+          type: string
+          example: "VALIDATION_422"
+        message:
+          type: string
+          example: "Validation error"
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+                example: "email"
+              message:
+                type: string
+                example: "Email is required"
+              value:
+                type: string
+                example: ""
+        timestamp:
+          type: string
+          format: date-time
+        path:
+          type: string
+          example: "/api/v1/buses"
+
+tags:
+  - name: Health
+    description: Health check endpoints
+  - name: Authentication
+    description: User authentication and authorization
+  - name: Buses
+    description: Bus management operations
+  - name: Drivers
+    description: Driver management operations
+  - name: Routes
+    description: Route management operations
+  - name: Schedules
+    description: Schedule management operations
+  - name: Trips
+    description: Trip execution and tracking
+  - name: Students
+    description: Student management operations
+  - name: Parents
+    description: Parent management operations
+  - name: Notifications
+    description: Notification management
+  - name: Reports
+    description: Reporting and analytics
+  - name: Admin
+    description: Administrative operations
