@@ -1,25 +1,29 @@
 import express from 'express';
-import http from 'http';
 import { Server as SocketIOServer } from 'socket.io';
-import cors from 'cors';
 import morgan from 'morgan';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import compression from 'compression';
 import { createServer } from 'http';
 
-import config from './config/env';
-import { corsMiddleware, corsHandler, securityHeaders, rateLimitHeaders } from './middlewares/cors';
-import { errorHandler, notFoundHandler, successResponse } from './middlewares/error';
-import { API_PREFIX } from './constants/http';
-import { ROUTES } from './constants/routes';
-import { SOCKET_EVENTS, SOCKET_ROOMS } from './constants/realtime';
+import config from './config/env.js';
+import { corsMiddleware, corsHandler, securityHeaders, rateLimitHeaders } from './middlewares/cors.js';
+import { errorHandler, notFoundHandler, successResponse } from './middlewares/error.js';
+import { API_PREFIX } from './constants/http.js';
+import { SOCKET_EVENTS } from './constants/realtime.js';
 
 // Create Express app
 const app = express();
 
 // Trust proxy for rate limiting
 app.set('trust proxy', 1);
+
+// Logging middleware (morgan) - should be first
+if (config.nodeEnv === 'development') {
+  app.use(morgan('dev'));
+} else {
+  app.use(morgan('combined'));
+}
 
 // Security middleware
 app.use(helmet({
@@ -45,13 +49,13 @@ app.use(securityHeaders);
 const limiter = rateLimit({
   windowMs: config.rateLimit.windowMs,
   max: config.rateLimit.maxRequests,
-  message: {
-    success: false,
-    code: 'RATE_LIMIT_EXCEEDED',
-    message: 'Too many requests from this IP, please try again later.',
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      code: 'RATE_LIMIT_EXCEEDED',
+      message: 'Too many requests from this IP, please try again later.',
+    });
   },
-  standardHeaders: true,
-  legacyHeaders: false,
 });
 
 app.use(limiter);
@@ -60,25 +64,18 @@ app.use(rateLimitHeaders);
 // Compression middleware
 app.use(compression());
 
-// Body parsing middleware
+// Body parsing middleware (express.json) - should be before routes
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Logging middleware
-if (config.nodeEnv === 'development') {
-  app.use(morgan('dev'));
-} else {
-  app.use(morgan('combined'));
-}
-
 // Health check endpoint
-app.get(`${API_PREFIX}/health`, (req, res) => {
+app.get(`${API_PREFIX}/health`, (_req, res) => {
   const healthData = {
     status: 'ok',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     environment: config.nodeEnv,
-    version: process.env.npm_package_version || '1.0.0',
+    version: process.env['npm_package_version'] || '1.0.0',
     services: {
       database: 'up', // TODO: Add actual database health check
       redis: 'up', // TODO: Add actual Redis health check
@@ -90,14 +87,14 @@ app.get(`${API_PREFIX}/health`, (req, res) => {
 });
 
 // Detailed health check endpoint
-app.get(`${API_PREFIX}/health/detailed`, async (req, res) => {
+app.get(`${API_PREFIX}/health/detailed`, async (_req, res) => {
   try {
     const healthData = {
       status: 'ok',
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
       environment: config.nodeEnv,
-      version: process.env.npm_package_version || '1.0.0',
+      version: process.env['npm_package_version'] || '1.0.0',
       memory: {
         used: process.memoryUsage(),
         free: process.memoryUsage().heapUsed,
@@ -146,7 +143,7 @@ async function checkRedisHealth(): Promise<string> {
 }
 
 // API routes (placeholder - will be implemented in Day 2)
-app.use(`${API_PREFIX}/auth`, (req, res) => {
+app.use(`${API_PREFIX}/auth`, (_req, res) => {
   res.json({
     success: true,
     message: 'Auth routes will be implemented in Day 2',
@@ -162,7 +159,7 @@ app.use(`${API_PREFIX}/auth`, (req, res) => {
   });
 });
 
-app.use(`${API_PREFIX}/buses`, (req, res) => {
+app.use(`${API_PREFIX}/buses`, (_req, res) => {
   res.json({
     success: true,
     message: 'Bus routes will be implemented in Day 2',
@@ -179,7 +176,7 @@ app.use(`${API_PREFIX}/buses`, (req, res) => {
   });
 });
 
-app.use(`${API_PREFIX}/drivers`, (req, res) => {
+app.use(`${API_PREFIX}/drivers`, (_req, res) => {
   res.json({
     success: true,
     message: 'Driver routes will be implemented in Day 2',
@@ -195,7 +192,7 @@ app.use(`${API_PREFIX}/drivers`, (req, res) => {
   });
 });
 
-app.use(`${API_PREFIX}/routes`, (req, res) => {
+app.use(`${API_PREFIX}/routes`, (_req, res) => {
   res.json({
     success: true,
     message: 'Route routes will be implemented in Day 2',
@@ -212,7 +209,7 @@ app.use(`${API_PREFIX}/routes`, (req, res) => {
   });
 });
 
-app.use(`${API_PREFIX}/schedules`, (req, res) => {
+app.use(`${API_PREFIX}/schedules`, (_req, res) => {
   res.json({
     success: true,
     message: 'Schedule routes will be implemented in Day 2',
@@ -228,7 +225,7 @@ app.use(`${API_PREFIX}/schedules`, (req, res) => {
   });
 });
 
-app.use(`${API_PREFIX}/trips`, (req, res) => {
+app.use(`${API_PREFIX}/trips`, (_req, res) => {
   res.json({
     success: true,
     message: 'Trip routes will be implemented in Day 2',
@@ -243,7 +240,7 @@ app.use(`${API_PREFIX}/trips`, (req, res) => {
   });
 });
 
-app.use(`${API_PREFIX}/reports`, (req, res) => {
+app.use(`${API_PREFIX}/reports`, (_req, res) => {
   res.json({
     success: true,
     message: 'Report routes will be implemented in Day 2',
@@ -257,11 +254,14 @@ app.use(`${API_PREFIX}/reports`, (req, res) => {
   });
 });
 
-// 404 handler for API routes
-app.use(`${API_PREFIX}/*`, notFoundHandler);
+// 404 handler for API routes (catch-all middleware for Express 5)
+app.use(`${API_PREFIX}`, (req, res, next) => {
+  // If no route was matched, return 404
+  notFoundHandler(req, res);
+});
 
 // Root endpoint
-app.get('/', (req, res) => {
+app.get('/', (_req, res) => {
   res.json({
     success: true,
     message: 'SSB 1.0 Backend API',
@@ -289,25 +289,25 @@ const io = new SocketIOServer(server, {
 });
 
 // Socket.IO authentication middleware
-io.use((socket, next) => {
+io.use((_socket, next) => {
   // TODO: Implement JWT authentication for Socket.IO
   // For now, allow all connections
   next();
 });
 
 // Socket.IO connection handling
-io.on(SOCKET_EVENTS.CONNECTION, (socket) => {
+io.on(SOCKET_EVENTS.CONNECTION, (socket: any) => {
   console.log(`✅ Socket connected: ${socket.id}`);
 
   // Handle room joining
-  socket.on(SOCKET_EVENTS.JOIN_ROOM, (roomName) => {
+  socket.on(SOCKET_EVENTS.JOIN_ROOM, (roomName: any) => {
     socket.join(roomName);
     socket.emit(SOCKET_EVENTS.JOINED_ROOM, { room: roomName });
     console.log(`📱 Socket ${socket.id} joined room: ${roomName}`);
   });
 
   // Handle room leaving
-  socket.on(SOCKET_EVENTS.LEAVE_ROOM, (roomName) => {
+  socket.on(SOCKET_EVENTS.LEAVE_ROOM, (roomName: any) => {
     socket.leave(roomName);
     socket.emit(SOCKET_EVENTS.LEFT_ROOM, { room: roomName });
     console.log(`📱 Socket ${socket.id} left room: ${roomName}`);
@@ -319,7 +319,7 @@ io.on(SOCKET_EVENTS.CONNECTION, (socket) => {
   });
 
   // Handle errors
-  socket.on(SOCKET_EVENTS.ERROR, (error) => {
+  socket.on(SOCKET_EVENTS.ERROR, (error: any) => {
     console.error(`🚨 Socket error: ${error}`);
   });
 });

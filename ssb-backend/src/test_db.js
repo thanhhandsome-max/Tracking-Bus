@@ -1,5 +1,7 @@
-const pool = require('./config/db'); // Đảm bảo đường dẫn này đúng
-require('dotenv').config(); // Tải file .env
+import pool from './config/db.js'; // Đảm bảo đường dẫn này đúng
+import dotenv from 'dotenv'; // Tải file .env
+
+dotenv.config();
 
 (async () => {
   try {

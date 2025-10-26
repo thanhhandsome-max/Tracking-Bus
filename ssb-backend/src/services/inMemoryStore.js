@@ -126,7 +126,7 @@ function initializeSampleData() {
 // Khởi tạo dữ liệu mẫu khi load module
 initializeSampleData();
 
-module.exports = {
+export {
   buses,
   drivers,
   schedules,

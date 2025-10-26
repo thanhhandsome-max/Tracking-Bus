@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { ValidationError } from 'joi';
+import Joi from 'joi';
 
 interface ApiError extends Error {
   statusCode?: number;
@@ -67,7 +67,7 @@ export const errorHandler = (
   error: ApiError,
   req: Request,
   res: Response,
-  next: NextFunction
+  _next: NextFunction
 ): void => {
   let statusCode = error.statusCode || 500;
   let code = error.code || ERROR_CODES.INTERNAL_500;
@@ -75,7 +75,7 @@ export const errorHandler = (
   let errors: any[] | undefined;
 
   // Handle Joi validation errors
-  if (error instanceof ValidationError) {
+  if (error instanceof Joi.ValidationError) {
     statusCode = 422;
     code = ERROR_CODES.VALIDATION_422;
     message = 'Validation Error';

@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
-import config from '../config/env';
+import config from '../config/env.js';
 
 // CORS configuration - strict origin checking
 const corsOptions = {

@@ -1,15 +1,15 @@
 // Import các module cần thiết.
 // express: Framework để xây dựng web server và API.
-const express = require("express");
+import express from "express";
 
 // Import các đối tượng và hàm từ file "inMemoryStore".
 // Đây là nơi bạn giả lập cơ sở dữ liệu, lưu trữ dữ liệu trong bộ nhớ RAM.
-const {
+import {
   buses, // Một đối tượng Map() để lưu trữ danh sách xe bus.
   drivers, // Một đối tượng Map() để lưu trữ danh sách tài xế.
   generateId, // Hàm để tạo ID duy nhất cho đối tượng mới.
   toArray, // Hàm để chuyển đổi đối tượng Map() thành một mảng (Array).
-} = require("../../services/inMemoryStore");
+} from "../../services/inMemoryStore.js";
 
 // Tạo một đối tượng router mới.
 // Router giúp nhóm các endpoint liên quan đến một tài nguyên (ở đây là "bus") vào cùng một file.
@@ -373,7 +373,7 @@ router.post("/:id/trip-status", (req, res) => {
     res.json(sched);
 });
 
-module.exports = router;
+export default router;
 ## Tóm tắt luồng hoạt động
 Frontend kết nối: Một client (trình duyệt) kết nối tới server Socket.IO và gửi sự kiện join-bus-room với busId mà nó muốn theo dõi. Server sẽ cho client đó vào một "phòng" riêng.
 
