@@ -21,6 +21,13 @@ const app = express();
 // Trust proxy for rate limiting
 app.set('trust proxy', 1);
 
+// Logging middleware (morgan) - should be first
+if (config.nodeEnv === 'development') {
+  app.use(morgan('dev'));
+} else {
+  app.use(morgan('combined'));
+}
+
 // Security middleware
 app.use(helmet({
   contentSecurityPolicy: {
@@ -60,16 +67,9 @@ app.use(rateLimitHeaders);
 // Compression middleware
 app.use(compression());
 
-// Body parsing middleware
+// Body parsing middleware (express.json) - should be before routes
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// Logging middleware
-if (config.nodeEnv === 'development') {
-  app.use(morgan('dev'));
-} else {
-  app.use(morgan('combined'));
-}
 
 // Health check endpoint
 app.get(`${API_PREFIX}/health`, (req, res) => {
