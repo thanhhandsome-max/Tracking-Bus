@@ -9,7 +9,6 @@ import driverRoutes from "./routes/api/driver.js";
 import scheduleRoutes from "./routes/api/schedule.js";
 
 // Import middlewares
-// const errorHandler = require('./middlewares/errorHandler');
 
 const app = express();
 
