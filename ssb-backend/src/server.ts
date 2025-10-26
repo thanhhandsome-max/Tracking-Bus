@@ -49,13 +49,13 @@ app.use(securityHeaders);
 const limiter = rateLimit({
   windowMs: config.rateLimit.windowMs,
   max: config.rateLimit.maxRequests,
-  message: {
-    success: false,
-    code: 'RATE_LIMIT_EXCEEDED',
-    message: 'Too many requests from this IP, please try again later.',
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      code: 'RATE_LIMIT_EXCEEDED',
+      message: 'Too many requests from this IP, please try again later.',
+    });
   },
-  standardHeaders: true,
-  legacyHeaders: false,
 });
 
 app.use(limiter);
@@ -254,8 +254,11 @@ app.use(`${API_PREFIX}/reports`, (_req, res) => {
   });
 });
 
-// 404 handler for API routes
-app.use(`${API_PREFIX}/*`, notFoundHandler);
+// 404 handler for API routes (catch-all middleware for Express 5)
+app.use(`${API_PREFIX}`, (req, res, next) => {
+  // If no route was matched, return 404
+  notFoundHandler(req, res);
+});
 
 // Root endpoint
 app.get('/', (_req, res) => {

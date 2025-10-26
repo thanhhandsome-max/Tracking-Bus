@@ -1,4 +1,4 @@
-import { ValidationError } from 'joi';
+import Joi from 'joi';
 export class AppError extends Error {
     statusCode;
     code;
@@ -34,7 +34,7 @@ export const errorHandler = (error, req, res, _next) => {
     let code = error.code || ERROR_CODES.INTERNAL_500;
     let message = error.message || 'Internal Server Error';
     let errors;
-    if (error instanceof ValidationError) {
+    if (error instanceof Joi.ValidationError) {
         statusCode = 422;
         code = ERROR_CODES.VALIDATION_422;
         message = 'Validation Error';

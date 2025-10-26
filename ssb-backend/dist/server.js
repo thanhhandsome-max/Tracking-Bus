@@ -35,13 +35,13 @@ app.use(securityHeaders);
 const limiter = rateLimit({
     windowMs: config.rateLimit.windowMs,
     max: config.rateLimit.maxRequests,
-    message: {
-        success: false,
-        code: 'RATE_LIMIT_EXCEEDED',
-        message: 'Too many requests from this IP, please try again later.',
+    handler: (_req, res) => {
+        res.status(429).json({
+            success: false,
+            code: 'RATE_LIMIT_EXCEEDED',
+            message: 'Too many requests from this IP, please try again later.',
+        });
     },
-    standardHeaders: true,
-    legacyHeaders: false,
 });
 app.use(limiter);
 app.use(rateLimitHeaders);
@@ -213,7 +213,9 @@ app.use(`${API_PREFIX}/reports`, (_req, res) => {
         },
     });
 });
-app.use(`${API_PREFIX}/*`, notFoundHandler);
+app.use(`${API_PREFIX}`, (req, res, next) => {
+    notFoundHandler(req, res);
+});
 app.get('/', (_req, res) => {
     res.json({
         success: true,
