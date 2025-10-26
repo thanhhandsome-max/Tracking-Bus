@@ -2,14 +2,15 @@
   "name": "ssb-backend",
   "version": "1.0.0",
   "description": "Smart School Bus Tracking System - Backend API",
+  "type": "module",
   "main": "dist/server.js",
   "scripts": {
-    "dev": "nodemon src/server.ts",
+    "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
-    "build": "tsc",
+    "build": "tsc -p tsconfig.json",
     "lint": "eslint .",
     "test": "vitest",
-    "seed": "node scripts/seed.js",
+    "seed": "node dist/scripts/seed.js",
     "db:init": "mysql -u root -p < database/init_db.sql",
     "db:seed": "npm run seed"
   },
@@ -59,6 +60,7 @@
     "nodemon": "^3.1.10",
     "supertest": "^6.3.3",
     "ts-node": "^10.9.2",
+    "tsx": "^4.20.6",
     "typescript": "^5.3.3",
     "vitest": "^1.2.2"
   }
