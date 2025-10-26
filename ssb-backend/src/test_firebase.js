@@ -1,3 +1,18 @@
+/*
+ * 🚨 CHÚ Ý DÀNH CHO THÀNH VIÊN MỚI 🚨
+ * * Nếu bạn chạy file này và bị lỗi (crash) báo "Cannot find module ... serviceAccountKey.json",
+ * Rất có thể là do bạn chưa có file "chìa khóa" của Firebase.
+ *
+ * File này là bí mật và KHÔNG được đẩy lên GitHub.
+ *
+ * Vui lòng làm theo các bước sau:
+ * 1. Hỏi Leader để nhận file `serviceAccountKey.json`.
+ * 2. Copy file đó vào thư mục `ssb-backend/src/config/`.
+ * 3. Chạy lại file test này.
+ *
+ * (Xem file README.md để biết thêm chi tiết)
+ */
+
 const admin = require('firebase-admin');
 
 // 1. Nạp file "khóa" bí mật bạn vừa tải về
