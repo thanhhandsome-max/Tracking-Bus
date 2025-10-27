@@ -11,7 +11,7 @@ class DriverController {
       const { page = 1, limit = 10, status, search } = req.query;
       const offset = (page - 1) * limit;
 
-      let drivers = await TaiXeModel.getWithUserInfo();
+      let drivers = await TaiXeModel.getAll(); // getAll already joins with NguoiDung
       let totalCount = drivers.length;
 
       // Lọc theo trạng thái
@@ -478,7 +478,7 @@ class DriverController {
   // Lấy thống kê tài xế
   static async getStats(req, res) {
     try {
-      const allDrivers = await TaiXeModel.getWithUserInfo();
+      const allDrivers = await TaiXeModel.getAll(); // getAll already joins with NguoiDung
 
       const stats = {
         total: allDrivers.length,
