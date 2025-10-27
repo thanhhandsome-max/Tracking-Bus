@@ -8,6 +8,7 @@ import busRoutes from "./routes/api/bus.js";
 import driverRoutes from "./routes/api/driver.js";
 import scheduleRoutes from "./routes/api/schedule.js";
 import authRouters from "./routes/api/auth.route.js";
+import tripRoutes from "./routes/api/trip.route.js"; // dòng này dùng để mount trip routes
 
 // Import middlewares
 
@@ -25,6 +26,7 @@ app.use("/api/auth", authRouters);
 app.use("/api/buses", busRoutes);
 app.use("/api/drivers", driverRoutes);
 app.use("/api/schedules", scheduleRoutes);
+app.use("/api/trips", tripRoutes); // dòng này dùng để mount trip routes
 // Error handling middleware
 // app.use(errorHandler);
 

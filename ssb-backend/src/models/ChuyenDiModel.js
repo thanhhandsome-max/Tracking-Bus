@@ -19,7 +19,6 @@ const ChuyenDiModel = {
     return rows;
   },
 
-
   async getStats(ngayBatDau, ngayKetThuc) {
     const [rows] = await pool.query(
       `
@@ -58,7 +57,7 @@ const ChuyenDiModel = {
       `,
       [ngayBatDau, ngayKetThuc]
     );
-    
+
     // Nếu không có chuyến nào trong khoảng ngày, query có thể trả về nulls
     // Xử lý để đảm bảo trả về object với giá trị 0
     const result = rows[0];
@@ -71,8 +70,6 @@ const ChuyenDiModel = {
       averageDurationInSeconds: result.averageDurationInSeconds || 0,
     };
   },
-
-  
 
   // Lấy chuyến đi theo mã
   async getById(id) {
@@ -126,35 +123,44 @@ const ChuyenDiModel = {
 
   // Cập nhật chuyến đi
   async update(id, data) {
-    const {
-      maLichTrinh,
-      ngayChay,
-      trangThai,
-      gioBatDauThucTe,
-      gioKetThucThucTe,
-      ghiChu,
-    } = data;
+    // Chỉ update các field được gửi (dynamic UPDATE)
+    const fields = [];
+    const values = [];
+
+    if (data.maLichTrinh !== undefined) {
+      fields.push("maLichTrinh = ?");
+      values.push(data.maLichTrinh);
+    }
+    if (data.ngayChay !== undefined) {
+      fields.push("ngayChay = ?");
+      values.push(data.ngayChay);
+    }
+    if (data.trangThai !== undefined) {
+      fields.push("trangThai = ?");
+      values.push(data.trangThai);
+    }
+    if (data.gioBatDauThucTe !== undefined) {
+      fields.push("gioBatDauThucTe = ?");
+      values.push(data.gioBatDauThucTe);
+    }
+    if (data.gioKetThucThucTe !== undefined) {
+      fields.push("gioKetThucThucTe = ?");
+      values.push(data.gioKetThucThucTe);
+    }
+    if (data.ghiChu !== undefined) {
+      fields.push("ghiChu = ?");
+      values.push(data.ghiChu);
+    }
+
+    if (fields.length === 0) {
+      return false; // Không có gì để update
+    }
+
+    values.push(id); // Thêm id vào cuối cho WHERE clause
 
     const [result] = await pool.query(
-      `
-      UPDATE ChuyenDi
-      SET maLichTrinh = ?, 
-          ngayChay = ?, 
-          trangThai = ?, 
-          gioBatDauThucTe = ?, 
-          gioKetThucThucTe = ?, 
-          ghiChu = ?
-      WHERE maChuyen = ?
-      `,
-      [
-        maLichTrinh,
-        ngayChay,
-        trangThai,
-        gioBatDauThucTe,
-        gioKetThucThucTe,
-        ghiChu,
-        id,
-      ]
+      `UPDATE ChuyenDi SET ${fields.join(", ")} WHERE maChuyen = ?`,
+      values
     );
 
     return result.affectedRows > 0;

@@ -37,6 +37,7 @@ import jwt from "jsonwebtoken";
  * - Khi client kết nối Socket.IO, phải gửi kèm JWT token
  * - Token này được tạo khi user đăng nhập (POST /api/v1/auth/login)
  * - Hàm này verify token → Lấy thông tin user (id, role, email)
+ * - JWT là JSON Web Token, định dạng token phổ biến hiện nay
  *
  * 🎯 CÁCH DÙNG:
  * ```javascript
