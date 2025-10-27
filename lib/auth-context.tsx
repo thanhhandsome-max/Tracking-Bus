@@ -23,23 +23,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState<boolean>(true)
 
   useEffect(() => {
-    // Load existing user from localStorage (if any)
-    const u = authService.getCurrentUser()
-    if (u) {
-      setUser(u)
-      // ensure api client has token from storage (api reads token from localStorage on init)
-      const token = typeof window !== 'undefined' ? localStorage.getItem('ssb_token') : null
+    // If token exists, set it and fetch profile from API to ensure fresh data
+    const token = typeof window !== 'undefined' ? localStorage.getItem('ssb_token') : null
+    if (token) {
       api.setToken(token)
+      authService
+        .fetchProfile()
+        .then((u) => setUser(u))
+        .catch(() => {
+          // if fetching profile fails, clear stored auth
+          authService.logout()
+          setUser(null)
+        })
+        .finally(() => setLoading(false))
+    } else {
+      // fallback: try to read user from storage
+      const u = authService.getCurrentUserFromStorage()
+      if (u) setUser(u)
+      setLoading(false)
     }
-    setLoading(false)
   }, [])
 
-  async function login(username: string, password: string) {
+  async function login(email: string, password: string) {
     setLoading(true)
-    const u = await authService.login(username, password)
-    setUser(u)
-    setLoading(false)
-    return u
+    try {
+      const u = await authService.login(email, password)
+      setUser(u)
+      return u
+    } finally {
+      setLoading(false)
+    }
   }
 
   function logout() {

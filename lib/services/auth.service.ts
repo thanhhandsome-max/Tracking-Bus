@@ -1,48 +1,82 @@
 import { api } from '../api'
 
+type BackendUser = {
+  maNguoiDung?: string
+  hoTen?: string
+  email?: string
+  vaiTro?: string
+  [k: string]: any
+}
+
 type User = {
   id: string
   name: string
   email: string
   role?: string
+  raw?: BackendUser
 }
 
 const USER_KEY = 'ssb_user'
+const TOKEN_KEY = 'ssb_token'
+
+function mapBackendUser(bu?: BackendUser | null): User | null {
+  if (!bu) return null
+  return {
+    id: (bu.maNguoiDung || bu.id || '') + '',
+    name: bu.hoTen || bu.name || '',
+    email: bu.email || '',
+    role: bu.vaiTro || bu.role,
+    raw: bu,
+  }
+}
 
 /**
- * Mock login implementation.
- * In real app replace with API call: api.post('/auth/login', { username, password })
+ * Call backend POST /auth/login
+ * Expected backend response: { success:true, data: { token, refreshToken, user } }
  */
-export async function login(username: string, password: string): Promise<User> {
-  // Simple mock: accept any credentials and return a fake user and token
-  const mockToken = 'mock-token-1234567890'
-  const mockUser: User = {
-    id: 'u-' + (username || 'anon'),
-    name: username || 'Người dùng thử',
-    email: `${username || 'user'}@example.com`,
-    role: username === 'admin' ? 'admin' : 'parent',
-  }
+export async function login(email: string, password: string): Promise<User> {
+  // call backend
+  const payload = { email, matKhau: password }
+  const res = await api.post('/auth/login', payload)
 
-  // simulate network latency
-  await new Promise((res) => setTimeout(res, 200))
+  // res is ApiResponse; backend wraps actual in res.data.data
+  const data = (res as any).data?.data || (res as any).data
 
-  // store token and user locally so api client and auth-context can pick it up
+  const token = data?.token || data?.accessToken || null
+  const user = mapBackendUser(data?.user || null)
+
   if (typeof window !== 'undefined') {
-    localStorage.setItem(USER_KEY, JSON.stringify(mockUser))
+    if (token) localStorage.setItem(TOKEN_KEY, token)
+    if (user) localStorage.setItem(USER_KEY, JSON.stringify(user))
   }
-  api.setToken(mockToken)
 
-  return mockUser
+  // set token into api client
+  api.setToken(token)
+
+  if (!user) throw { message: 'Không nhận được thông tin user từ server' }
+  return user
+}
+
+export async function fetchProfile(): Promise<User> {
+  const res = await api.get('/auth/profile')
+  const data = (res as any).data?.data || (res as any).data
+  const user = mapBackendUser(data?.user || null)
+  if (typeof window !== 'undefined' && user) {
+    localStorage.setItem(USER_KEY, JSON.stringify(user))
+  }
+  if (!user) throw { message: 'Không lấy được profile' }
+  return user
 }
 
 export function logout(): void {
   if (typeof window !== 'undefined') {
     localStorage.removeItem(USER_KEY)
+    localStorage.removeItem(TOKEN_KEY)
   }
   api.setToken(null)
 }
 
-export function getCurrentUser(): User | null {
+export function getCurrentUserFromStorage(): User | null {
   if (typeof window === 'undefined') return null
   const raw = localStorage.getItem(USER_KEY)
   if (!raw) return null
@@ -53,4 +87,4 @@ export function getCurrentUser(): User | null {
   }
 }
 
-export default { login, logout, getCurrentUser }
+export default { login, logout, fetchProfile, getCurrentUserFromStorage }
