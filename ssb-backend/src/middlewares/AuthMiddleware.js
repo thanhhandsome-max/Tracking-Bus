@@ -2,9 +2,8 @@
 import jwt from "jsonwebtoken";
 import NguoiDungModel from "../models/NguoiDungModel.js";
 
-
 class AuthMiddleware {
-  // Middleware xác thực JWT token
+  // Middleware xác thực JWT token (alias: verifyToken)
   static async authenticate(req, res, next) {
     try {
       const authHeader = req.headers.authorization;
@@ -77,6 +76,9 @@ class AuthMiddleware {
       });
     }
   }
+
+  // Alias for authenticate (for consistency with other middleware naming)
+  static verifyToken = AuthMiddleware.authenticate;
 
   // Middleware kiểm tra quyền truy cập theo vai trò
   static authorize(...allowedRoles) {

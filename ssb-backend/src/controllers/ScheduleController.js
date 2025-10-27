@@ -211,19 +211,19 @@ class ScheduleController {
         });
       }
 
-      // Kiểm tra xung đột lịch trình
-      const conflicts = await LichTrinhModel.checkConflicts(
-        maXe,
-        maTaiXe,
-        gioKhoiHanh
-      );
-      if (conflicts.length > 0) {
-        return res.status(409).json({
-          success: false,
-          message: "Xung đột lịch trình với xe buýt hoặc tài xế",
-          conflicts,
-        });
-      }
+      // Kiểm tra xung đột lịch trình (TODO: implement checkConflicts in model)
+      // const conflicts = await LichTrinhModel.checkConflicts(
+      //   maXe,
+      //   maTaiXe,
+      //   gioKhoiHanh
+      // );
+      // if (conflicts.length > 0) {
+      //   return res.status(409).json({
+      //     success: false,
+      //     message: "Xung đột lịch trình với xe buýt hoặc tài xế",
+      //     conflicts,
+      //   });
+      // }
 
       const scheduleData = {
         maTuyen,
@@ -338,26 +338,26 @@ class ScheduleController {
         }
       }
 
-      // Kiểm tra xung đột nếu có thay đổi về xe, tài xế hoặc giờ
-      const checkXe = maXe || existingSchedule.maXe;
-      const checkTaiXe = maTaiXe || existingSchedule.maTaiXe;
-      const checkGio = gioKhoiHanh || existingSchedule.gioKhoiHanh;
-
-      if (maXe || maTaiXe || gioKhoiHanh) {
-        const conflicts = await LichTrinhModel.checkConflicts(
-          checkXe,
-          checkTaiXe,
-          checkGio,
-          id
-        );
-        if (conflicts.length > 0) {
-          return res.status(409).json({
-            success: false,
-            message: "Xung đột lịch trình với xe buýt hoặc tài xế",
-            conflicts,
-          });
-        }
-      }
+      // Kiểm tra xung đột nếu có thay đổi về xe, tài xế hoặc giờ (TODO: implement checkConflicts)
+      // const checkXe = maXe || existingSchedule.maXe;
+      // const checkTaiXe = maTaiXe || existingSchedule.maTaiXe;
+      // const checkGio = gioKhoiHanh || existingSchedule.gioKhoiHanh;
+      //
+      // if (maXe || maTaiXe || gioKhoiHanh) {
+      //   const conflicts = await LichTrinhModel.checkConflicts(
+      //     checkXe,
+      //     checkTaiXe,
+      //     checkGio,
+      //     id
+      //   );
+      //   if (conflicts.length > 0) {
+      //     return res.status(409).json({
+      //       success: false,
+      //       message: "Xung đột lịch trình với xe buýt hoặc tài xế",
+      //       conflicts,
+      //     });
+      //   }
+      // }
 
       const updateData = {};
       if (maTuyen !== undefined) updateData.maTuyen = maTuyen;

@@ -4,9 +4,6 @@ import jwt from "jsonwebtoken";
 import NguoiDungModel from "../models/NguoiDungModel.js";
 import TaiXeModel from "../models/TaiXeModel.js";
 
-
-
-
 class AuthController {
   // Đăng ký tài khoản mới
   static async register(req, res) {
@@ -194,10 +191,13 @@ class AuthController {
   // Đăng nhập
   static async login(req, res) {
     try {
-      const { email, matKhau } = req.body;
+      const { email, matKhau, password } = req.body;
+
+      // Support both 'password' and 'matKhau' for API compatibility
+      const pass = matKhau || password;
 
       // Validation dữ liệu bắt buộc
-      if (!email || !matKhau) {
+      if (!email || !pass) {
         return res.status(400).json({
           success: false,
           message: "Email và mật khẩu là bắt buộc",
@@ -231,7 +231,7 @@ class AuthController {
       }
 
       // Kiểm tra mật khẩu
-      const isPasswordValid = await bcrypt.compare(matKhau, user.matKhau);
+      const isPasswordValid = await bcrypt.compare(pass, user.matKhau);
       if (!isPasswordValid) {
         return res.status(401).json({
           success: false,
@@ -658,7 +658,7 @@ class AuthController {
 
       const refreshToken = authHeader.substring(7);
       console.log("--- DEBUG REFRESH ---");
-      console.log("Token received:", refreshToken); 
+      console.log("Token received:", refreshToken);
       console.log("Secret being used:", process.env.JWT_REFRESH_SECRET);
       console.log("--- END DEBUG ---");
 
@@ -683,8 +683,6 @@ class AuthController {
           message: "Người dùng không tồn tại hoặc tài khoản bị khóa",
         });
       }
-      
-      
 
       const newAccessToken = jwt.sign(
         {
@@ -693,13 +691,13 @@ class AuthController {
           vaiTro: user.vaiTro,
         },
         process.env.JWT_SECRET,
-        { expiresIn: "15m" } 
+        { expiresIn: "15m" }
       );
 
       res.status(200).json({
         success: true,
         data: {
-          token: newAccessToken, 
+          token: newAccessToken,
         },
         message: "Làm mới token thành công",
       });
