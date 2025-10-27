@@ -22,7 +22,7 @@ const XeBuytModel = {
        FROM XeBuyt 
        GROUP BY trangThai`
     );
-    
+
     // Lấy tổng số xe
     const [totalResult] = await pool.query(
       `SELECT COUNT(*) as total FROM XeBuyt`
@@ -35,7 +35,7 @@ const XeBuytModel = {
       totalBuses: totalBuses,
     };
   },
-  
+
   // Thêm xe buýt mới
   async create(data) {
     const { bienSoXe, dongXe, sucChua, trangThai } = data;
@@ -47,15 +47,36 @@ const XeBuytModel = {
     return result.insertId;
   },
 
-  // Cập nhật thông tin xe buýt
+  // Cập nhật thông tin xe buýt (partial update)
   async update(id, data) {
-    const { bienSoXe, dongXe, sucChua, trangThai } = data;
-    const [result] = await pool.query(
-      `UPDATE XeBuyt
-       SET bienSoXe = ?, dongXe = ?, sucChua = ?, trangThai = ?
-       WHERE maXe = ?`,
-      [bienSoXe, dongXe, sucChua, trangThai, id]
-    );
+    const fields = [];
+    const values = [];
+
+    if (data.bienSoXe !== undefined) {
+      fields.push("bienSoXe = ?");
+      values.push(data.bienSoXe);
+    }
+    if (data.dongXe !== undefined) {
+      fields.push("dongXe = ?");
+      values.push(data.dongXe);
+    }
+    if (data.sucChua !== undefined) {
+      fields.push("sucChua = ?");
+      values.push(data.sucChua);
+    }
+    if (data.trangThai !== undefined) {
+      fields.push("trangThai = ?");
+      values.push(data.trangThai);
+    }
+
+    if (fields.length === 0) {
+      return false; // No fields to update
+    }
+
+    values.push(id);
+    const query = `UPDATE XeBuyt SET ${fields.join(", ")} WHERE maXe = ?`;
+
+    const [result] = await pool.query(query, values);
     return result.affectedRows > 0;
   },
 
@@ -74,6 +95,23 @@ const XeBuytModel = {
       [status]
     );
     return rows;
+  },
+  // THÊM method này:
+  async getByPlate(plate) {
+    const [rows] = await pool.query("SELECT * FROM XeBuyt WHERE bienSoXe = ?", [
+      plate,
+    ]);
+    return rows.length > 0 ? rows[0] : null;
+  },
+
+  // Note: XeBuyt table không có các cột GPS
+  // Cần tạo bảng riêng hoặc thêm cột vào bảng XeBuyt để lưu vị trí
+  async updateLocation(id, locationData) {
+    // TODO: Implement khi có bảng lưu vị trí hoặc thêm cột vào XeBuyt
+    console.warn(
+      "updateLocation not implemented - XeBuyt table does not have GPS columns"
+    );
+    return false;
   },
 };
 
