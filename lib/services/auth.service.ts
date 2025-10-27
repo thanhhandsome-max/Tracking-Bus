@@ -43,10 +43,12 @@ export async function login(email: string, password: string): Promise<User> {
   const data = (res as any).data?.data || (res as any).data
 
   const token = data?.token || data?.accessToken || null
+  const refreshToken = data?.refreshToken || null
   const user = mapBackendUser(data?.user || null)
 
   if (typeof window !== 'undefined') {
     if (token) localStorage.setItem(TOKEN_KEY, token)
+    if (refreshToken) localStorage.setItem('ssb_refresh_token', refreshToken)
     if (user) localStorage.setItem(USER_KEY, JSON.stringify(user))
   }
 

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { AdminSidebar } from "@/components/admin/admin-sidebar"
 import { Button } from "@/components/ui/button"
@@ -18,20 +18,40 @@ import {
 } from "@/components/ui/dialog"
 import { Plus, Search, Edit, Trash2, Eye } from "lucide-react"
 import { BusForm } from "@/components/admin/bus-form"
-// tạo dữ liệu giả cho các xe buýt
-const mockBuses = [
-  { id: "1", plateNumber: "51A-12345", capacity: 45, status: "active", currentRoute: "Tuyến 1", trips: 156 },
-  { id: "2", plateNumber: "51B-67890", capacity: 40, status: "active", currentRoute: "Tuyến 3", trips: 142 },
-  { id: "3", plateNumber: "51C-11111", capacity: 50, status: "maintenance", currentRoute: "-", trips: 98 },
-  { id: "4", plateNumber: "51D-22222", capacity: 45, status: "active", currentRoute: "Tuyến 5", trips: 187 },
-  { id: "5", plateNumber: "51E-33333", capacity: 40, status: "running", currentRoute: "Tuyến 7", trips: 203 },
-]
+import { Bus as BusType, getBusesWithMeta } from "@/lib/services/bus.service"
+// state for buses
+// will be fetched from backend via busService.getBuses()
 
 export default function BusesPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
+  const [buses, setBuses] = useState<BusType[]>([])
+  const [loading, setLoading] = useState<boolean>(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const filteredBuses = mockBuses.filter((bus) => bus.plateNumber.toLowerCase().includes(searchQuery.toLowerCase()))
+  useEffect(() => {
+    let mounted = true
+    async function load() {
+      setLoading(true)
+      setError(null)
+      try {
+        const res = await getBusesWithMeta({ limit: 100 })
+        if (mounted) {
+          setBuses(res.items || [])
+          // optional: we could use pagination info if needed
+        }
+      } catch (err: any) {
+        console.error('Lỗi khi lấy danh sách xe:', err)
+        if (mounted) setError(err?.message || 'Không lấy được danh sách xe')
+      } finally {
+        if (mounted) setLoading(false)
+      }
+    }
+    load()
+    return () => { mounted = false }
+  }, [])
+
+  const filteredBuses = buses.filter((bus) => (bus.plateNumber || '').toLowerCase().includes(searchQuery.toLowerCase()))
 
   return (
     <DashboardLayout sidebar={<AdminSidebar />}>
@@ -63,26 +83,26 @@ export default function BusesPage() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card className="border-border/50">
             <CardContent className="pt-6">
-              <div className="text-2xl font-bold text-foreground">24</div>
-              <p className="text-sm text-muted-foreground">Tổng số xe</p>
+                <div className="text-2xl font-bold text-foreground">{buses.length}</div>
+                <p className="text-sm text-muted-foreground">Tổng số xe</p>
             </CardContent>
           </Card>
           <Card className="border-border/50">
             <CardContent className="pt-6">
-              <div className="text-2xl font-bold text-success">18</div>
-              <p className="text-sm text-muted-foreground">Đang hoạt động</p>
+                <div className="text-2xl font-bold text-success">{buses.filter(b => b.status === 'hoat_dong' || b.status === 'active').length}</div>
+                <p className="text-sm text-muted-foreground">Đang hoạt động</p>
             </CardContent>
           </Card>
           <Card className="border-border/50">
             <CardContent className="pt-6">
-              <div className="text-2xl font-bold text-warning">3</div>
-              <p className="text-sm text-muted-foreground">Đang bảo trì</p>
+                <div className="text-2xl font-bold text-warning">{buses.filter(b => b.status === 'bao_tri' || b.status === 'maintenance').length}</div>
+                <p className="text-sm text-muted-foreground">Đang bảo trì</p>
             </CardContent>
           </Card>
           <Card className="border-border/50">
             <CardContent className="pt-6">
-              <div className="text-2xl font-bold text-primary">12</div>
-              <p className="text-sm text-muted-foreground">Đang chạy</p>
+                <div className="text-2xl font-bold text-primary">{buses.filter(b => b.status === 'dang_chay' || b.status === 'running').length}</div>
+                <p className="text-sm text-muted-foreground">Đang chạy</p>
             </CardContent>
           </Card>
         </div>
@@ -104,6 +124,8 @@ export default function BusesPage() {
             </div>
           </CardHeader>
           <CardContent>
+            {loading && <div className="py-4">Đang tải danh sách xe...</div>}
+            {error && <div className="text-destructive py-4">{error}</div>}
             <Table>
               <TableHeader>
                 <TableRow>
@@ -119,23 +141,23 @@ export default function BusesPage() {
                 {filteredBuses.map((bus) => (
                   <TableRow key={bus.id}>
                     <TableCell className="font-medium">{bus.plateNumber}</TableCell>
-                    <TableCell>{bus.capacity} chỗ</TableCell>
+                    <TableCell>{bus.capacity ?? '-'} chỗ</TableCell>
                     <TableCell>
                       <Badge
                         variant="outline"
                         className={
-                          bus.status === "active"
+                          bus.status === "hoat_dong" || bus.status === "active"
                             ? "border-success text-success"
-                            : bus.status === "running"
+                            : bus.status === "dang_chay" || bus.status === "running"
                               ? "border-primary text-primary"
                               : "border-warning text-warning"
                         }
                       >
-                        {bus.status === "active" ? "Hoạt động" : bus.status === "running" ? "Đang chạy" : "Bảo trì"}
+                        {bus.status === "hoat_dong" || bus.status === "active" ? "Hoạt động" : bus.status === "dang_chay" || bus.status === "running" ? "Đang chạy" : "Bảo trì"}
                       </Badge>
                     </TableCell>
-                    <TableCell>{bus.currentRoute}</TableCell>
-                    <TableCell>{bus.trips}</TableCell>
+                    <TableCell>{bus.raw?.dongXe || bus.raw?.currentRoute || '-'}</TableCell>
+                    <TableCell>{bus.raw?.trips ?? '-'}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
                         <Button variant="ghost" size="icon">

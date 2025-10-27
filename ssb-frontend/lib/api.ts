@@ -1,3 +1,5 @@
+export * from '../../lib/api'
+export { api } from '../../lib/api'
 // API client for Smart School Bus Tracking System
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
