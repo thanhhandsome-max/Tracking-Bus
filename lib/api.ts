@@ -20,7 +20,9 @@ class ApiClient {
   private token: string | null = null
 
   constructor() {
-    this.baseURL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api'
+    // Use API v1 by default to match backend routes
+    // Default to port 4000 if backend env sets PORT=4000 during dev
+    this.baseURL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000/api/v1'
     
     // Get token from localStorage on initialization
     if (typeof window !== 'undefined') {
