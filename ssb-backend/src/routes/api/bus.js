@@ -16,6 +16,16 @@ router.get(
   AuthMiddleware.authorize("quan_tri", "tai_xe"),
   BusController.list
 );
+
+// GET /api/v1/buses/stats - Thống kê xe buýt
+router.get(
+  "/stats", // Route này sẽ được gắn vào prefix /reports/buses trong server.ts
+  AuthMiddleware.authenticate, // Đổi verifyToken thành authenticate cho nhất quán
+  AuthMiddleware.requireAdmin, 
+  BusController.getStats // Gọi hàm vừa thêm ở trên
+);
+
+
 // GET /api/v1/buses/:id - Chi tiết xe buýt
 router.get(
   "/:id",
@@ -24,6 +34,7 @@ router.get(
   ValidationMiddleware.validateId,
   BusController.get
 );
+
 
 // POST /api/v1/buses - Tạo xe buýt mới
 router.post(

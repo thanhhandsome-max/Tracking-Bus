@@ -37,10 +37,16 @@ router.post("/forgot-password", AuthController.forgotPassword);
 router.post("/reset-password", AuthController.resetPassword);
 
 // POST /api/auth/refresh-token - Refresh token
+// router.post(
+//   "/refresh-token",
+//   AuthMiddleware.authenticate,
+//   AuthController.refreshToken
+// );
+
 router.post(
-  "/refresh-token",
-  AuthMiddleware.authenticate,
-  AuthController.refreshToken
+  "/refresh", 
+  // KHÔNG có AuthMiddleware.authenticate ở đây
+  AuthController.refreshToken 
 );
 
 export default router;

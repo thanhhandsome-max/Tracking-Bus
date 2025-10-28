@@ -16,6 +16,8 @@ import tripRoutes from "./routes/api/trip.js";
 
 const app = express();
 
+app.use("/api/v1/reports/buses", busRoutes); // <-- Sửa prefix và giữ busRoutes
+app.use("/api/v1/reports/trips", tripRoutes); // <-- Sửa prefix và giữ tripRoutes
 // Middleware
 app.use(helmet());
 app.use(cors());

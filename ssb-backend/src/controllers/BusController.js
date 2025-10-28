@@ -61,6 +61,61 @@ class BusController {
     }
   }
 
+
+  static async getStats(req, res) {
+    try {
+      // 1. Lấy thông tin cơ bản về xe từ Model
+      // Lưu ý: Đảm bảo XeBuytModel đã được import và có hàm getStats đúng
+      const XeBuytModel = (await import("../models/XeBuytModel.js")).default; 
+      const busData = await XeBuytModel.getStats();
+
+      // 2. Xử lý số lượng xe theo trạng thái
+      let activeBuses = 0;
+      let maintenanceBuses = 0;
+      (busData.busCounts || []).forEach(row => {
+        if (row.trangThai === 'hoat_dong') {
+          activeBuses = row.count;
+        } else if (row.trangThai === 'bao_tri') {
+          maintenanceBuses = row.count;
+        }
+      });
+
+      // 3. Lấy thông tin thống kê chuyến đi TỔNG (tạm thời)
+      // Lưu ý: Đảm bảo ChuyenDiModel đã được import và có hàm getStats đúng
+      const ChuyenDiModel = (await import("../models/ChuyenDiModel.js")).default;
+      const today = new Date().toISOString().split('T')[0]; 
+      const tripStatsOverall = await ChuyenDiModel.getStats(today, today); 
+
+      // 4. Tạo response data khớp với openapi.yaml
+      const responseData = {
+        totalBuses: busData.totalBuses || 0,
+        activeBuses: activeBuses,
+        maintenanceBuses: maintenanceBuses,
+        averageUtilization: 0, // Tạm thời
+        totalTrips: tripStatsOverall.totalTrips || 0, 
+        completedTrips: tripStatsOverall.completedTrips || 0, 
+        delayedTrips: tripStatsOverall.delayedTrips || 0, 
+      };
+      
+      res.status(200).json({
+        success: true,
+        data: responseData,
+      });
+    } catch (error) {
+      console.error("Error in BusController.getStats:", error);
+      // Sử dụng cấu trúc lỗi nhất quán (nếu có)
+      res.status(500).json({
+        success: false,
+        // code: "INTERNAL_500", // Thêm mã lỗi nếu có
+        message: "Lỗi server khi lấy thống kê xe buýt",
+        error: error.message, // Chỉ trả về error.message ở môi trường dev
+      });
+    }
+  }
+
+
+    
+
   // POST /api/v1/buses
   static async create(req, res) {
     try {

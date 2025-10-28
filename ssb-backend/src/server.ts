@@ -6,6 +6,7 @@ import http from "http";
 import { Server } from "socket.io";
 import cors from "cors";
 import dotenv from "dotenv";
+import { verifyWsJWT } from './middlewares/socketAuth.js'; 
 
 // Import app từ file app.js
 import app from "./app.js";
@@ -29,6 +30,8 @@ const io = new Server(server, {
 // Gắn Socket.IO vào app để các route có thể sử dụng
 app.set("io", io);
 
+
+io.use(verifyWsJWT);
 // Xử lý kết nối Socket.IO
 io.on("connection", (socket) => {
   console.log("✅ Client đã kết nối:", socket.id);
