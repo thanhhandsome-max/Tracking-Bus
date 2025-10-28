@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { MapPin, Clock, Users, Navigation, Phone, MessageSquare } from "lucide-react"
-import { TrackingMap } from "@/components/admin/tracking-map"
+import { MapView } from "@/components/tracking/MapView"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
 const mockBuses = [
@@ -107,7 +107,11 @@ export default function TrackingPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                <TrackingMap buses={mockBuses} selectedBus={selectedBus} onSelectBus={setSelectedBus} />
+                <MapView
+                  buses={mockBuses as any}
+                  selectedBus={selectedBus as any}
+                  onSelectBus={(b: any) => setSelectedBus(b)}
+                />
               </CardContent>
             </Card>
           </div>

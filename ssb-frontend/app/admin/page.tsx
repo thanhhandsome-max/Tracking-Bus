@@ -13,7 +13,7 @@ import { StatsCard } from "@/components/admin/stats-card"
 import { ActivityFeed } from "@/components/admin/activity-feed"
 import { PerformanceChart } from "@/components/admin/performance-chart"
 import { BusStatusChart } from "@/components/admin/bus-status-chart"
-import { MiniMap } from "@/components/admin/mini-map"
+import { MapView } from "@/components/tracking/MapView"
 
 export default function AdminDashboard() {
   const { user } = useAuth()
@@ -128,9 +128,16 @@ export default function AdminDashboard() {
                   </Button>
                 </div>
               </CardHeader>
-              <CardContent>
-                <MiniMap />
-              </CardContent>
+                <CardContent>
+                  {/* Replace demo preview with Leaflet MapView showing mock buses */}
+                  <MapView
+                    buses={[
+                      { id: "1", plateNumber: "51A-12345", route: "Tuyến 1", lat: 10.762622, lng: 106.660172, speed: 35, students: 28 },
+                      { id: "2", plateNumber: "51B-67890", route: "Tuyến 3", lat: 10.772622, lng: 106.670172, speed: 28, students: 24 },
+                    ] as any}
+                    height="480px"
+                  />
+                </CardContent>
             </Card>
           </div>
 

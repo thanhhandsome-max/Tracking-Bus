@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Clock, MapPin, Users, Play } from "lucide-react"
 
+
 const todayTrips = [
   {
     id: "1",

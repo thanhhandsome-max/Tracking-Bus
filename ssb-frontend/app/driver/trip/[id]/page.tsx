@@ -42,7 +42,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { IncidentForm } from "@/components/driver/incident-form"
-import TripMap from "@/components/driver/trip-map"
+import dynamic from "next/dynamic"
+const LeafletMap = dynamic(() => import("@/components/map/leaflet-map"), { ssr: false })
 // Input and ScrollArea removed (old admin chat UI deleted)
 
 const mockTrip = {
@@ -350,16 +351,18 @@ export default function TripDetailPage() {
               <CardContent className="space-y-4">
                 <Card className="border-border/50 bg-muted/30">
                       <CardContent className="p-4">
-                        {/* Real Trip Map - uses NEXT_PUBLIC_GOOGLE_MAPS_API_KEY if available */}
-                        <TripMap
-                          center={{ lat: 10.762622, lng: 106.660172 }}
-                          zoom={13}
-                          markers={[
-                            { id: "vehicle", lat: 10.762622, lng: 106.660172, label: `${trip.vehicle.plateNumber} - ${trip.route}` },
-                            // Add current stop marker
-                            { id: `stop-${currentStop.id}`, lat: 10.765, lng: 106.661, label: currentStop.name },
-                          ]}
-                        />
+                                {/* Leaflet map (replaces Google Maps) */}
+                                <div className="h-[640px] w-full">
+                                  <LeafletMap
+                                    height="640px"
+                                    center={{ lat: 10.762622, lng: 106.660172 }}
+                                    zoom={13}
+                                    markers={[
+                                      { id: "vehicle", lat: 10.762622, lng: 106.660172, label: `${trip.vehicle.plateNumber} - ${trip.route}` },
+                                      { id: `stop-${currentStop.id}`, lat: 10.765, lng: 106.661, label: currentStop.name },
+                                    ]}
+                                  />
+                                </div>
                     <div className="mt-3 space-y-2">
                       <div className="flex items-start gap-2 text-sm">
                         <Navigation2 className="w-4 h-4 text-primary mt-0.5" />

@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { MapPin, Clock, Phone, CheckCircle2, AlertCircle } from "lucide-react"
+import { MapView } from "@/components/tracking/MapView"
 
 export default function ParentDashboard() {
   const { user } = useAuth()
@@ -121,67 +122,12 @@ export default function ParentDashboard() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="relative h-[500px] bg-muted/30 rounded-lg overflow-hidden">
-                {/* Map placeholder with animated bus marker */}
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="text-center space-y-4">
-                    <div className="relative inline-block">
-                      <div className="w-16 h-16 rounded-full bg-primary/20 animate-ping absolute inset-0" />
-                      <div className="w-16 h-16 rounded-full bg-primary flex items-center justify-center relative">
-                        <MapPin className="w-8 h-8 text-primary-foreground" />
-                      </div>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="font-semibold text-foreground">Xe buýt {childInfo.busNumber}</p>
-                      <p className="text-sm text-muted-foreground">
-                        Lat: {busLocation.lat.toFixed(4)}, Lng: {busLocation.lng.toFixed(4)}
-                      </p>
-                      <Badge variant="outline" className="mt-2">
-                        Cập nhật 3 giây trước
-                      </Badge>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Route visualization */}
-                <div className="absolute top-4 left-4 bg-background/95 backdrop-blur-sm rounded-lg p-4 shadow-lg max-w-xs">
-                  <h4 className="font-semibold text-sm mb-3 text-foreground">Lộ trình hôm nay</h4>
-                  <div className="space-y-3">
-                    {[
-                      { name: "Điểm đón 1", time: "07:00", status: "completed" },
-                      { name: "Điểm đón 2", time: "07:10", status: "completed" },
-                      { name: "Điểm đón 3", time: "07:15", status: "current" },
-                      { name: "Điểm đón 4", time: "07:25", status: "upcoming" },
-                      { name: "Trường học", time: "07:45", status: "upcoming" },
-                    ].map((stop, index) => (
-                      <div key={index} className="flex items-center gap-3">
-                        <div
-                          className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold ${
-                            stop.status === "completed"
-                              ? "bg-green-500/20 text-green-700"
-                              : stop.status === "current"
-                                ? "bg-primary text-primary-foreground"
-                                : "bg-muted text-muted-foreground"
-                          }`}
-                        >
-                          {index + 1}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-foreground truncate">{stop.name}</p>
-                          <p className="text-xs text-muted-foreground">{stop.time}</p>
-                        </div>
-                        {stop.status === "completed" && (
-                          <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
-                        )}
-                        {stop.status === "current" && (
-                          <div className="w-2 h-2 rounded-full bg-primary animate-pulse flex-shrink-0" />
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </CardContent>
+                  {/* Replace placeholder with Leaflet MapView */}
+                  <MapView
+                    buses={[{ id: '1', plateNumber: childInfo.busNumber, route: 'Lộ trình', status: 'running', lat: busLocation.lat, lng: busLocation.lng, speed: 30, students: 12 } ] as any}
+                    height="500px"
+                  />
+                </CardContent>
           </Card>
 
           {/* Right sidebar with schedule and notifications */}
