@@ -1,30 +1,24 @@
-import pool from "../config/db.config.js";
+import pool from "../config/db.js";
 
 const DiemDungModel = {
-  // Lấy tất cả điểm dừng
-  async getAll() {
-    const [rows] = await pool.query(`SELECT * FROM DiemDung`);
-    return rows;
-  },
-
-  // Lấy điểm dừng theo mã
-  async getById(maDiem) {
-    const [rows] = await pool.query(`SELECT * FROM DiemDung WHERE maDiem = ?`, [
-      maDiem,
-    ]);
-    return rows[0];
-  },
-
-  // Lấy điểm dừng theo mã tuyến
-  async getByTuyen(maTuyen) {
+  // Lấy tất cả điểm dừng của một tuyến
+  async getByRoute(maTuyen) {
     const [rows] = await pool.query(
-      `SELECT * FROM DiemDung WHERE maTuyen = ? ORDER BY thuTu ASC`,
+      `SELECT * FROM DiemDung WHERE maTuyen = ? ORDER BY thuTu`,
       [maTuyen]
     );
     return rows;
   },
 
-  // Thêm điểm dừng mới
+  // Lấy điểm dừng theo ID
+  async getById(id) {
+    const [rows] = await pool.query(`SELECT * FROM DiemDung WHERE maDiem = ?`, [
+      id,
+    ]);
+    return rows[0];
+  },
+
+  // Tạo điểm dừng mới
   async create(data) {
     const { maTuyen, tenDiem, kinhDo, viDo, thuTu } = data;
     const [result] = await pool.query(
@@ -35,22 +29,94 @@ const DiemDungModel = {
     return result.insertId;
   },
 
-  // Cập nhật điểm dừng
-  async update(maDiem, data) {
-    const { tenDiem, kinhDo, viDo, thuTu } = data;
+  // Tạo nhiều điểm dừng cùng lúc
+  async createMultiple(maTuyen, diemDungList) {
+    const values = diemDungList.map((diem) => [
+      maTuyen,
+      diem.tenDiem,
+      diem.kinhDo,
+      diem.viDo,
+      diem.thuTu,
+    ]);
+
     const [result] = await pool.query(
-      `UPDATE DiemDung SET tenDiem = ?, kinhDo = ?, viDo = ?, thuTu = ? WHERE maDiem = ?`,
-      [tenDiem, kinhDo, viDo, thuTu, maDiem]
+      `INSERT INTO DiemDung (maTuyen, tenDiem, kinhDo, viDo, thuTu) VALUES ?`,
+      [values]
     );
+    return result.affectedRows;
+  },
+
+  // Cập nhật điểm dừng (partial update)
+  async update(id, data) {
+    const fields = [];
+    const values = [];
+
+    if (data.tenDiem !== undefined) {
+      fields.push("tenDiem = ?");
+      values.push(data.tenDiem);
+    }
+    if (data.kinhDo !== undefined) {
+      fields.push("kinhDo = ?");
+      values.push(data.kinhDo);
+    }
+    if (data.viDo !== undefined) {
+      fields.push("viDo = ?");
+      values.push(data.viDo);
+    }
+    if (data.thuTu !== undefined) {
+      fields.push("thuTu = ?");
+      values.push(data.thuTu);
+    }
+
+    if (fields.length === 0) {
+      return false;
+    }
+
+    values.push(id);
+    const query = `UPDATE DiemDung SET ${fields.join(", ")} WHERE maDiem = ?`;
+
+    const [result] = await pool.query(query, values);
     return result.affectedRows > 0;
   },
 
   // Xóa điểm dừng
-  async delete(maDiem) {
-    const [result] = await pool.query(`DELETE FROM DiemDung WHERE maDiem = ?`, [
-      maDiem,
+  async delete(id) {
+    const [result] = await pool.query("DELETE FROM DiemDung WHERE maDiem = ?", [
+      id,
     ]);
     return result.affectedRows > 0;
+  },
+
+  // Xóa tất cả điểm dừng của một tuyến
+  async deleteByRoute(maTuyen) {
+    const [result] = await pool.query(
+      "DELETE FROM DiemDung WHERE maTuyen = ?",
+      [maTuyen]
+    );
+    return result.affectedRows;
+  },
+
+  // Sắp xếp lại thứ tự các điểm dừng
+  async reorder(maTuyen, diemDungIds) {
+    const connection = await pool.getConnection();
+    try {
+      await connection.beginTransaction();
+
+      for (let i = 0; i < diemDungIds.length; i++) {
+        await connection.query(
+          "UPDATE DiemDung SET thuTu = ? WHERE maDiem = ? AND maTuyen = ?",
+          [i + 1, diemDungIds[i], maTuyen]
+        );
+      }
+
+      await connection.commit();
+      return true;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
   },
 };
 

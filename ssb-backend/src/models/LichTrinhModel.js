@@ -1,70 +1,262 @@
-import pool from "../config/db.config.js";
+import pool from "../config/db.js";
 
 const LichTrinhModel = {
   // Lấy tất cả lịch trình
   async getAll() {
-    const [rows] = await pool.query(`
-      SELECT lt.*, td.tenTuyen, xb.bienSoXe, nd.hoTen AS tenTaiXe
-      FROM LichTrinh lt
-      JOIN TuyenDuong td ON lt.maTuyen = td.maTuyen
-      JOIN XeBuyt xb ON lt.maXe = xb.maXe
-      JOIN NguoiDung nd ON lt.maTaiXe = nd.maNguoiDung
-    `);
+    const [rows] = await pool.query(
+      `SELECT 
+        lt.*,
+        td.tenTuyen,
+        xb.bienSoXe,
+        xb.dongXe,
+        nd.hoTen as tenTaiXe
+       FROM LichTrinh lt
+       INNER JOIN TuyenDuong td ON lt.maTuyen = td.maTuyen
+       INNER JOIN XeBuyt xb ON lt.maXe = xb.maXe
+       INNER JOIN NguoiDung nd ON lt.maTaiXe = nd.maNguoiDung
+       WHERE lt.dangApDung = TRUE
+       ORDER BY lt.gioKhoiHanh`
+    );
     return rows;
   },
 
-  // Lấy lịch trình theo mã
+  // Lấy lịch trình theo ID
   async getById(id) {
     const [rows] = await pool.query(
-      `
-      SELECT lt.*, td.tenTuyen, xb.bienSoXe, nd.hoTen AS tenTaiXe
-      FROM LichTrinh lt
-      JOIN TuyenDuong td ON lt.maTuyen = td.maTuyen
-      JOIN XeBuyt xb ON lt.maXe = xb.maXe
-      JOIN NguoiDung nd ON lt.maTaiXe = nd.maNguoiDung
-      WHERE lt.maLichTrinh = ?
-      `,
+      `SELECT 
+        lt.*,
+        td.tenTuyen,
+        td.diemBatDau,
+        td.diemKetThuc,
+        td.thoiGianUocTinh,
+        xb.bienSoXe,
+        xb.dongXe,
+        xb.sucChua,
+        nd.hoTen as tenTaiXe,
+        nd.soDienThoai as sdtTaiXe
+       FROM LichTrinh lt
+       INNER JOIN TuyenDuong td ON lt.maTuyen = td.maTuyen
+       INNER JOIN XeBuyt xb ON lt.maXe = xb.maXe
+       INNER JOIN NguoiDung nd ON lt.maTaiXe = nd.maNguoiDung
+       WHERE lt.maLichTrinh = ?`,
       [id]
     );
     return rows[0];
   },
 
-  // Thêm lịch trình mới
+  // Lấy lịch trình theo tuyến
+  async getByRoute(maTuyen) {
+    const [rows] = await pool.query(
+      `SELECT 
+        lt.*,
+        xb.bienSoXe,
+        nd.hoTen as tenTaiXe
+       FROM LichTrinh lt
+       INNER JOIN XeBuyt xb ON lt.maXe = xb.maXe
+       INNER JOIN NguoiDung nd ON lt.maTaiXe = nd.maNguoiDung
+       WHERE lt.maTuyen = ? AND lt.dangApDung = TRUE
+       ORDER BY lt.gioKhoiHanh`,
+      [maTuyen]
+    );
+    return rows;
+  },
+
+  // Lấy lịch trình theo xe buýt
+  async getByBus(maXe) {
+    const [rows] = await pool.query(
+      `SELECT 
+        lt.*,
+        td.tenTuyen,
+        nd.hoTen as tenTaiXe
+       FROM LichTrinh lt
+       INNER JOIN TuyenDuong td ON lt.maTuyen = td.maTuyen
+       INNER JOIN NguoiDung nd ON lt.maTaiXe = nd.maNguoiDung
+       WHERE lt.maXe = ? AND lt.dangApDung = TRUE
+       ORDER BY lt.gioKhoiHanh`,
+      [maXe]
+    );
+    return rows;
+  },
+
+  // Lấy lịch trình theo tài xế
+  async getByDriver(maTaiXe) {
+    const [rows] = await pool.query(
+      `SELECT 
+        lt.*,
+        td.tenTuyen,
+        xb.bienSoXe,
+        xb.dongXe
+       FROM LichTrinh lt
+       INNER JOIN TuyenDuong td ON lt.maTuyen = td.maTuyen
+       INNER JOIN XeBuyt xb ON lt.maXe = xb.maXe
+       WHERE lt.maTaiXe = ? AND lt.dangApDung = TRUE
+       ORDER BY lt.gioKhoiHanh`,
+      [maTaiXe]
+    );
+    return rows;
+  },
+
+  // Tạo lịch trình mới
   async create(data) {
     const { maTuyen, maXe, maTaiXe, loaiChuyen, gioKhoiHanh, dangApDung } =
       data;
     const [result] = await pool.query(
-      `
-      INSERT INTO LichTrinh (maTuyen, maXe, maTaiXe, loaiChuyen, gioKhoiHanh, dangApDung)
-      VALUES (?, ?, ?, ?, ?, ?)
-      `,
-      [maTuyen, maXe, maTaiXe, loaiChuyen, gioKhoiHanh, dangApDung ?? true]
+      `INSERT INTO LichTrinh (maTuyen, maXe, maTaiXe, loaiChuyen, gioKhoiHanh, dangApDung)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [maTuyen, maXe, maTaiXe, loaiChuyen, gioKhoiHanh, dangApDung !== false]
     );
     return result.insertId;
   },
 
-  // Cập nhật lịch trình
+  // Cập nhật lịch trình (partial update)
   async update(id, data) {
-    const { maTuyen, maXe, maTaiXe, loaiChuyen, gioKhoiHanh, dangApDung } =
-      data;
+    const fields = [];
+    const values = [];
+
+    if (data.maTuyen !== undefined) {
+      fields.push("maTuyen = ?");
+      values.push(data.maTuyen);
+    }
+    if (data.maXe !== undefined) {
+      fields.push("maXe = ?");
+      values.push(data.maXe);
+    }
+    if (data.maTaiXe !== undefined) {
+      fields.push("maTaiXe = ?");
+      values.push(data.maTaiXe);
+    }
+    if (data.loaiChuyen !== undefined) {
+      fields.push("loaiChuyen = ?");
+      values.push(data.loaiChuyen);
+    }
+    if (data.gioKhoiHanh !== undefined) {
+      fields.push("gioKhoiHanh = ?");
+      values.push(data.gioKhoiHanh);
+    }
+    if (data.dangApDung !== undefined) {
+      fields.push("dangApDung = ?");
+      values.push(data.dangApDung);
+    }
+
+    if (fields.length === 0) {
+      return false;
+    }
+
+    values.push(id);
+    const query = `UPDATE LichTrinh SET ${fields.join(
+      ", "
+    )} WHERE maLichTrinh = ?`;
+
+    const [result] = await pool.query(query, values);
+    return result.affectedRows > 0;
+  },
+
+  // Xóa lịch trình (soft delete - đặt dangApDung = FALSE)
+  async delete(id) {
     const [result] = await pool.query(
-      `
-      UPDATE LichTrinh
-      SET maTuyen = ?, maXe = ?, maTaiXe = ?, loaiChuyen = ?, gioKhoiHanh = ?, dangApDung = ?
-      WHERE maLichTrinh = ?
-      `,
-      [maTuyen, maXe, maTaiXe, loaiChuyen, gioKhoiHanh, dangApDung, id]
+      "UPDATE LichTrinh SET dangApDung = FALSE WHERE maLichTrinh = ?",
+      [id]
     );
     return result.affectedRows > 0;
   },
 
-  // Xóa lịch trình
-  async delete(id) {
+  // Xóa vĩnh viễn
+  async hardDelete(id) {
     const [result] = await pool.query(
       "DELETE FROM LichTrinh WHERE maLichTrinh = ?",
       [id]
     );
     return result.affectedRows > 0;
+  },
+
+  // Kiểm tra xung đột lịch trình (xe/tài xế đã có lịch cùng giờ)
+  async checkConflict(
+    maXe,
+    maTaiXe,
+    gioKhoiHanh,
+    loaiChuyen,
+    excludeId = null
+  ) {
+    let query = `
+      SELECT COUNT(*) as count
+      FROM LichTrinh
+      WHERE (maXe = ? OR maTaiXe = ?)
+      AND gioKhoiHanh = ?
+      AND loaiChuyen = ?
+      AND dangApDung = TRUE
+    `;
+    const params = [maXe, maTaiXe, gioKhoiHanh, loaiChuyen];
+
+    if (excludeId) {
+      query += " AND maLichTrinh != ?";
+      params.push(excludeId);
+    }
+
+    const [rows] = await pool.query(query, params);
+    return rows[0].count > 0;
+  },
+
+  // Thống kê lịch trình
+  async getStats() {
+    const [totalResult] = await pool.query(
+      `SELECT COUNT(*) as total FROM LichTrinh WHERE dangApDung = TRUE`
+    );
+
+    const [byType] = await pool.query(
+      `SELECT loaiChuyen, COUNT(*) as count 
+       FROM LichTrinh 
+       WHERE dangApDung = TRUE 
+       GROUP BY loaiChuyen`
+    );
+
+    return {
+      total: totalResult[0].total || 0,
+      byType: byType || [],
+    };
+  },
+
+  // Kiểm tra xung đột lịch trình (xe hoặc tài xế đã có lịch trình cùng giờ)
+  async checkConflicts(maXe, maTaiXe, gioKhoiHanh, excludeId = null) {
+    let query = `
+      SELECT lt.*, td.tenTuyen, xb.bienSoXe, nd.hoTen as tenTaiXe
+      FROM LichTrinh lt
+      INNER JOIN TuyenDuong td ON lt.maTuyen = td.maTuyen
+      INNER JOIN XeBuyt xb ON lt.maXe = xb.maXe
+      INNER JOIN NguoiDung nd ON lt.maTaiXe = nd.maNguoiDung
+      WHERE lt.dangApDung = TRUE
+        AND lt.gioKhoiHanh = ?
+        AND (lt.maXe = ? OR lt.maTaiXe = ?)
+    `;
+
+    const params = [gioKhoiHanh, maXe, maTaiXe];
+
+    if (excludeId) {
+      query += " AND lt.maLichTrinh != ?";
+      params.push(excludeId);
+    }
+
+    const [rows] = await pool.query(query, params);
+    return rows;
+  },
+
+  // Lấy lịch trình theo ngày (cho việc tạo chuyến đi)
+  async getByDate(date) {
+    const [rows] = await pool.query(
+      `SELECT 
+        lt.*,
+        td.tenTuyen,
+        xb.bienSoXe,
+        xb.dongXe,
+        nd.hoTen as tenTaiXe
+       FROM LichTrinh lt
+       INNER JOIN TuyenDuong td ON lt.maTuyen = td.maTuyen
+       INNER JOIN XeBuyt xb ON lt.maXe = xb.maXe
+       INNER JOIN NguoiDung nd ON lt.maTaiXe = nd.maNguoiDung
+       WHERE lt.dangApDung = TRUE
+       ORDER BY lt.gioKhoiHanh`,
+      [date]
+    );
+    return rows;
   },
 };
 

@@ -1,4 +1,4 @@
-import pool from "../config/db.config.js";
+import pool from "../config/db.js";
 
 const TrangThaiHocSinhModel = {
   // Lấy tất cả trạng thái học sinh trên chuyến đi

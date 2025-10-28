@@ -1,18 +1,16 @@
 {
   "name": "ssb-backend",
   "version": "1.0.0",
-  "description": "Smart School Bus Tracking System - Backend API",
   "type": "module",
-  "main": "dist/server.js",
+  "description": "Smart School Bus Tracking System - Backend API",
+  "main": "src/server.ts",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "start": "node dist/server.js",
-    "build": "tsc -p tsconfig.json",
-    "lint": "eslint .",
-    "test": "vitest",
-    "seed": "node dist/scripts/seed.js",
-    "db:init": "mysql -u root -p < database/init_db.sql",
-    "db:seed": "npm run seed"
+    "start": "node src/server.js",
+    "test": "node test_api_integration.js",
+    "db:init": "mysql -u root -p school_bus_system < ../database/init_db.sql",
+    "db:seed": "mysql -u root -p school_bus_system < ../database/sample_data.sql",
+    "db:reset": "npm run db:init && npm run db:seed"
   },
   "keywords": [
     "school-bus",
@@ -40,8 +38,10 @@
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.1",
     "mysql2": "^3.15.2",
+    "node-fetch": "^3.3.2",
     "nodemailer": "^6.9.7",
-    "socket.io": "^4.8.1"
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
