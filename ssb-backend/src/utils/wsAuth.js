@@ -1,200 +1,53 @@
-/**
- * 🔐 WEBSOCKET AUTHENTICATION UTILITIES
- *
- * 🎯 MỤC ĐÍCH:
- * - Xác thực JWT token khi client kết nối Socket.IO
- * - Giải mã token để lấy thông tin user (id, role, email)
- * - Bảo vệ WebSocket connections khỏi truy cập trái phép
- *
- * 🔧 SỬ DỤNG CHO:
- * - M4: Realtime Tracking - Xác thực khi client connect Socket.IO
- * - Socket.IO middleware: io.use(authMiddleware)
- * - Kiểm tra quyền truy cập rooms (bus-*, trip-*, user-*)
- *
- * ⚠️ QUAN TRỌNG:
- * - File này là MOCK/SƯỜN tạm thời cho Ngày 1
- * - Ngày 3 sẽ tích hợp helper THẬT từ Q.Thắng (BE Auth team)
- * - Q.Thắng đang làm AuthMiddleware.js với JWT verify đầy đủ
- *
- * 📚 LIÊN KẾT:
- * - Phối hợp với: src/middlewares/AuthMiddleware.js (Q.Thắng)
- * - Sử dụng trong: src/ws/index.ts (Socket.IO server)
- * - Tham khảo: docs/ws_events.md (phần Authentication)
- *
- * @author Nguyễn Tuấn Tài - M4/M5/M6
- * @date 2025-10-26 (Ngày 1 - Mock version)
- * @todo Chờ helper hoàn chỉnh từ Q.Thắng (BE Auth) để tích hợp sau (Ngày 3)
- */
-
-// TODO: Chờ helper hoàn chỉnh từ Q.Thắng (BE Auth) để tích hợp sau.
-
 import jwt from "jsonwebtoken";
+import NguoiDungModel from "../models/NguoiDungModel.js";
 
-/**
- * 🔑 Hàm xác thực JWT token cho WebSocket connections
- *
- * 📖 GIẢI THÍCH:
- * - Khi client kết nối Socket.IO, phải gửi kèm JWT token
- * - Token này được tạo khi user đăng nhập (POST /api/v1/auth/login)
- * - Hàm này verify token → Lấy thông tin user (id, role, email)
- * - JWT là JSON Web Token, định dạng token phổ biến hiện nay
- *
- * 🎯 CÁCH DÙNG:
- * ```javascript
- * // Trong Socket.IO middleware (src/ws/index.ts):
- * io.use(async (socket, next) => {
- *   try {
- *     const token = socket.handshake.auth.token;
- *     const user = await verifyWsJWT(token);
- *
- *     socket.user = user; // Gắn user vào socket
- *     next(); // Cho phép kết nối
- *   } catch (error) {
- *     next(new Error('Authentication failed')); // Từ chối
- *   }
- * });
- * ```
- *
- * 🔢 THAM SỐ:
- * @param {string} token - JWT token từ client (VD: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...")
- *
- * @returns {Promise<Object>} Thông tin user đã giải mã:
- * ```javascript
- * {
- *   maNguoiDung: 123,       // User ID
- *   email: "driver@ssb.vn", // Email
- *   vaiTro: "tai_xe",       // Role: quan_tri | tai_xe | phu_huynh
- *   iat: 1234567890,        // Issued at (timestamp)
- *   exp: 1234567890         // Expiration time
- * }
- * ```
- *
- * @throws {Error} Lỗi xác thực:
- * - "Missing token" - Không có token
- * - "JsonWebTokenError" - Token không hợp lệ
- * - "TokenExpiredError" - Token đã hết hạn
- *
- * 🔐 BẢO MẬT:
- * - JWT_SECRET phải được lưu trong .env (KHÔNG được commit lên GitHub)
- * - Token có thời hạn (exp), hết hạn phải đăng nhập lại
- * - Không bao giờ log token ra console (tránh lộ thông tin)
- *
- * ⚠️ LƯU Ý - MOCK VERSION (Ngày 1):
- * - Đây chỉ là version đơn giản để test flow
- * - Ngày 3 sẽ thay bằng helper từ Q.Thắng với:
- *   + Refresh token logic
- *   + Blacklist check (token bị thu hồi)
- *   + Rate limiting
- *   + Logging đầy đủ
- *
- * 💻 VÍ DỤ TEST:
- * ```javascript
- * // Test 1: Token hợp lệ
- * const validToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...";
- * const user = await verifyWsJWT(validToken);
- * console.log('User:', user.email, 'Role:', user.vaiTro);
- *
- * // Test 2: Không có token
- * try {
- *   await verifyWsJWT(null);
- * } catch (error) {
- *   console.log('Error:', error.message); // "Missing token"
- * }
- *
- * // Test 3: Token sai
- * try {
- *   await verifyWsJWT('invalid-token-xxx');
- * } catch (error) {
- *   console.log('Error:', error.name); // "JsonWebTokenError"
- * }
- * ```
- *
- * 🔗 LIÊN KẾT VỚI CÁC FILE KHÁC:
- * - AuthMiddleware.js: Dùng chung JWT_SECRET và logic verify
- * - Socket.IO server: Gọi hàm này trong io.use() middleware
- * - ws_events.md: Mô tả flow authentication trong docs
- */
 export async function verifyWsJWT(token) {
-  // ❌ Kiểm tra token có tồn tại không
   if (!token) {
     throw new Error("Missing token");
   }
 
-  // ✅ Verify và giải mã token
-  // jwt.verify() sẽ:
-  // 1. Kiểm tra chữ ký (signature) có đúng với JWT_SECRET không
-  // 2. Kiểm tra token có hết hạn (exp) chưa
-  // 3. Trả về payload (dữ liệu user) nếu hợp lệ
-  // 4. Throw error nếu không hợp lệ
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await NguoiDungModel.getById(decoded.userId);
 
-    // 📝 Log để debug (CHỈ ở development, production phải tắt)
-    // ⚠️ Comment lại để tránh spam log khi chạy performance test
-    // if (process.env.NODE_ENV === "development") {
-    //   console.log(
-    //     "✅ WS Auth: User verified -",
-    //     decoded.email,
-    //     `(${decoded.vaiTro})`
-    //   );
-    // }
-
-    return decoded;
-  } catch (error) {
-    // 🚨 Xử lý các loại lỗi JWT
-    if (error.name === "TokenExpiredError") {
-      throw new Error("Token expired - Please login again");
-    } else if (error.name === "JsonWebTokenError") {
-      throw new Error("Invalid token - Authentication failed");
-    } else {
-      throw error;
+    if (!user) {
+      throw new Error("Người dùng không tồn tại");
     }
+
+    if (!user.trangThai) {
+      throw new Error("Tài khoản đã bị khóa hoặc ngừng hoạt động");
+    }
+
+    const userPayload = {
+      userId: decoded.userId,
+      email: decoded.email,
+      vaiTro: decoded.vaiTro,
+      userInfo: user,
+    };
+
+    if (process.env.NODE_ENV === "development") {
+      console.log(
+        "✅ WS Auth: User verified -",
+        userPayload.email,
+        `(${userPayload.vaiTro})`,
+        `- Account active: ${user.trangThai}`
+      );
+    }
+
+    return userPayload;
+  } catch (error) {
+    if (error.name === "TokenExpiredError") {
+      throw new Error("Token xác thực đã hết hạn");
+    }
+
+    if (error.name === "JsonWebTokenError") {
+      throw new Error("Token xác thực không hợp lệ");
+    }
+
+    throw error;
   }
 }
 
-/**
- * 📝 NOTES CHO NGÀY 3 (Tích hợp Q.Thắng):
- *
- * 🔄 CẦN THAY ĐỔI:
- * 1. Import helper từ Q.Thắng:
- *    ```javascript
- *    import { verifyJWT } from '../middlewares/AuthMiddleware.js';
- *    ```
- *
- * 2. Sử dụng helper thay vì jwt.verify trực tiếp:
- *    ```javascript
- *    export async function verifyWsJWT(token) {
- *      return await verifyJWT(token); // Gọi helper Q.Thắng
- *    }
- *    ```
- *
- * 3. Thêm logic check blacklist (nếu Q.Thắng có):
- *    - Token đã logout
- *    - Token bị admin thu hồi
- *
- * 4. Thống nhất error codes với REST API:
- *    - 401 Unauthorized
- *    - 403 Forbidden
- *
- * 🤝 PHỐI HỢP VỚI Q.THẮNG:
- * - Hỏi về cấu trúc payload JWT (có gì ngoài id, email, role?)
- * - Có cần refresh token cho WebSocket không?
- * - Secret key giống REST API hay khác?
- * - Có cơ chế revoke token không?
- *
- * 📅 TIMELINE:
- * - Ngày 1 (26/10): Mock version này (✅ Done)
- * - Ngày 3 (28/10): Tích hợp helper Q.Thắng
- * - Ngày 4 (29/10): Test end-to-end với FE
- * - Ngày 5-6: Fix bugs nếu có
- */
-
-/**
- * 🧪 HELPER FUNCTION ĐỂ TEST (Tạm thời cho Ngày 1)
- *
- * Tạo một token giả để test (CHỈ dùng cho development!)
- * ⚠️ XÓA FUNCTION NÀY khi deploy production!
- */
 export function createMockToken(
   userId = 1,
   role = "tai_xe",
@@ -205,20 +58,269 @@ export function createMockToken(
   }
 
   const payload = {
-    maNguoiDung: userId,
+    userId: userId,
     email: email,
     vaiTro: role,
   };
 
   return jwt.sign(payload, process.env.JWT_SECRET, {
-    expiresIn: "24h", // Token hết hạn sau 24 giờ
+    expiresIn: "24h",
   });
 }
 
 /**
- * 📚 TÀI LIỆU THAM KHẢO:
- * - JWT: https://jwt.io/
- * - jsonwebtoken library: https://github.com/auth0/node-jsonwebtoken
- * - Socket.IO authentication: https://socket.io/docs/v4/middlewares/
- * - Best practices: https://cheatsheetseries.owasp.org/cheatsheets/JSON_Web_Token_for_Java_Cheat_Sheet.html
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 📚 HƯỚNG DẪN SỬ DỤNG FILE NÀY
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * 🎯 MỤC ĐÍCH:
+ * File này kiểm tra token khi user kết nối Socket.IO (chat/realtime).
+ * Giống như bảo vệ kiểm tra thẻ trước khi vào cửa.
+ * Nếu token hợp lệ → cho vào, nếu không → từ chối.
+ *
+ * ───────────────────────────────────────────────────────────────────────────
+ * 🔧 CÁC HÀM CHÍNH
+ * ───────────────────────────────────────────────────────────────────────────
+ *
+ * 1️⃣ verifyWsJWT(token)
+ *    └─ Hàm kiểm tra token có hợp lệ không
+ *    └─ Nhận vào: Token từ client
+ *    └─ Trả về: Thông tin user (userId, email, vaiTro, userInfo)
+ *    └─ Throw lỗi nếu: Token sai, hết hạn, user không tồn tại, account bị khóa
+ *
+ * 2️⃣ createMockToken(userId, role, email)
+ *    └─ Tạo token giả để test (CHỈ dùng development)
+ *    └─ Nhận vào: userId, role, email
+ *    └─ Trả về: Token giả để test Socket.IO
+ *    └─ ⚠️ Production sẽ báo lỗi nếu dùng hàm này
+ *
+ * ───────────────────────────────────────────────────────────────────────────
+ * 🔐 FLOW XÁC THỰC (verifyWsJWT)
+ * ───────────────────────────────────────────────────────────────────────────
+ *
+ * Bước 1: Kiểm tra token có tồn tại không
+ * ├─ Có token → Sang bước 2
+ * └─ Không có → Throw lỗi "Missing token"
+ *
+ * Bước 2: Verify chữ ký token (jwt.verify)
+ * ├─ Chữ ký đúng → Sang bước 3
+ * ├─ Chữ ký sai → Throw lỗi "Token xác thực không hợp lệ"
+ * └─ Token hết hạn → Throw lỗi "Token xác thực đã hết hạn"
+ *
+ * Bước 3: Kiểm tra user trong database
+ * ├─ User tồn tại → Sang bước 4
+ * └─ User không tồn tại → Throw lỗi "Người dùng không tồn tại"
+ *
+ * Bước 4: Kiểm tra account có active không
+ * ├─ trangThai = true → Trả về user info
+ * └─ trangThai = false → Throw lỗi "Tài khoản đã bị khóa..."
+ *
+ * ───────────────────────────────────────────────────────────────────────────
+ * 💻 CODE MẪU - SỬ DỤNG TRONG SOCKET.IO
+ * ───────────────────────────────────────────────────────────────────────────
+ *
+ * // src/ws/index.js
+ * import { verifyWsJWT } from '../utils/wsAuth.js';
+ *
+ * io.use(async (socket, next) => {
+ *   try {
+ *     // Lấy token từ client
+ *     const token = socket.handshake.auth.token;
+ *
+ *     // Kiểm tra token
+ *     const user = await verifyWsJWT(token);
+ *
+ *     // Lưu thông tin user vào socket
+ *     socket.data.user = user;
+ *
+ *     // Cho phép kết nối
+ *     next();
+ *   } catch (error) {
+ *     // Từ chối kết nối
+ *     next(new Error(error.message));
+ *   }
+ * });
+ *
+ * ───────────────────────────────────────────────────────────────────────────
+ * 📊 DỮ LIỆU TRẢ VỀ
+ * ───────────────────────────────────────────────────────────────────────────
+ *
+ * Khi token hợp lệ, hàm trả về object:
+ *
+ * {
+ *   userId: 123,                    // ID của user
+ *   email: "driver01@ssb.vn",       // Email
+ *   vaiTro: "tai_xe",               // Vai trò: quan_tri / tai_xe / phu_huynh
+ *   userInfo: {                     // Thông tin đầy đủ từ database
+ *     maNguoiDung: 123,
+ *     hoTen: "Nguyễn Văn A",
+ *     soDienThoai: "0901234567",
+ *     trangThai: true,
+ *     ...
+ *   }
+ * }
+ *
+ * ───────────────────────────────────────────────────────────────────────────
+ * ❌ CÁC LỖI CÓ THỂ GẶP
+ * ───────────────────────────────────────────────────────────────────────────
+ *
+ * ┌──────────────────────────────────┬─────────────────────────────────────┐
+ * │ Lỗi                              │ Nguyên nhân                         │
+ * ├──────────────────────────────────┼─────────────────────────────────────┤
+ * │ Missing token                    │ Client không gửi token              │
+ * │ Token xác thực không hợp lệ      │ Token sai format hoặc sai chữ ký    │
+ * │ Token xác thực đã hết hạn        │ Token quá 24 giờ (hoặc thời gian    │
+ * │                                  │ được set)                           │
+ * │ Người dùng không tồn tại         │ User đã bị xóa khỏi database        │
+ * │ Tài khoản đã bị khóa hoặc        │ Admin đã khóa account (trangThai =  │
+ * │ ngừng hoạt động                  │ false)                              │
+ * └──────────────────────────────────┴─────────────────────────────────────┘
+ *
+ * ───────────────────────────────────────────────────────────────────────────
+ * 🧪 TEST VỚI TOKEN GIẢ (createMockToken)
+ * ───────────────────────────────────────────────────────────────────────────
+ *
+ * Chỉ dùng trong development để test!
+ *
+ * import { createMockToken } from './wsAuth.js';
+ *
+ * // Tạo token giả cho user ID 1, vai trò tài xế
+ * const fakeToken = createMockToken(1, "tai_xe", "driver01@ssb.vn");
+ *
+ * console.log("Token giả:", fakeToken);
+ * // eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+ *
+ * // Dùng token này để test Socket.IO
+ * const socket = io("http://localhost:4000", {
+ *   auth: { token: fakeToken }
+ * });
+ *
+ * ⚠️ LƯU Ý:
+ * - Database PHẢI có user với ID tương ứng (VD: user ID = 1)
+ * - User phải có trangThai = true (active)
+ * - Chỉ dùng trong development, production sẽ báo lỗi!
+ *
+ * ───────────────────────────────────────────────────────────────────────────
+ * 🔄 SO SÁNH VỚI AuthMiddleware.js
+ * ───────────────────────────────────────────────────────────────────────────
+ *
+ * File này DÙNG CÙNG LOGIC với AuthMiddleware.js (do Q.Thắng viết).
+ *
+ * ┌─────────────────────┬──────────────────────────────────────────────────┐
+ * │ Điểm giống          │ Chi tiết                                         │
+ * ├─────────────────────┼──────────────────────────────────────────────────┤
+ * │ Verify JWT          │ Dùng jwt.verify(token, JWT_SECRET)              │
+ * │ Check user exists   │ Dùng NguoiDungModel.getById()                   │
+ * │ Check account active│ Kiểm tra user.trangThai                         │
+ * │ Error handling      │ TokenExpiredError, JsonWebTokenError            │
+ * │ Return format       │ { userId, email, vaiTro, userInfo }             │
+ * └─────────────────────┴──────────────────────────────────────────────────┘
+ *
+ * Khác biệt:
+ * - AuthMiddleware: Dùng cho REST API (HTTP requests)
+ * - wsAuth: Dùng cho Socket.IO (WebSocket connections)
+ *
+ * ───────────────────────────────────────────────────────────────────────────
+ * 🔐 BẢO MẬT
+ * ───────────────────────────────────────────────────────────────────────────
+ *
+ * 1. JWT_SECRET phải lưu trong file .env
+ *    └─ KHÔNG được commit .env lên GitHub
+ *    └─ Mỗi môi trường (dev/production) dùng secret khác nhau
+ *
+ * 2. Token có thời hạn (24 giờ)
+ *    └─ Hết hạn phải đăng nhập lại
+ *    └─ Tránh token bị đánh cắp dùng mãi mãi
+ *
+ * 3. Kiểm tra account status mỗi lần verify
+ *    └─ Phát hiện account bị khóa ngay lập tức
+ *    └─ Admin khóa user → User không kết nối được nữa
+ *
+ * 4. KHÔNG bao giờ log token ra console
+ *    └─ Token là thông tin nhạy cảm
+ *    └─ Log token = cho hacker thông tin để hack
+ *
+ * ───────────────────────────────────────────────────────────────────────────
+ * 📖 VÍ DỤ SỬ DỤNG THỰC TẾ
+ * ───────────────────────────────────────────────────────────────────────────
+ *
+ * CASE 1: User đăng nhập thành công
+ * ─────────────────────────────────────
+ * 1. User login → Nhận token từ API
+ * 2. Frontend lưu token vào localStorage
+ * 3. Khi connect Socket.IO → Gửi token
+ * 4. wsAuth.verifyWsJWT(token) → ✅ Pass
+ * 5. User được kết nối Socket.IO
+ *
+ * CASE 2: Token hết hạn
+ * ─────────────────────────────────────
+ * 1. User login 25 giờ trước
+ * 2. Token hết hạn (24h)
+ * 3. Connect Socket.IO với token cũ
+ * 4. wsAuth.verifyWsJWT(token) → ❌ Lỗi "Token đã hết hạn"
+ * 5. Client nhận connect_error
+ * 6. Frontend redirect về trang login
+ *
+ * CASE 3: Account bị khóa
+ * ─────────────────────────────────────
+ * 1. User login và có token hợp lệ
+ * 2. Admin khóa account (trangThai = false)
+ * 3. User cố connect Socket.IO
+ * 4. Token vẫn hợp lệ nhưng user.trangThai = false
+ * 5. wsAuth.verifyWsJWT(token) → ❌ Lỗi "Tài khoản đã bị khóa"
+ * 6. User bị từ chối kết nối
+ *
+ * ───────────────────────────────────────────────────────────────────────────
+ * 📝 LỊCH SỬ PHÁT TRIỂN
+ * ───────────────────────────────────────────────────────────────────────────
+ *
+ * Ngày 1 (26/10/2025) - Mock version:
+ * - Chỉ verify JWT cơ bản
+ * - Không check user trong database
+ * - Không check account status
+ * - Return decoded payload trực tiếp
+ *
+ * Ngày 3 (28/10/2025) - Production version:
+ * - Verify JWT + check user exists + check account active
+ * - Dùng cùng logic với AuthMiddleware.js (Q.Thắng)
+ * - Return format chuẩn: { userId, email, vaiTro, userInfo }
+ * - Error handling đầy đủ
+ * - Test thành công với Socket.IO server
+ *
+ * ───────────────────────────────────────────────────────────────────────────
+ * 🔗 FILE LIÊN QUAN
+ * ───────────────────────────────────────────────────────────────────────────
+ *
+ * src/middlewares/AuthMiddleware.js
+ * └─ REST API authentication (HTTP)
+ * └─ Dùng chung logic với file này
+ *
+ * src/ws/index.js
+ * └─ Socket.IO server
+ * └─ Gọi verifyWsJWT() trong io.use()
+ *
+ * src/models/NguoiDungModel.js
+ * └─ Model để lấy user từ database
+ * └─ Hàm getById(userId)
+ *
+ * ───────────────────────────────────────────────────────────────────────────
+ * 🔜 NÂNG CẤP TƯƠNG LAI (NẾU CẦN)
+ * ───────────────────────────────────────────────────────────────────────────
+ *
+ * 1. Blacklist token
+ *    └─ Khi user logout → Đưa token vào blacklist
+ *    └─ Token trong blacklist không dùng được nữa
+ *
+ * 2. Refresh token cho WebSocket
+ *    └─ Token hết hạn → Tự động renew không cần login lại
+ *
+ * 3. Rate limiting
+ *    └─ Giới hạn số lần verify token mỗi phút
+ *    └─ Tránh tấn công brute force
+ *
+ * 4. Logging chi tiết
+ *    └─ Log thời gian verify
+ *    └─ Log thất bại để phát hiện tấn công
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
  */
