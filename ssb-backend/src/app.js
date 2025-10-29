@@ -12,6 +12,7 @@ import routeRoutes from "./routes/api/route.js";
 import scheduleRoutes from "./routes/api/schedule.js";
 import authRouters from "./routes/api/auth.route.js";
 import tripRoutes from "./routes/api/trip.route.js"; // dòng này dùng để mount trip routes
+import telemetryRoutes from "./routes/api/telemetry.route.js"; // GPS & Telemetry routes
 
 // Import middlewares
 
@@ -32,6 +33,7 @@ app.use("/api/buses", busRoutes);
 app.use("/api/drivers", driverRoutes);
 app.use("/api/schedules", scheduleRoutes);
 app.use("/api/trips", tripRoutes); // dòng này dùng để mount trip routes
+app.use("/api", telemetryRoutes); // Telemetry: POST /api/trips/:id/telemetry
 // Error handling middleware
 // app.use(errorHandler);
 
