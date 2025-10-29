@@ -2,7 +2,8 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { useAuth, type UserRole } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -16,8 +17,19 @@ export default function LoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [role, setRole] = useState<UserRole>("admin")
-  const { login, isLoading } = useAuth()
+  const { login, loading, user } = useAuth()
   const { toast } = useToast()
+  const router = useRouter()
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (user && user.role && !loading) {
+      const userRole = user.role.toLowerCase()
+      if (userRole === "admin" || userRole === "driver" || userRole === "parent") {
+        router.push(`/${userRole}`)
+      }
+    }
+  }, [user, loading, router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -32,15 +44,24 @@ export default function LoginPage() {
     }
 
     try {
-      await login(email, password, role)
+      const loggedInUser = await login(email, password)
       toast({
         title: "Đăng nhập thành công",
         description: `Chào mừng bạn đến với SSB 1.0`,
       })
-    } catch (error) {
+      
+      // Redirect based on user role
+      const userRole = loggedInUser.role?.toLowerCase()
+      if (userRole === "admin" || userRole === "driver" || userRole === "parent") {
+        router.push(`/${userRole}`)
+      } else {
+        // Fallback redirect
+        router.push("/")
+      }
+    } catch (error: any) {
       toast({
         title: "Đăng nhập thất bại",
-        description: "Email hoặc mật khẩu không đúng",
+        description: error?.message || "Email hoặc mật khẩu không đúng",
         variant: "destructive",
       })
     }
@@ -148,9 +169,9 @@ export default function LoginPage() {
                     <Button
                       type="submit"
                       className="w-full h-11 bg-primary hover:bg-primary/90 text-primary-foreground font-medium"
-                      disabled={isLoading}
+                      disabled={loading}
                     >
-                      {isLoading ? "Đang đăng nhập..." : "Đăng nhập"}
+                      {loading ? "Đang đăng nhập..." : "Đăng nhập"}
                     </Button>
 
                     {/* Demo Credentials */}

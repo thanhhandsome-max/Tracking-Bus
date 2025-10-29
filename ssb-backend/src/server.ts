@@ -23,8 +23,8 @@ import {
   successResponse,
 } from "./middlewares/error.js";
 import { API_PREFIX } from "./constants/http.js";
-import authRoutes from "./routes/api/auth.route.js";
-import busRoutes from "./routes/bus.route.js";
+import authRoutes from "./routes/api/auth.js";
+import busRoutes from "./routes/api/bus.js";
 import tripRoutes from "./routes/api/trip.route.js";
 
 // Create Express app
@@ -162,22 +162,8 @@ async function checkRedisHealth(): Promise<string> {
 // API Routes
 app.use(`${API_PREFIX}/auth`, authRoutes);
 
-// app.use(`${API_PREFIX}/buses`, (_req, res) => {
-//   res.json({
-//     success: true,
-//     message: 'Bus routes will be implemented in Day 2',
-//     data: {
-//       availableEndpoints: [
-//         'GET /buses',
-//         'POST /buses',
-//         'GET /buses/:id',
-//         'PUT /buses/:id',
-//         'DELETE /buses/:id',
-//         'POST /buses/:id/position',
-//       ],
-//     },
-//   });
-// });
+// Bus routes - CRUD operations
+app.use(`${API_PREFIX}/buses`, busRoutes);
 
 app.use(`${API_PREFIX}/trips`, tripRoutes);
 
@@ -247,9 +233,33 @@ app.use(`${API_PREFIX}/schedules`, (_req, res) => {
   });
 });
 
-// 404 handler for API routes (catch-all middleware for Express 5)
+// API root endpoint - returns available endpoints
+app.get(`${API_PREFIX}`, (_req, res) => {
+  res.json({
+    success: true,
+    message: "SSB Backend API v1.0",
+    data: {
+      version: "1.0.0",
+      endpoints: {
+        auth: `${API_PREFIX}/auth`,
+        trips: `${API_PREFIX}/trips`,
+        buses: `${API_PREFIX}/reports/buses`,
+        drivers: `${API_PREFIX}/drivers`,
+        routes: `${API_PREFIX}/routes`,
+        schedules: `${API_PREFIX}/schedules`,
+        health: `${API_PREFIX}/health`,
+      },
+      documentation: "See docs/openapi.yaml for full API documentation",
+    },
+  });
+});
+
+// 404 handler for API routes - this will catch any unmatched /api/v1/* routes
+// Note: Express automatically handles 404s, but this provides consistent error format
 app.use(`${API_PREFIX}`, (req, res, next) => {
-  // If no route was matched, return 404
+  // Only handle if no route was matched (this middleware runs after all route handlers)
+  // Note: In Express, if a route handler calls res.send() or res.json(), this won't be reached
+  // This is only reached if no route handler matched the request
   notFoundHandler(req, res);
 });
 

@@ -27,7 +27,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="vi">
-      <body className={`font-sans ${inter.variable} antialiased`}>
+      <body className={`font-sans ${inter.variable} antialiased`} suppressHydrationWarning>
         <Suspense fallback={null}>
           <AuthProvider>
             {children}

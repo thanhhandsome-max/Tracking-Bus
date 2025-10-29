@@ -3,7 +3,17 @@
 -- Version: 1.0.0
 -- Created: 2025-10-25
 
+-- ⚠️ IMPORTANT: Run init_db.sql FIRST before running this script!
+-- This script inserts sample data and requires the database schema to be created first.
+-- If you get "Unknown column 'hoTen'" error, it means the schema doesn't match.
+-- Solution: Run init_db.sql first to recreate the database schema.
+
 USE school_bus_system;
+
+-- Verify that the NguoiDung table has the correct schema
+-- If this query fails, you need to run init_db.sql first
+-- SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+-- WHERE TABLE_SCHEMA = 'school_bus_system' AND TABLE_NAME = 'NguoiDung' AND COLUMN_NAME = 'hoTen';
 
 -- Insert sample users
 INSERT INTO NguoiDung (hoTen, email, matKhau, soDienThoai, vaiTro) VALUES
