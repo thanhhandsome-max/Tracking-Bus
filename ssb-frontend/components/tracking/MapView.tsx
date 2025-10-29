@@ -1,6 +1,6 @@
 "use client"
 
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -35,8 +35,45 @@ export function MapView({
   className = '',
   height = '600px',
 }: MapViewProps) {
-  // convert buses -> simple marker shape used by LeafletMap
-  const markers = buses.map((b) => ({ id: b.id, lat: b.lat, lng: b.lng, label: `${b.plateNumber} · ${b.route}` }))
+  // local markers state so we can update positions in realtime when socket events arrive
+  const [markers, setMarkers] = useState(
+    buses.map((b) => ({ id: b.id, lat: b.lat, lng: b.lng, label: `${b.plateNumber} · ${b.route}` }))
+  )
+
+  // update markers when buses prop changes (initial or external updates)
+  useEffect(() => {
+    setMarkers(buses.map((b) => ({ id: b.id, lat: b.lat, lng: b.lng, label: `${b.plateNumber} · ${b.route}` })))
+  }, [JSON.stringify(buses)])
+
+  useEffect(() => {
+    function handleEvent(e: Event) {
+      const payload = (e as CustomEvent).detail
+      if (!payload) return
+
+      // try to find id and coords from payload
+      const id = payload.id || payload.busId || payload.vehicleId || (payload.bus && payload.bus.id)
+      const lat = payload.lat || payload.latitude || payload.latLng?.lat || payload.coords?.lat
+      const lng = payload.lng || payload.longitude || payload.latLng?.lng || payload.coords?.lng || payload.lon
+      if (!id || (typeof lat !== 'number' && typeof lng !== 'number')) return
+
+      setMarkers((prev) => {
+        const exist = prev.find((m) => m.id + '' === id + '')
+        if (exist) {
+          return prev.map((m) => (m.id + '' === id + '' ? { ...m, lat, lng } : m))
+        }
+        // if not exist, add new marker
+        return [...prev, { id: id + '', lat, lng, label: payload.label || payload.title || '' }]
+      })
+    }
+
+    window.addEventListener('busLocationUpdate', handleEvent as EventListener)
+    window.addEventListener('busPositionUpdate', handleEvent as EventListener)
+
+    return () => {
+      window.removeEventListener('busLocationUpdate', handleEvent as EventListener)
+      window.removeEventListener('busPositionUpdate', handleEvent as EventListener)
+    }
+  }, [])
 
   return (
     <Card className={className}>

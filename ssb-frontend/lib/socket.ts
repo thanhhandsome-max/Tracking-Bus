@@ -81,6 +81,12 @@ class SocketService {
       );
     });
 
+    // also support alternate event name 'bus_position_update' (server may emit this)
+    this.socket.on("bus_position_update", (data) => {
+      console.log("Bus position update (alias):", data);
+      window.dispatchEvent(new CustomEvent("busPositionUpdate", { detail: data }));
+    });
+
     this.socket.on("bus_location_response", (data) => {
       console.log("Bus location response:", data);
       window.dispatchEvent(
@@ -211,4 +217,8 @@ class SocketService {
 
 // Create singleton instance
 export const socketService = new SocketService();
+// expose for debugging in browser console
+if (typeof window !== "undefined") {
+  ;(window as any).__socketService = socketService;
+}
 export default socketService;
