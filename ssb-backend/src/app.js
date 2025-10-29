@@ -10,7 +10,8 @@ import driverRoutes from "./routes/api/driver.js";
 import studentRoutes from "./routes/api/student.js";
 import routeRoutes from "./routes/api/route.js";
 import scheduleRoutes from "./routes/api/schedule.js";
-import tripRoutes from "./routes/api/trip.js";
+import authRouters from "./routes/api/auth.route.js";
+import tripRoutes from "./routes/api/trip.route.js"; // dòng này dùng để mount trip routes
 
 // Import middlewares
 
@@ -25,7 +26,16 @@ app.use(morgan("combined"));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Health check endpoint (đặt TRƯỚC routes để không bị middleware block)
+// Routes
+app.use("/api/auth", authRouters);
+app.use("/api/buses", busRoutes);
+app.use("/api/drivers", driverRoutes);
+app.use("/api/schedules", scheduleRoutes);
+app.use("/api/trips", tripRoutes); // dòng này dùng để mount trip routes
+// Error handling middleware
+// app.use(errorHandler);
+
+// Health check endpoint
 app.get("/health", (req, res) => {
   res.status(200).json({
     status: "OK",
