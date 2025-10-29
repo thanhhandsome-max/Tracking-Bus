@@ -18,4 +18,4 @@ const busSchema: Schema<IBus> = new Schema({
   },
 }, { timestamps: true });
 
-export default mongoose.model<IBus>('Bus', busSchema);
+export default mongoose.models.Bus || mongoose.model<IBus>('Bus', busSchema);

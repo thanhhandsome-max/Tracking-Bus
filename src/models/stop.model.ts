@@ -31,4 +31,4 @@ const stopSchema: Schema<IStop> = new Schema({
 // Tạo index cho truy vấn không gian
 stopSchema.index({ location: '2dsphere' });
 
-export default mongoose.model<IStop>('Stop', stopSchema);
+export default mongoose.models.Stop || mongoose.model<IStop>('Stop', stopSchema);

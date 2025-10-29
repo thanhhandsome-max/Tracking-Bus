@@ -34,4 +34,4 @@ const busLocationSchema: Schema<IBusLocation> = new Schema({
 busLocationSchema.index({ busId: 1, timestamp: -1 });
 busLocationSchema.index({ location: '2dsphere' });
 
-export default mongoose.model<IBusLocation>('BusLocation', busLocationSchema);
+export default mongoose.models.BusLocation || mongoose.model<IBusLocation>('BusLocation', busLocationSchema);

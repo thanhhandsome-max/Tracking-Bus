@@ -1,0 +1,316 @@
+.container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.header {
+  background: rgba(255, 255, 255, 0.95);
+  padding: 2rem;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  margin-bottom: 2rem;
+}
+
+.headerContent {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.header h1 {
+  font-size: 2rem;
+  color: #1a202c;
+  margin-bottom: 0.5rem;
+}
+
+.subtitle {
+  color: #4a5568;
+  font-size: 1rem;
+}
+
+.main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1rem 2rem;
+}
+
+.loading {
+  text-align: center;
+  padding: 4rem;
+  color: white;
+  font-size: 1.2rem;
+}
+
+/* Driver Info */
+.driverInfo, .busInfo {
+  margin-bottom: 2rem;
+}
+
+.driverInfo h2, .busInfo h2, .tripsSection h2, .quickActions h2 {
+  color: white;
+  margin-bottom: 1rem;
+  font-size: 1.5rem;
+}
+
+.infoCard {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.infoRow {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.infoRow:last-child {
+  border-bottom: none;
+}
+
+.label {
+  font-weight: 600;
+  color: #4a5568;
+}
+
+.value {
+  color: #1a202c;
+}
+
+/* Bus Info */
+.busHeader {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.busIcon {
+  font-size: 3rem;
+}
+
+.plateNumber {
+  font-size: 1.5rem;
+  color: #1a202c;
+  margin: 0;
+}
+
+.capacity {
+  color: #718096;
+  margin: 0.25rem 0 0 0;
+}
+
+.busActions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.trackBtn, .updateBtn {
+  flex: 1;
+  padding: 0.75rem;
+  border-radius: 8px;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s;
+  text-decoration: none;
+  border: none;
+  font-size: 1rem;
+}
+
+.trackBtn {
+  background: #4299e1;
+  color: white;
+}
+
+.trackBtn:hover {
+  background: #3182ce;
+  transform: translateY(-2px);
+}
+
+.updateBtn {
+  background: #48bb78;
+  color: white;
+}
+
+.updateBtn:hover {
+  background: #38a169;
+  transform: translateY(-2px);
+}
+
+/* Trips Section */
+.tripsSection {
+  margin-bottom: 2rem;
+}
+
+.empty {
+  background: white;
+  padding: 3rem;
+  border-radius: 12px;
+  text-align: center;
+  color: #718096;
+}
+
+.tripsList {
+  display: grid;
+  gap: 1rem;
+}
+
+.tripCard {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  transition: transform 0.3s;
+}
+
+.tripCard:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+}
+
+.tripHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.tripStatus {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.statusBadge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 20px;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.statusBadge.active {
+  background: #c6f6d5;
+  color: #22543d;
+}
+
+.statusBadge.completed {
+  background: #bee3f8;
+  color: #2c5282;
+}
+
+.routeName {
+  font-size: 1.25rem;
+  color: #1a202c;
+  margin-bottom: 1rem;
+}
+
+.routeInfo {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  color: #4a5568;
+}
+
+.stop {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.icon {
+  font-size: 1.2rem;
+}
+
+.arrow {
+  color: #a0aec0;
+  font-size: 1.2rem;
+}
+
+.currentStop {
+  background: #edf2f7;
+  padding: 0.75rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #2d3748;
+}
+
+.viewMapBtn {
+  display: block;
+  width: 100%;
+  padding: 0.75rem;
+  background: #667eea;
+  color: white;
+  text-align: center;
+  border-radius: 8px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.3s;
+}
+
+.viewMapBtn:hover {
+  background: #5a67d8;
+  transform: translateY(-2px);
+}
+
+/* Quick Actions */
+.quickActions {
+  margin-bottom: 2rem;
+}
+
+.actionGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1rem;
+}
+
+.actionCard {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  text-decoration: none;
+  color: inherit;
+  transition: all 0.3s;
+  text-align: center;
+}
+
+.actionCard:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 15px rgba(0, 0, 0, 0.2);
+}
+
+.actionIcon {
+  font-size: 3rem;
+  margin-bottom: 0.5rem;
+}
+
+.actionCard h3 {
+  font-size: 1.25rem;
+  color: #1a202c;
+  margin-bottom: 0.5rem;
+}
+
+.actionCard p {
+  color: #718096;
+  font-size: 0.9rem;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .header h1 {
+    font-size: 1.5rem;
+  }
+
+  .busActions {
+    flex-direction: column;
+  }
+
+  .actionGrid {
+    grid-template-columns: 1fr;
+  }
+}

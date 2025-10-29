@@ -1,0 +1,375 @@
+/* src/app/multi-trip-tracking/page.module.css */
+
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.header {
+  background: rgba(255, 255, 255, 0.95);
+  padding: 1.5rem 2rem;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 10;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 1.75rem;
+  color: #2d3748;
+  font-weight: 700;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.studentSelector {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 8px;
+  color: white;
+}
+
+.studentSelector label {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.studentDropdown {
+  padding: 0.5rem 1rem;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.95);
+  color: #2d3748;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-width: 180px;
+}
+
+.studentDropdown:hover {
+  border-color: rgba(255, 255, 255, 0.5);
+  background: white;
+}
+
+.studentDropdown:focus {
+  outline: none;
+  border-color: #4299e1;
+  box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.2);
+}
+
+.autoRefresh {
+  display: flex;
+  align-items: center;
+}
+
+.autoRefresh label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  color: #4a5568;
+  font-size: 0.9rem;
+}
+
+.autoRefresh input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.refreshBtn {
+  padding: 0.6rem 1.2rem;
+  background: #4299e1;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+
+.refreshBtn:hover {
+  background: #3182ce;
+}
+
+.lastUpdate {
+  font-size: 0.85rem;
+  color: #718096;
+}
+
+.filterInfo {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 1rem 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  border-radius: 8px;
+}
+
+.filterInfo span {
+  font-weight: 600;
+}
+
+.clearFilterBtn {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.3s;
+}
+
+.clearFilterBtn:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: translateY(-2px);
+}
+
+.error {
+  padding: 1rem 2rem;
+  background: #fed7d7;
+  color: #9b2c2c;
+  border-left: 4px solid #f56565;
+}
+
+.content {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.sidebar {
+  width: 380px;
+  background: white;
+  box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar h2 {
+  margin: 0;
+  padding: 1.25rem 1.5rem;
+  font-size: 1.25rem;
+  color: #2d3748;
+  border-bottom: 2px solid #e2e8f0;
+  background: #f7fafc;
+}
+
+.tripList {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem;
+}
+
+.loading,
+.noTrips {
+  text-align: center;
+  color: #718096;
+  padding: 2rem 1rem;
+  font-style: italic;
+}
+
+.tripCard {
+  background: white;
+  border: 2px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tripCard:hover {
+  border-color: #cbd5e0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+
+.tripCard.selected {
+  border-color: #4299e1;
+  background: #ebf8ff;
+  box-shadow: 0 4px 16px rgba(66, 153, 225, 0.3);
+}
+
+.tripHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.tripColor {
+  width: 8px;
+  height: 50px;
+  border-radius: 4px;
+}
+
+.tripHeader h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: #2d3748;
+}
+
+.routeName {
+  margin: 0.25rem 0 0 0;
+  font-size: 0.9rem;
+  color: #4a5568;
+}
+
+.tripInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.infoRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.9rem;
+}
+
+.label {
+  color: #718096;
+  font-weight: 500;
+}
+
+.badge {
+  background: #e6fffa;
+  color: #234e52;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.progressBar {
+  width: 100%;
+  height: 8px;
+  background: #e2e8f0;
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 0.25rem 0;
+}
+
+.progressFill {
+  height: 100%;
+  background: linear-gradient(90deg, #48bb78 0%, #38a169 100%);
+  transition: width 0.5s ease;
+}
+
+.mapContainer {
+  flex: 1;
+  position: relative;
+  min-height: 400px;
+  height: 100%;
+  overflow: hidden;
+}
+
+.mapOverlay {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 1000;
+}
+
+.selectedTripInfo {
+  background: rgba(255, 255, 255, 0.95);
+  padding: 1.25rem 1.5rem;
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  min-width: 300px;
+  backdrop-filter: blur(10px);
+}
+
+.selectedTripInfo h3 {
+  margin: 0 0 0.75rem 0;
+  font-size: 1.2rem;
+  color: #2d3748;
+}
+
+.selectedTripInfo p {
+  margin: 0.4rem 0;
+  font-size: 0.95rem;
+  color: #4a5568;
+}
+
+.progressSection {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.progressSection p {
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+/* Scrollbar */
+.tripList::-webkit-scrollbar {
+  width: 8px;
+}
+
+.tripList::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+.tripList::-webkit-scrollbar-thumb {
+  background: #cbd5e0;
+  border-radius: 4px;
+}
+
+.tripList::-webkit-scrollbar-thumb:hover {
+  background: #a0aec0;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .content {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: 100%;
+    max-height: 40vh;
+  }
+
+  .header {
+    flex-direction: column;
+    gap: 1rem;
+    align-items: flex-start;
+  }
+
+  .controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .mapOverlay {
+    top: auto;
+    bottom: 1rem;
+    right: 1rem;
+    left: 1rem;
+  }
+
+  .selectedTripInfo {
+    min-width: auto;
+  }
+}
