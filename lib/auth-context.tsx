@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react'
 import * as authService from './services/auth.service'
 import { api } from './api'
+import { socketService } from '../ssb-frontend/lib/socket'
 
 type User = {
   id: string
@@ -27,6 +28,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const token = typeof window !== 'undefined' ? localStorage.getItem('ssb_token') : null
     if (token) {
       api.setToken(token)
+      // connect socket with JWT so server can push updates
+      try {
+        socketService.connect(token)
+      } catch (err) {
+        console.warn('socketService.connect failed', err)
+      }
+
       authService
         .fetchProfile()
         .then((u) => setUser(u))
@@ -48,6 +56,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true)
     try {
       const u = await authService.login(email, password)
+      // after successful login authService saved token -> connect socket
+      try {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('ssb_token') : null
+        if (token) socketService.connect(token)
+      } catch (err) {
+        console.warn('socketService.connect failed after login', err)
+      }
       setUser(u)
       return u
     } finally {
@@ -58,6 +73,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   function logout() {
     authService.logout()
     setUser(null)
+    try {
+      socketService.disconnect()
+    } catch (err) {
+      console.warn('socketService.disconnect failed', err)
+    }
   }
 
   return (

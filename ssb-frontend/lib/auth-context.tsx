@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react'
 import * as authService from './services/auth.service'
 import { api } from './api'
+import { socketService } from './socket'
 
 export type UserRole = "admin" | "driver" | "parent"
 
@@ -14,7 +15,7 @@ type User = {
 }
 
 type AuthContextValue = {
-  user: User | null
+  user: User | null 
   loading: boolean
   login: (username: string, password: string) => Promise<User>
   logout: () => Promise<void>
@@ -31,6 +32,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const token = localStorage.getItem('ssb_token')
     if (token) {
       api.setToken(token)
+      // connect socket with JWT (non-blocking)
+      try {
+        socketService.connect(token).catch((e) => {
+          console.warn('Socket connect failed (initial):', e)
+        })
+      } catch (err) {
+        // in case socketService.connect throws synchronously
+        console.warn('Socket connect error (initial):', err)
+      }
       authService
         .fetchProfile()
         .then((u) => setUser(u))
@@ -53,6 +63,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const u = await authService.login(email, password)
       setUser(u)
+      // connect socket after successful login
+      const token = typeof window !== 'undefined' ? localStorage.getItem('ssb_token') : null
+      if (token) {
+        try {
+          socketService.connect(token).catch((e) => console.warn('Socket connect failed (login):', e))
+        } catch (err) {
+          console.warn('Socket connect error (login):', err)
+        }
+      }
       return u
     } finally {
       setLoading(false)
@@ -62,6 +81,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function logout() {
     setUser(null)
     await authService.logout()
+    try {
+      socketService.disconnect()
+    } catch (err) {
+      console.warn('Error disconnecting socket on logout', err)
+    }
     // Redirect to login page
     if (typeof window !== 'undefined') {
       window.location.href = '/login'

@@ -26,6 +26,8 @@ import { API_PREFIX } from "./constants/http.js";
 import authRoutes from "./routes/api/auth.js";
 import busRoutes from "./routes/api/bus.js";
 import tripRoutes from "./routes/api/trip.route.js";
+import scheduleRoutes from "./routes/api/schedule.js";
+import routeRoutes from "./routes/api/route.js";
 
 // Create Express app
 const app = express();
@@ -166,6 +168,8 @@ app.use(`${API_PREFIX}/auth`, authRoutes);
 app.use(`${API_PREFIX}/buses`, busRoutes);
 
 app.use(`${API_PREFIX}/trips`, tripRoutes);
+app.use(`${API_PREFIX}/schedules`, scheduleRoutes);
+app.use(`${API_PREFIX}/routes`, routeRoutes);
 
 // app.use(`${API_PREFIX}/reports`, (_req, res) => {
 //   res.json({
@@ -183,6 +187,7 @@ app.use(`${API_PREFIX}/trips`, tripRoutes);
 
 app.use(`${API_PREFIX}/reports/buses`, busRoutes);
 app.use(`${API_PREFIX}/reports/trips`, tripRoutes);
+app.use(`${API_PREFIX}/reports/schedules`, scheduleRoutes);
 
 app.use(`${API_PREFIX}/drivers`, (_req, res) => {
   res.json({

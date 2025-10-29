@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useAuth } from "@/lib/auth-context"
 import { useRouter } from "next/navigation"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
@@ -8,12 +8,25 @@ import { ParentSidebar } from "@/components/parent/parent-sidebar"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { MapPin, Clock, Phone, CheckCircle2, AlertCircle } from "lucide-react"
+import { MapPin, Clock, Phone, CheckCircle2, AlertCircle, TriangleAlert } from "lucide-react"
+import { MapView } from "@/components/tracking/MapView"
+import { apiClient } from "@/lib/api"
+import { useTripBusPosition, useTripAlerts } from "@/hooks/use-socket"
+import { useToast } from "@/hooks/use-toast"
 
 export default function ParentDashboard() {
   const { user } = useAuth()
   const router = useRouter()
-  const [busLocation, setBusLocation] = useState({ lat: 21.0285, lng: 105.8542 })
+  // For testing we track a fixed trip room (match backend test script)
+  const TRIP_ID = 42
+  const { busPosition } = useTripBusPosition(TRIP_ID)
+  const [busLocation, setBusLocation] = useState<{ lat: number; lng: number }>({ lat: 21.0285, lng: 105.8542 })
+  const [lastUpdate, setLastUpdate] = useState<number | null>(null)
+  const { toast } = useToast()
+  const { approachStop, delayAlert } = useTripAlerts(TRIP_ID)
+  const [banner, setBanner] = useState<{ type: 'info' | 'warning'; title: string; description?: string } | null>(null)
+  const [stops, setStops] = useState<{ id: string; lat: number; lng: number; label?: string }[]>([])
+  const [busInfo, setBusInfo] = useState<{ id: string; plateNumber: string; route: string } | null>(null)
 
   useEffect(() => {
     if (user && user.role?.toLowerCase() !== "parent") {
@@ -24,14 +37,54 @@ export default function ParentDashboard() {
     }
   }, [user, router])
 
+  // Update local position whenever realtime event arrives
   useEffect(() => {
-    const interval = setInterval(() => {
-      setBusLocation((prev) => ({
-        lat: prev.lat + (Math.random() - 0.5) * 0.001,
-        lng: prev.lng + (Math.random() - 0.5) * 0.001,
-      }))
-    }, 3000)
-    return () => clearInterval(interval)
+    if (busPosition && Number.isFinite(busPosition.lat) && Number.isFinite(busPosition.lng)) {
+      console.log('[Parent] busPosition', busPosition)
+      setBusLocation({ lat: busPosition.lat, lng: busPosition.lng })
+      setLastUpdate(Date.now())
+    }
+  }, [busPosition])
+
+  // Day 4: show alerts for approach_stop & delay_alert
+  useEffect(() => {
+    if (approachStop) {
+      toast({
+        title: 'Xe sắp đến điểm dừng',
+        description: `Trip ${TRIP_ID} sắp đến điểm ${approachStop.stopName || approachStop.stopId || ''}`,
+      })
+      setBanner({ type: 'info', title: 'Xe sắp đến điểm dừng', description: approachStop.stopName || `Điểm ${approachStop.stopId || ''}` })
+    }
+  }, [approachStop, toast])
+  useEffect(() => {
+    if (delayAlert) {
+      toast({
+        title: 'Cảnh báo trễ chuyến',
+        description: delayAlert.reason || 'Xe có thể đến trễ',
+        variant: 'destructive',
+      })
+      setBanner({ type: 'warning', title: 'Cảnh báo trễ chuyến', description: delayAlert.reason || undefined })
+    }
+  }, [delayAlert, toast])
+
+  // Load child's route/bus info from API (best effort, structure may vary)
+  useEffect(() => {
+    async function load() {
+      try {
+        // Try to get a route by id=1 as fallback demo; in real flow, query student's assigned route
+        try {
+          const routeRes = await apiClient.getRouteById(1)
+          const routeData: any = (routeRes as any).data || routeRes
+          const points: any[] = routeData?.diemDung || routeData?.route?.diemDung || []
+          const mapped = points.map((s: any) => ({ id: (s.maDiem || s.id || `${s.viDo}_${s.kinhDo}`) + '', lat: Number(s.viDo || s.lat || s.latitude), lng: Number(s.kinhDo || s.lng || s.longitude), label: s.tenDiem || s.ten }))
+          setStops(mapped.filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng)))
+        } catch {}
+        setBusInfo({ id: '5', plateNumber: '29B-12345', route: `Trip ${TRIP_ID}` })
+      } catch (e) {
+        console.warn('Parent route load failed', e)
+      }
+    }
+    load()
   }, [])
 
   if (!user || user.role?.toLowerCase() !== "parent") {
@@ -55,6 +108,35 @@ export default function ParentDashboard() {
   return (
     <DashboardLayout sidebar={<ParentSidebar />}>
       <div className="space-y-6">
+        {banner && (
+          <div
+            className={`flex items-start gap-3 p-3 rounded-lg border ${
+              banner.type === 'warning'
+                ? 'bg-orange-500/10 border-orange-300 text-orange-800'
+                : 'bg-primary/10 border-primary/30 text-primary'
+            }`}
+          >
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-white/40">
+              {banner.type === 'warning' ? (
+                <AlertCircle className="w-5 h-5" />
+              ) : (
+                <TriangleAlert className="w-5 h-5" />
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-semibold">{banner.title}</div>
+              {banner.description && (
+                <div className="text-xs opacity-90 mt-0.5">{banner.description}</div>
+              )}
+            </div>
+            <button
+              onClick={() => setBanner(null)}
+              className="text-xs underline opacity-80 hover:opacity-100"
+            >
+              Đóng
+            </button>
+          </div>
+        )}
         <div>
           <h1 className="text-3xl font-bold text-foreground">Theo dõi xe buýt</h1>
           <p className="text-muted-foreground mt-1">Xem vị trí xe buýt của con bạn trong thời gian thực</p>
@@ -118,73 +200,27 @@ export default function ParentDashboard() {
           {/* Real-time Map */}
           <Card className="lg:col-span-2 border-border/50">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2">
                 <MapPin className="w-5 h-5 text-primary" />
                 Vị trí xe buýt
+                  <Badge variant="outline" className="ml-2">Trip {TRIP_ID}</Badge>
+                  {lastUpdate && (
+                    <span className="text-xs text-muted-foreground ml-auto">
+                      Cập nhật: {new Date(lastUpdate).toLocaleTimeString()} | ({busLocation.lat.toFixed(5)}, {busLocation.lng.toFixed(5)})
+                    </span>
+                  )}
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="relative h-[500px] bg-muted/30 rounded-lg overflow-hidden">
-                {/* Map placeholder with animated bus marker */}
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="text-center space-y-4">
-                    <div className="relative inline-block">
-                      <div className="w-16 h-16 rounded-full bg-primary/20 animate-ping absolute inset-0" />
-                      <div className="w-16 h-16 rounded-full bg-primary flex items-center justify-center relative">
-                        <MapPin className="w-8 h-8 text-primary-foreground" />
-                      </div>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="font-semibold text-foreground">Xe buýt {childInfo.busNumber}</p>
-                      <p className="text-sm text-muted-foreground">
-                        Lat: {busLocation.lat.toFixed(4)}, Lng: {busLocation.lng.toFixed(4)}
-                      </p>
-                      <Badge variant="outline" className="mt-2">
-                        Cập nhật 3 giây trước
-                      </Badge>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Route visualization */}
-                <div className="absolute top-4 left-4 bg-background/95 backdrop-blur-sm rounded-lg p-4 shadow-lg max-w-xs">
-                  <h4 className="font-semibold text-sm mb-3 text-foreground">Lộ trình hôm nay</h4>
-                  <div className="space-y-3">
-                    {[
-                      { name: "Điểm đón 1", time: "07:00", status: "completed" },
-                      { name: "Điểm đón 2", time: "07:10", status: "completed" },
-                      { name: "Điểm đón 3", time: "07:15", status: "current" },
-                      { name: "Điểm đón 4", time: "07:25", status: "upcoming" },
-                      { name: "Trường học", time: "07:45", status: "upcoming" },
-                    ].map((stop, index) => (
-                      <div key={index} className="flex items-center gap-3">
-                        <div
-                          className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold ${
-                            stop.status === "completed"
-                              ? "bg-green-500/20 text-green-700"
-                              : stop.status === "current"
-                                ? "bg-primary text-primary-foreground"
-                                : "bg-muted text-muted-foreground"
-                          }`}
-                        >
-                          {index + 1}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-foreground truncate">{stop.name}</p>
-                          <p className="text-xs text-muted-foreground">{stop.time}</p>
-                        </div>
-                        {stop.status === "completed" && (
-                          <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
-                        )}
-                        {stop.status === "current" && (
-                          <div className="w-2 h-2 rounded-full bg-primary animate-pulse flex-shrink-0" />
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </CardContent>
+                  {/* Replace placeholder with Leaflet MapView */}
+                  <MapView
+                    buses={[{ id: busInfo?.id || '5', plateNumber: busInfo?.plateNumber || childInfo.busNumber, route: busInfo?.route || `Trip ${TRIP_ID}`, status: 'running', lat: busLocation.lat, lng: busLocation.lng, speed: 30, students: 12 }] as any}
+                    stops={stops}
+                    height="500px"
+                    followFirstMarker
+                    autoFitOnUpdate
+                  />
+                </CardContent>
           </Card>
 
           {/* Right sidebar with schedule and notifications */}
