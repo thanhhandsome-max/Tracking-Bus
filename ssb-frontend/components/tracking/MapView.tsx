@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { MapPin } from 'lucide-react'
 import dynamic from 'next/dynamic'
+import { useTripBusPosition } from '@/hooks/use-socket'
 
 const LeafletMap = dynamic(() => import('@/components/map/leaflet-map'), { ssr: false })
 
@@ -27,6 +28,10 @@ interface MapViewProps {
   onSelectBus?: (bus: Bus) => void
   className?: string
   height?: string
+  // When true, pan the map to the first marker as it moves
+  followFirstMarker?: boolean
+  // When true, auto fit bounds when markers update (useful if multiple points)
+  autoFitOnUpdate?: boolean
 }
 
 export function MapView({
@@ -36,6 +41,8 @@ export function MapView({
   onSelectBus,
   className = '',
   height = '600px',
+  followFirstMarker = false,
+  autoFitOnUpdate = false,
 }: MapViewProps) {
   // local markers state so we can update positions in realtime when socket events arrive
   const [markers, setMarkers] = useState(() => {
@@ -55,6 +62,8 @@ export function MapView({
   useEffect(() => {
     function handleEvent(e: Event) {
       const payload = (e as CustomEvent).detail
+      console.log('[MapView] Incoming bus update:', payload)
+
       if (!payload) return
 
       // try to find id and coords from payload
@@ -62,6 +71,7 @@ export function MapView({
       const lat = payload.lat || payload.latitude || payload.latLng?.lat || payload.coords?.lat
       const lng = payload.lng || payload.longitude || payload.latLng?.lng || payload.coords?.lng || payload.lon
       const status = payload.status || payload.state || (payload.bus && payload.bus.status)
+      console.log('[MapView] event', { id, lat, lng, raw: payload })
       if (!id || (typeof lat !== 'number' && typeof lng !== 'number')) return
 
       setMarkers((prev) => {
@@ -83,6 +93,9 @@ export function MapView({
       window.removeEventListener('busPositionUpdate', handleEvent as EventListener)
     }
   }, [])
+  useEffect(() => {
+  console.log('[MapView] Markers updated:', markers)
+}, [markers])
 
   return (
     <Card className={className}>
@@ -101,7 +114,12 @@ export function MapView({
       </CardHeader>
       <CardContent>
         <div className="relative">
-          <LeafletMap height={height} markers={markers} />
+          <LeafletMap
+            height={height}
+            markers={markers}
+            followFirstMarker={followFirstMarker}
+            autoFitOnUpdate={autoFitOnUpdate}
+          />
           <div className="absolute bottom-4 left-4 bg-card/90 backdrop-blur-sm border border-border rounded-lg p-3 shadow-lg">
             <div className="space-y-2">
               <div className="flex items-center gap-2">
