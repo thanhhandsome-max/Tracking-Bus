@@ -22,6 +22,7 @@ interface Bus {
 
 interface MapViewProps {
   buses: Bus[]
+  stops?: { id: string; lat: number; lng: number; label?: string }[]
   selectedBus?: Bus
   onSelectBus?: (bus: Bus) => void
   className?: string
@@ -30,20 +31,26 @@ interface MapViewProps {
 
 export function MapView({
   buses,
+  stops,
   selectedBus,
   onSelectBus,
   className = '',
   height = '600px',
 }: MapViewProps) {
   // local markers state so we can update positions in realtime when socket events arrive
-  const [markers, setMarkers] = useState(
-    buses.map((b) => ({ id: b.id, lat: b.lat, lng: b.lng, label: `${b.plateNumber} · ${b.route}` }))
-  )
+  const [markers, setMarkers] = useState(() => {
+    const busMarkers = buses.map((b) => ({ id: b.id, lat: b.lat, lng: b.lng, label: `${b.plateNumber} · ${b.route}`, type: 'bus' as const, status: b.status }))
+    const stopMarkers = (stops || []).map((s) => ({ id: s.id, lat: s.lat, lng: s.lng, label: s.label, type: 'stop' as const }))
+    return [...busMarkers, ...stopMarkers]
+  })
 
-  // update markers when buses prop changes (initial or external updates)
+  // update markers when buses or stops prop change (initial or external updates)
   useEffect(() => {
-    setMarkers(buses.map((b) => ({ id: b.id, lat: b.lat, lng: b.lng, label: `${b.plateNumber} · ${b.route}` })))
-  }, [JSON.stringify(buses)])
+    const busMarkers = buses.map((b) => ({ id: b.id, lat: b.lat, lng: b.lng, label: `${b.plateNumber} · ${b.route}`, type: 'bus' as const, status: b.status }))
+    const stopMarkers = (stops || []).map((s) => ({ id: s.id, lat: s.lat, lng: s.lng, label: s.label, type: 'stop' as const }))
+    setMarkers([...busMarkers, ...stopMarkers])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(buses), JSON.stringify(stops || [])])
 
   useEffect(() => {
     function handleEvent(e: Event) {
@@ -54,15 +61,17 @@ export function MapView({
       const id = payload.id || payload.busId || payload.vehicleId || (payload.bus && payload.bus.id)
       const lat = payload.lat || payload.latitude || payload.latLng?.lat || payload.coords?.lat
       const lng = payload.lng || payload.longitude || payload.latLng?.lng || payload.coords?.lng || payload.lon
+      const status = payload.status || payload.state || (payload.bus && payload.bus.status)
       if (!id || (typeof lat !== 'number' && typeof lng !== 'number')) return
 
       setMarkers((prev) => {
         const exist = prev.find((m) => m.id + '' === id + '')
         if (exist) {
-          return prev.map((m) => (m.id + '' === id + '' ? { ...m, lat, lng } : m))
+          // update position and status if it's a bus
+          return prev.map((m) => (m.id + '' === id + '' ? { ...m, lat, lng, ...(m.type === 'bus' ? { status } : {}) } : m))
         }
-        // if not exist, add new marker
-        return [...prev, { id: id + '', lat, lng, label: payload.label || payload.title || '' }]
+        // if not exist, add new marker (assume bus)
+        return [...prev, { id: id + '', lat, lng, label: payload.label || payload.title || '', type: 'bus', status }]
       })
     }
 

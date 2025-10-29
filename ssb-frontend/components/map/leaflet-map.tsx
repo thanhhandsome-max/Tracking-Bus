@@ -2,9 +2,10 @@
 
 import React, { useEffect, useRef } from "react"
 import L from "leaflet"
+import { createBusIcon, createStopIcon, createStopPinIcon } from './icons'
 import "leaflet/dist/leaflet.css"
 
-type Marker = { id: string; lat: number; lng: number; label?: string }
+type Marker = { id: string; lat: number; lng: number; label?: string; type?: 'bus' | 'stop'; status?: string }
 
 type Props = {
   height?: string
@@ -22,6 +23,7 @@ export default function LeafletMap({
   const mapRef = useRef<HTMLDivElement | null>(null)
   const leafletMapRef = useRef<L.Map | null>(null)
   const addedMarkersRef = useRef<L.Layer[]>([])
+  const initialViewSetRef = useRef(false)
 
   useEffect(() => {
     if (!mapRef.current) return
@@ -55,9 +57,21 @@ export default function LeafletMap({
     if (leafletMapRef.current && markers.length > 0) {
       const latlngs: L.LatLngExpression[] = []
       markers.forEach((m) => {
-        const mk = L.circleMarker([m.lat, m.lng], { radius: 6, color: "#2563eb", fillColor: "#2563eb", fillOpacity: 1 })
+        // use icon markers for bus/stop types, fallback to circleMarker for unknown
+        let mk: L.Layer
+        if (m.type === 'bus') {
+          // choose color by status: running -> green, otherwise orange
+          const status = (m as any).status || ''
+          const color = status === 'running' ? '#10b981' : '#f97316'
+          mk = L.marker([m.lat, m.lng], { icon: createBusIcon(color, 28) })
+        } else if (m.type === 'stop') {
+          mk = L.marker([m.lat, m.lng], { icon: createStopPinIcon('#ef4444', 28, 36) })
+        } else {
+          mk = L.circleMarker([m.lat, m.lng], { radius: 6, color: "#2563eb", fillColor: "#2563eb", fillOpacity: 1 })
+        }
+
         mk.addTo(leafletMapRef.current as L.Map)
-        if (m.label) mk.bindPopup(m.label)
+        if ((mk as any).bindPopup && m.label) (mk as any).bindPopup(m.label)
         addedMarkersRef.current.push(mk)
         latlngs.push([m.lat, m.lng])
       })
@@ -65,13 +79,24 @@ export default function LeafletMap({
       if (latlngs.length >= 2) {
         const poly = L.polyline(latlngs, { color: "#2563eb", weight: 5, opacity: 0.9 }).addTo(leafletMapRef.current)
         addedMarkersRef.current.push(poly)
-        ;(leafletMapRef.current as L.Map).fitBounds(poly.getBounds(), { padding: [40, 40] })
+        // Only auto-fit bounds on the first render (avoid resetting user zoom/pan)
+        if (!initialViewSetRef.current) {
+          ;(leafletMapRef.current as L.Map).fitBounds(poly.getBounds(), { padding: [40, 40] })
+          initialViewSetRef.current = true
+        }
       } else if (latlngs.length === 1) {
-        ;(leafletMapRef.current as L.Map).setView(latlngs[0], zoom)
+        // Only set view on first render
+        if (!initialViewSetRef.current) {
+          ;(leafletMapRef.current as L.Map).setView(latlngs[0], zoom)
+          initialViewSetRef.current = true
+        }
       }
     } else if (leafletMapRef.current) {
-      // no markers — ensure center/zoom
-      leafletMapRef.current.setView([center.lat, center.lng], zoom)
+      // no markers — ensure center/zoom only on first render to avoid resetting user interactions
+      if (!initialViewSetRef.current) {
+        leafletMapRef.current.setView([center.lat, center.lng], zoom)
+        initialViewSetRef.current = true
+      }
     }
 
     return () => {
