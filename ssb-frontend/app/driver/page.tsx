@@ -37,12 +37,15 @@ export default function DriverDashboard() {
   const router = useRouter()
 
   useEffect(() => {
-    if (user && user.role !== "driver") {
-      router.push(`/${user.role}`)
+    if (user && user.role?.toLowerCase() !== "driver") {
+      const userRole = user.role?.toLowerCase()
+      if (userRole === "admin" || userRole === "parent") {
+        router.push(`/${userRole}`)
+      }
     }
   }, [user, router])
 
-  if (!user || user.role !== "driver") {
+  if (!user || user.role?.toLowerCase() !== "driver") {
     return null
   }
 

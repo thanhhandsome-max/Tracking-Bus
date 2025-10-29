@@ -20,12 +20,15 @@ export default function AdminDashboard() {
   const router = useRouter()
 
   useEffect(() => {
-    if (user && user.role !== "admin") {
-      router.push(`/${user.role}`)
+    if (user && user.role?.toLowerCase() !== "admin") {
+      const userRole = user.role?.toLowerCase()
+      if (userRole === "driver" || userRole === "parent") {
+        router.push(`/${userRole}`)
+      }
     }
   }, [user, router])
 
-  if (!user || user.role !== "admin") {
+  if (!user || user.role?.toLowerCase() !== "admin") {
     return null
   }
 

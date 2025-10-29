@@ -4,6 +4,10 @@
 -- Created: 2025-10-25
 
 -- Create database
+-- ⚠️ WARNING: This will drop existing database if it exists!
+-- Uncomment the line below if you want to completely recreate the database:
+-- DROP DATABASE IF EXISTS school_bus_system;
+
 CREATE DATABASE IF NOT EXISTS school_bus_system;
 USE school_bus_system;
 

@@ -14,9 +14,12 @@ export default function FloatingChat() {
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
   const [text, setText] = useState("")
+  const [mounted, setMounted] = useState(false)
   const panelRef = useRef<HTMLDivElement | null>(null)
 
+  // Only load from localStorage after component mounts on client
   useEffect(() => {
+    setMounted(true)
     // load recent messages from localStorage so chat persists across reloads
     try {
       const raw = localStorage.getItem("ssb_chat_msgs")
@@ -61,6 +64,11 @@ export default function FloatingChat() {
       }
       setMessages((s) => [...s, reply])
     }, 800)
+  }
+
+  // Don't render until mounted to avoid hydration mismatch
+  if (!mounted) {
+    return null
   }
 
   return (

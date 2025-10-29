@@ -5,6 +5,7 @@ import XeBuytModel from "../models/XeBuytModel.js";
 import TaiXeModel from "../models/TaiXeModel.js";
 import TuyenDuongModel from "../models/TuyenDuongModel.js";
 import HocSinhModel from "../models/HocSinhModel.js";
+import tripService from "../services/tripService.js"; // kết nối tới service xử lý logic trip
 
 class TripController {
   // Lấy danh sách tất cả chuyến đi
@@ -434,11 +435,139 @@ class TripController {
   }
 
   // Bắt đầu chuyến đi
+  /**
+   * 🚀 START TRIP - Controller xử lý request bắt đầu chuyến
+   *
+   * 🎯 MỤC ĐÍCH:
+   * - Nhận HTTP request từ driver app
+   * - Gọi service để xử lý logic nghiệp vụ
+   * - Trả response về client
+   * - Emit Socket.IO event (Day 3)
+   *
+   * 📖 CÁCH HOẠT ĐỘNG:
+   *
+   * Controller có 3 nhiệm vụ chính:
+   * 1. NHẬN REQUEST (req):
+   *    - Lấy tripId từ URL params
+   *    - Lấy gioBatDauThucTe từ body (optional)
+   *    - Lấy user từ JWT token (req.user - từ middleware)
+   *
+   * 2. GỌI SERVICE:
+   *    - Gọi tripService.startTrip(tripId)
+   *    - Service xử lý tất cả logic nghiệp vụ
+   *    - Nhận về trip object đã cập nhật
+   *
+   * 3. TRẢ RESPONSE (res):
+   *    - Tạo JSON response
+   *    - Set HTTP status code (200, 404, 500...)
+   *    - Gửi về client
+   *
+   * 🔄 FLOW HOẠT ĐỘNG:
+   * ```
+   * POST /api/trips/123/start
+   *   ↓
+   * AuthMiddleware.authenticate → Verify JWT
+   *   ↓
+   * TripController.startTrip(req, res) ← ĐÂY!
+   *   ↓
+   * Step 1: Lấy tripId = req.params.id
+   *   ↓
+   * Step 2: Gọi tripService.startTrip(tripId)
+   *   ↓ (Service xử lý logic)
+   * Step 3: Nhận trip object từ service
+   *   ↓
+   * Step 4: Emit Socket.IO event (Day 3)
+   *   ↓
+   * Step 5: res.json({ success: true, trip })
+   * ```
+   *
+   * 💡 TẠI SAO CONTROLLER NGẮN GỌN?
+   * - Controller CHỈ xử lý HTTP request/response
+   * - Logic nghiệp vụ → Service
+   * - Database query → Model
+   * - Nguyên tắc: Thin Controller, Fat Service
+   *
+   * 🧪 VÍ DỤ REQUEST/RESPONSE:
+   *
+   * Request:
+   * ```http
+   * POST /api/trips/123/start
+   * Headers: {
+   *   Authorization: Bearer eyJhbGci...
+   * }
+   * Body: {} (hoặc { "gioBatDauThucTe": "08:00" })
+   * ```
+   *
+   * Response Success (200):
+   * ```json
+   * {
+   *   "success": true,
+   *   "message": "Trip started",
+   *   "trip": {
+   *     "maChuyen": 123,
+   *     "trangThai": "dang_chay",
+   *     "gioBatDauThucTe": "08:30"
+   *   }
+   * }
+   * ```
+   *
+   * Response Error (404):
+   * ```json
+   * {
+   *   "success": false,
+   *   "message": "Không tìm thấy chuyến đi"
+   * }
+   * ```
+   *
+   * @method POST
+   * @param {Object} req - Express request object (được tạo bởi Express khi có request)
+   * @param {Object} req.params - URL parameters (được lấy từ đường dẫn)
+   * @param {string} req.params.id - Trip ID (maChuyen) (lấy từ /api/trips/:id/start)
+   * @param {Object} req.body - Request body (optional) (được gửi từ client)
+   * @param {string} req.body.gioBatDauThucTe - Start time override (optional) (lấy từ body)
+   * @param {Object} req.user - User from JWT (set by AuthMiddleware) (lấy từ middleware)
+   * @param {Object} res - Express response object (được tạo bởi Express để trả về client)
+   *
+   * @returns {void} Trả response về client qua res.json()
+   */
   static async startTrip(req, res) {
     try {
-      const { id } = req.params;
-      const { gioBatDauThucTe } = req.body;
+      /**
+       * 📥 BƯỚC 1: LẤY DỮ LIỆU TỪ REQUEST
+       *
+       * Giải thích:
+       * - req.params.id: Lấy từ URL /api/trips/:id/start
+       *   VD: /api/trips/123/start → id = "123"
+       *
+       * - req.body.gioBatDauThucTe: Lấy từ JSON body (optional)
+       *   VD: { "gioBatDauThucTe": "08:00" }
+       *   Dùng khi driver muốn ghi đè thời gian (hiếm khi dùng)
+       *
+       * - req.user: Được set bởi AuthMiddleware.authenticate
+       *   VD: { maNguoiDung: 5, email: "driver@ssb.vn", vaiTro: "tai_xe" }
+       *   Dùng để check quyền (Day 3)
+       *
+       * Destructuring syntax:
+       * const { id } = req.params;
+       * ↓ Tương đương:
+       * const id = req.params.id;
+       */
+      const { id } = req.params; // Trip ID từ URL
+      const { gioBatDauThucTe } = req.body; // Optional start time
 
+      /**
+       * ✅ VALIDATION: Kiểm tra tripId có được gửi không
+       *
+       * Giải thích:
+       * - Express tự động parse :id từ URL
+       * - Nhưng cần check để chắc chắn
+       * - Nếu không có id → Trả 400 Bad Request
+       *
+       * Tại sao cần check?
+       * - Tránh gọi service với undefined
+       * - Trả lỗi rõ ràng cho client
+       * - Best practice: Validate đầu vào
+       */
       if (!id) {
         return res.status(400).json({
           success: false,
@@ -446,62 +575,124 @@ class TripController {
         });
       }
 
-      // Kiểm tra chuyến đi có tồn tại không
-      const trip = await ChuyenDiModel.getById(id);
-      if (!trip) {
-        return res.status(404).json({
-          success: false,
-          message: "Không tìm thấy chuyến đi",
-        });
-      }
+      /**
+       * 🔧 BƯỚC 2: GỌI SERVICE XỬ LÝ LOGIC
+       *
+       * Giải thích:
+       * - tripService.startTrip(id): Hàm async, trả về Promise
+       * - await: Chờ service hoàn thành
+       * - Service sẽ:
+       *   + Check trip tồn tại
+       *   + Check trạng thái hợp lệ
+       *   + Update database
+       *   + Trả về trip object
+       *
+       * Nếu service throw error → Catch block sẽ bắt
+       *
+       * Note: Hiện tại chưa dùng gioBatDauThucTe
+       * Day 4 sẽ bổ sung logic override thời gian
+       */
+      const trip = await tripService.startTrip(id);
 
-      // Kiểm tra trạng thái hiện tại
-      if (trip.trangThai !== "chua_khoi_hanh") {
-        return res.status(400).json({
-          success: false,
-          message: "Chỉ có thể bắt đầu chuyến đi chưa khởi hành",
-        });
-      }
-
-      const startTime =
-        gioBatDauThucTe || new Date().toISOString().slice(11, 16);
-
-      // Cập nhật trạng thái và giờ bắt đầu
-      const isUpdated = await ChuyenDiModel.update(id, {
-        trangThai: "dang_chay",
-        gioBatDauThucTe: startTime,
-      });
-
-      if (!isUpdated) {
-        return res.status(400).json({
-          success: false,
-          message: "Không thể bắt đầu chuyến đi",
-        });
-      }
-
-      // Phát sự kiện real-time
+      /**
+       * 📡 BƯỚC 3: EMIT SOCKET.IO EVENT (CHỜ DAY 3)
+       *
+       * Giải thích:
+       * - req.app: Express application instance
+       * - req.app.get("io"): Lấy Socket.IO instance đã mount trong server.js
+       * - io.to(`bus-${busId}`): Chọn room để emit
+       * - io.emit("trip_started", data): Gửi event cho clients trong room
+       *
+       * Tại sao chưa hoạt động?
+       * - Socket.IO server chưa được setup (Day 3)
+       * - req.app.get("io") sẽ return undefined
+       *
+       * Flow Day 3:
+       * 1. Setup Socket.IO server trong server.js
+       * 2. app.set("io", io) để lưu instance
+       * 3. Controller lấy io và emit event
+       * 4. FE nhận event → Update UI realtime
+       *
+       * Event payload:
+       * {
+       *   tripId: 123,
+       *   busId: 5,
+       *   driverId: 7,
+       *   startTime: "08:30",
+       *   timestamp: "2025-10-27T01:30:00Z"
+       * }
+       */
       const io = req.app.get("io");
       if (io) {
+        // Lấy thông tin schedule để biết busId, driverId
         const schedule = await LichTrinhModel.getById(trip.maLichTrinh);
         if (schedule) {
+          // Emit event vào room bus-{busId}
+          // Tất cả clients đang subscribe room này sẽ nhận
           io.to(`bus-${schedule.maXe}`).emit("trip_started", {
             tripId: id,
             busId: schedule.maXe,
             driverId: schedule.maTaiXe,
-            startTime,
+            startTime: trip.gioBatDauThucTe,
             timestamp: new Date().toISOString(),
           });
         }
       }
 
-      const updatedTrip = await ChuyenDiModel.getById(id);
-
+      /**
+       * ✅ BƯỚC 4: TRẢ RESPONSE THÀNH CÔNG
+       *
+       * Giải thích:
+       * - res.status(200): Set HTTP status = 200 OK
+       * - res.json(): Tạo JSON response và gửi về client
+       *
+       * Response structure:
+       * {
+       *   success: true,        // Đánh dấu thành công
+       *   message: "...",       // Message cho user
+       *   trip: { ... }         // Data trip đã cập nhật
+       * }
+       *
+       * Driver app sẽ nhận response này và:
+       * - Hiển thị message "Trip started"
+       * - Cập nhật UI: Nút "Bắt đầu" → "Đang chạy"
+       * - Enable tính năng gửi GPS
+       * - Bắt đầu tracking
+       */
       res.status(200).json({
         success: true,
-        data: updatedTrip,
+        data: trip,
         message: "Bắt đầu chuyến đi thành công",
       });
     } catch (error) {
+      /**
+       * ❌ XỬ LÝ LỖI
+       *
+       * Giải thích:
+       * - try/catch: Bắt mọi error từ service
+       * - Service throw error → Catch block bắt
+       *
+       * Các loại error:
+       * 1. "Không tìm thấy chuyến đi" → 404
+       * 2. "Chỉ có thể bắt đầu chuyến đi chưa khởi hành" → 400
+       * 3. "Không thể bắt đầu chuyến đi" → 500
+       * 4. Database errors → 500
+       *
+       * console.error():
+       * - Log error ra console để debug
+       * - Production: Nên log vào file hoặc service (Winston, Sentry)
+       * - Format: "Error in TripController.startTrip: <message>"
+       *
+       * Response error:
+       * {
+       *   success: false,
+       *   message: "Lỗi server khi bắt đầu chuyến đi",
+       *   error: "Không tìm thấy chuyến đi"
+       * }
+       *
+       * Note: Có thể cải thiện bằng cách check error type
+       * và trả về status code phù hợp (404, 400, 500...)
+       */
       console.error("Error in TripController.startTrip:", error);
       res.status(500).json({
         success: false,
@@ -838,7 +1029,8 @@ class TripController {
         return res.status(400).json({
           success: false,
           code: "VALIDATION_400",
-          message: "Vui lòng cung cấp ngày bắt đầu (from) và ngày kết thúc (to)",
+          message:
+            "Vui lòng cung cấp ngày bắt đầu (from) và ngày kết thúc (to)",
         });
       }
 
@@ -852,10 +1044,8 @@ class TripController {
 
       // Tính onTimePercentage (dựa trên số chuyến đã hoàn thành)
       const onTimePercentage =
-        completedTrips > 0
-          ? (onTimeTrips / completedTrips) * 100
-          : 0;
-      
+        completedTrips > 0 ? (onTimeTrips / completedTrips) * 100 : 0;
+
       // 3. Tạo response data khớp 100% với openapi.yaml
       const responseData = {
         totalTrips: totalTrips,

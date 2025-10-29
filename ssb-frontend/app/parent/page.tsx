@@ -17,8 +17,11 @@ export default function ParentDashboard() {
   const [busLocation, setBusLocation] = useState({ lat: 21.0285, lng: 105.8542 })
 
   useEffect(() => {
-    if (user && user.role !== "parent") {
-      router.push(`/${user.role}`)
+    if (user && user.role?.toLowerCase() !== "parent") {
+      const userRole = user.role?.toLowerCase()
+      if (userRole === "admin" || userRole === "driver") {
+        router.push(`/${userRole}`)
+      }
     }
   }, [user, router])
 
@@ -32,7 +35,7 @@ export default function ParentDashboard() {
     return () => clearInterval(interval)
   }, [])
 
-  if (!user || user.role !== "parent") {
+  if (!user || user.role?.toLowerCase() !== "parent") {
     return null
   }
 
