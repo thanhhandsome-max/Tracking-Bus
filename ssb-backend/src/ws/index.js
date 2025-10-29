@@ -1,5 +1,6 @@
 import { Server } from "socket.io";
 import { verifyWsJWT } from "../utils/wsAuth.js";
+import TelemetryService from "../services/telemetryService.js";
 
 export function initSocketIO(httpServer) {
   console.log("🚀 Initializing Socket.IO server...");
@@ -65,6 +66,61 @@ export function initSocketIO(httpServer) {
       socket.leave(tripRoom);
       console.log(`  ❌ ${user.email} left ${tripRoom}`);
       socket.emit("trip_left", { tripId, room: tripRoom });
+    });
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // 🚌 SỰ KIỆN: bus_position_update (Nhiệm vụ Ngày 3)
+    // ═══════════════════════════════════════════════════════════════════════
+    // Tài xế gửi vị trí GPS của xe bus → Server broadcast cho phụ huynh
+    socket.on("bus_position_update", (data) => {
+      console.log(
+        `  📍 GPS update từ ${user.email}: Trip ${data.tripId}, Bus ${data.busId}`
+      );
+      console.log(
+        `     Tọa độ: ${data.lat}, ${data.lng} | Tốc độ: ${data.speed} km/h`
+      );
+
+      // Broadcast vị trí đến tất cả người trong room trip-{tripId}
+      // (bao gồm cả phụ huynh và admin đang theo dõi)
+      io.to(`trip-${data.tripId}`).emit("bus_position_update", {
+        ...data,
+        driverEmail: user.email,
+        driverName: user.hoTen || user.email,
+      });
+    });
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // 📡 SỰ KIỆN: driver_gps (Nhiệm vụ Ngày 4)
+    // ═══════════════════════════════════════════════════════════════════════
+    // Tài xế gửi vị trí GPS → Server xử lý geofence & delay → Emit events
+    socket.on("driver_gps", async (data) => {
+      try {
+        const { tripId, lat, lng, speed, heading } = data;
+
+        console.log(
+          `  📡 [driver_gps] ${user.email}: Trip ${tripId} @ (${lat}, ${lng})`
+        );
+
+        // Gọi TelemetryService để xử lý
+        const result = await TelemetryService.updatePosition(
+          tripId,
+          { lat, lng, speed, heading },
+          io
+        );
+
+        // Gửi ACK về driver
+        socket.emit("gps_ack", {
+          success: true,
+          timestamp: result.position.timestamp,
+          events: result.events,
+        });
+      } catch (error) {
+        console.error(`  ❌ [driver_gps] Error:`, error.message);
+        socket.emit("gps_ack", {
+          success: false,
+          error: error.message,
+        });
+      }
     });
 
     socket.on("disconnect", (reason) => {
