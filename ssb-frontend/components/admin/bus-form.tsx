@@ -1,148 +1,170 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
-import { apiClient } from '@/lib/api'
 import { apiClient } from "@/lib/api"
+
+type UIStatus = "active" | "maintenance" | "inactive"
+type BEStatus = "hoat_dong" | "bao_tri" | "ngung_hoat_dong"
+
+const UI_TO_BE: Record<UIStatus, BEStatus> = {
+  active: "hoat_dong",
+  maintenance: "bao_tri",
+  inactive: "ngung_hoat_dong",
+}
+
+const BE_TO_UI: Record<BEStatus, UIStatus> = {
+  hoat_dong: "active",
+  bao_tri: "maintenance",
+  ngung_hoat_dong: "inactive",
+}
 
 type Bus = {
   id?: string | number
-  bienSoXe?: string
+  // FE naming
   plateNumber?: string
-  sucChua?: number
   capacity?: number
-  trangThai?: string
-  status?: string
+  status?: UIStatus
+  model?: string
+  // BE naming
+  bienSoXe?: string
+  sucChua?: number
+  trangThai?: BEStatus
+  dongXe?: string
 }
 
 interface BusFormProps {
   onClose: () => void
-  onSuccess?: () => void
-  initialBus?: any
-  mode?: 'edit' | 'create'
-  onCreated?: (bus: any) => void
-  onUpdated?: (bus: any) => void
   mode?: "create" | "edit"
   initialBus?: Bus | null
+  onCreated?: (bus: any) => void
+  onUpdated?: (bus: any) => void
 }
 
-export function BusForm({ onClose, onSuccess, initialBus, mode }: BusFormProps) {
-  const [plateNumber, setPlateNumber] = useState(initialBus?.plateNumber || "")
-  const [model, setModel] = useState(initialBus?.model || "")
-  const [capacity, setCapacity] = useState(initialBus?.capacity?.toString() || "")
-  const [status, setStatus] = useState(
-    initialBus?.status === 'hoat_dong' || initialBus?.status === 'active' ? 'active'
-      : initialBus?.status === 'bao_tri' || initialBus?.status === 'maintenance' ? 'maintenance'
-      : initialBus?.status === 'ngung_hoat_dong' || initialBus?.status === 'inactive' ? 'inactive' : 'active'
-  )
-export function BusForm({ onClose, onCreated, onUpdated, mode = "create", initialBus = null }: BusFormProps) {
+function deriveUIStatus(bus?: Bus | null): UIStatus {
+  if (!bus) return "active"
+  if (bus.status) return bus.status as UIStatus
+  if (bus.trangThai) return BE_TO_UI[bus.trangThai]
+  return "active"
+}
+
+function BusForm({ onClose, mode = "create", initialBus = null, onCreated, onUpdated }: BusFormProps) {
+  const { toast } = useToast()
+
   const [plateNumber, setPlateNumber] = useState<string>(
     (initialBus?.bienSoXe as string) || (initialBus?.plateNumber as string) || ""
   )
   const [capacity, setCapacity] = useState<string>(
-    initialBus?.sucChua !== undefined
-      ? String(initialBus?.sucChua)
-      : initialBus?.capacity !== undefined
-      ? String(initialBus?.capacity)
+    initialBus?.sucChua != null
+      ? String(initialBus.sucChua)
+      : initialBus?.capacity != null
+      ? String(initialBus.capacity)
       : ""
   )
-  const [status, setStatus] = useState<string>((initialBus?.trangThai as string) || (initialBus?.status as string) || "active")
-  const [submitting, setSubmitting] = useState(false)
-  const { toast } = useToast()
+  const [model, setModel] = useState<string>(
+    (initialBus?.dongXe as string) || (initialBus?.model as string) || ""
+  )
+  const [status, setStatus] = useState<UIStatus>(deriveUIStatus(initialBus))
   const [submitting, setSubmitting] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
-  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!plateNumber || !capacity) {
-      toast({ title: "Lỗi", description: "Vui lòng nhập đầy đủ thông tin", variant: "destructive" })
+
+    const trimmedPlate = plateNumber.trim()
+    const numCapacity = Number(capacity)
+
+    if (!trimmedPlate || !Number.isFinite(numCapacity) || numCapacity <= 0) {
+      toast({
+        title: "Lỗi",
+        description: "Vui lòng nhập biển số và sức chứa hợp lệ",
+        variant: "destructive",
+      })
       return
     }
-    setSubmitting(true)
-    try {
-      let beStatus = status
-      if (status === 'active') beStatus = 'hoat_dong'
-      else if (status === 'maintenance') beStatus = 'bao_tri'
-      else if (status === 'inactive') beStatus = 'ngung_hoat_dong'
-      if (mode === 'edit' && initialBus) {
-        await apiClient.updateBus(initialBus.id, {
-          bienSoXe: plateNumber,
-          dongXe: model,
-          sucChua: parseInt(capacity, 10),
-          trangThai: beStatus
-        })
-        toast({ title: "Cập nhật thành công", description: "Thông tin xe đã được lưu" })
-      } else {
-        await apiClient.createBus({
-          bienSoXe: plateNumber,
-          dongXe: model,
-          sucChua: parseInt(capacity, 10),
-          trangThai: beStatus
-        })
-        toast({ title: "Thành công", description: "Đã thêm xe buýt mới" })
-      }
-      if (onSuccess) onSuccess()
-      else window.location.reload()
-    } catch (err: any) {
-      toast({ title: "Lỗi", description: err?.message || "Thao tác thất bại", variant: "destructive" })
-    } finally {
-      setSubmitting(false)
-      onClose()
-    }
+
+    const payload = {
+      bienSoXe: trimmedPlate,
+      dongXe: model?.trim() || undefined,
+      sucChua: numCapacity,
+      trangThai: UI_TO_BE[status],
+    } as const
 
     try {
       setSubmitting(true)
-      const payload = {
-        bienSoXe: plateNumber.trim(),
-        sucChua: Number(capacity),
-        trangThai: status,
-      }
+
       if (mode === "edit" && initialBus?.id != null) {
         const res = await apiClient.updateBus(initialBus.id, payload)
-        const updated = (res as any).data || res
+        const updated = (res as any)?.data ?? res
         toast({ title: "Thành công", description: "Đã cập nhật xe buýt" })
         onUpdated?.(updated)
         onClose()
       } else {
         const res = await apiClient.createBus(payload)
-        const created = (res as any).data || res
+        const created = (res as any)?.data ?? res
         toast({ title: "Thành công", description: "Đã thêm xe buýt mới" })
         onCreated?.(created)
         onClose()
       }
     } catch (err: any) {
-      toast({ title: "Không thành công", description: err?.message || "Tạo xe thất bại", variant: "destructive" })
+      toast({
+        title: "Không thành công",
+        description: err?.message || "Có lỗi xảy ra khi lưu dữ liệu",
+        variant: "destructive",
+      })
     } finally {
       setSubmitting(false)
     }
   }
 
+  const submitText = mode === "edit" ? (submitting ? "Đang lưu..." : "Lưu thay đổi") : submitting ? "Đang lưu..." : "Thêm xe buýt"
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="plateNumber">Biển số xe *</Label>
-          <Input id="plateNumber" placeholder="51A-12345" value={plateNumber} onChange={e => setPlateNumber(e.target.value)} />
+          <Input
+            id="plateNumber"
+            placeholder="51A-12345"
+            value={plateNumber}
+            onChange={(e) => setPlateNumber(e.target.value)}
+          />
         </div>
+
         <div className="space-y-2">
           <Label htmlFor="capacity">Sức chứa *</Label>
-          <Input id="capacity" type="number" placeholder="45" value={capacity} onChange={e => setCapacity(e.target.value)} />
+          <Input
+            id="capacity"
+            type="number"
+            min={1}
+            placeholder="45"
+            value={capacity}
+            onChange={(e) => setCapacity(e.target.value)}
+          />
         </div>
       </div>
+
       <div className="space-y-2">
         <Label htmlFor="model">Dòng xe</Label>
-        <Input id="model" placeholder="Hyundai County" value={model} onChange={e => setModel(e.target.value)} />
+        <Input
+          id="model"
+          placeholder="Hyundai County"
+          value={model}
+          onChange={(e) => setModel(e.target.value)}
+        />
       </div>
+
       <div className="space-y-2">
         <Label htmlFor="status">Trạng thái</Label>
-        <Select value={status} onValueChange={setStatus}>
-          <SelectTrigger id="status"><SelectValue /></SelectTrigger>
+        <Select value={status} onValueChange={(v) => setStatus(v as UIStatus)}>
+          <SelectTrigger id="status">
+            <SelectValue placeholder="Chọn trạng thái" />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="active">Hoạt động</SelectItem>
             <SelectItem value="maintenance">Bảo trì</SelectItem>
@@ -150,17 +172,18 @@ export function BusForm({ onClose, onCreated, onUpdated, mode = "create", initia
           </SelectContent>
         </Select>
       </div>
+
       <div className="flex justify-end gap-3 pt-4">
-        <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>Hủy</Button>
-        <Button type="submit" className="bg-primary hover:bg-primary/90" disabled={submitting}>{mode === 'edit' ? 'Lưu thay đổi' : 'Thêm xe buýt'}</Button>
         <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
           Hủy
         </Button>
         <Button type="submit" className="bg-primary hover:bg-primary/90" disabled={submitting}>
-          {submitting ? "Đang lưu..." : "Thêm xe buýt"}
+          {submitText}
         </Button>
       </div>
     </form>
   )
 }
 
+export { BusForm }
+export default BusForm
