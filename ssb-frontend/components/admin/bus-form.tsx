@@ -8,18 +8,42 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
+import { apiClient } from "@/lib/api"
+
+type Bus = {
+  id?: string | number
+  bienSoXe?: string
+  plateNumber?: string
+  sucChua?: number
+  capacity?: number
+  trangThai?: string
+  status?: string
+}
 
 interface BusFormProps {
   onClose: () => void
+  onCreated?: (bus: any) => void
+  onUpdated?: (bus: any) => void
+  mode?: "create" | "edit"
+  initialBus?: Bus | null
 }
 
-export function BusForm({ onClose }: BusFormProps) {
-  const [plateNumber, setPlateNumber] = useState("")
-  const [capacity, setCapacity] = useState("")
-  const [status, setStatus] = useState("active")
+export function BusForm({ onClose, onCreated, onUpdated, mode = "create", initialBus = null }: BusFormProps) {
+  const [plateNumber, setPlateNumber] = useState<string>(
+    (initialBus?.bienSoXe as string) || (initialBus?.plateNumber as string) || ""
+  )
+  const [capacity, setCapacity] = useState<string>(
+    initialBus?.sucChua !== undefined
+      ? String(initialBus?.sucChua)
+      : initialBus?.capacity !== undefined
+      ? String(initialBus?.capacity)
+      : ""
+  )
+  const [status, setStatus] = useState<string>((initialBus?.trangThai as string) || (initialBus?.status as string) || "active")
+  const [submitting, setSubmitting] = useState(false)
   const { toast } = useToast()
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     if (!plateNumber || !capacity) {
@@ -31,12 +55,31 @@ export function BusForm({ onClose }: BusFormProps) {
       return
     }
 
-    toast({
-      title: "Thành công",
-      description: "Đã thêm xe buýt mới",
-    })
-
-    onClose()
+    try {
+      setSubmitting(true)
+      const payload = {
+        bienSoXe: plateNumber.trim(),
+        sucChua: Number(capacity),
+        trangThai: status,
+      }
+      if (mode === "edit" && initialBus?.id != null) {
+        const res = await apiClient.updateBus(initialBus.id, payload)
+        const updated = (res as any).data || res
+        toast({ title: "Thành công", description: "Đã cập nhật xe buýt" })
+        onUpdated?.(updated)
+        onClose()
+      } else {
+        const res = await apiClient.createBus(payload)
+        const created = (res as any).data || res
+        toast({ title: "Thành công", description: "Đã thêm xe buýt mới" })
+        onCreated?.(created)
+        onClose()
+      }
+    } catch (err: any) {
+      toast({ title: "Không thành công", description: err?.message || "Tạo xe thất bại", variant: "destructive" })
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -78,11 +121,11 @@ export function BusForm({ onClose }: BusFormProps) {
       </div>
 
       <div className="flex justify-end gap-3 pt-4">
-        <Button type="button" variant="outline" onClick={onClose}>
+        <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
           Hủy
         </Button>
-        <Button type="submit" className="bg-primary hover:bg-primary/90">
-          Thêm xe buýt
+        <Button type="submit" className="bg-primary hover:bg-primary/90" disabled={submitting}>
+          {submitting ? "Đang lưu..." : "Thêm xe buýt"}
         </Button>
       </div>
     </form>
