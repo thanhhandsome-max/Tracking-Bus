@@ -37,6 +37,14 @@ export default function BusesPage() {
   const [loading, setLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Map any status string from list to backend enum for BusForm
+  const toBEStatus = (s?: string) => (
+    s === 'active' ? 'hoat_dong' :
+    s === 'maintenance' ? 'bao_tri' :
+    s === 'inactive' ? 'ngung_hoat_dong' :
+    s === 'hoat_dong' || s === 'bao_tri' || s === 'ngung_hoat_dong' ? s : undefined
+  ) as any
+
   // Hàm reload lại danh sách (bỏ trong useCallback nếu tối ưu hơn)
   const reloadBuses = async () => {
     setLoading(true)
@@ -145,8 +153,8 @@ export default function BusesPage() {
                   id: editingBus?.id,
                   bienSoXe: editingBus?.plateNumber,
                   sucChua: editingBus?.capacity,
-                  trangThai: editingBus?.status,
-                  model: editingBus?.model,
+                  trangThai: toBEStatus(editingBus?.status),
+                  dongXe: editingBus?.model,
                 }}
                 onClose={() => setIsEditDialogOpen(false)}
                 onUpdated={async () => {
@@ -307,7 +315,13 @@ export default function BusesPage() {
           {selectedBus && <BusForm
             onClose={() => setShowEdit(false)}
             onSuccess={() => { setShowEdit(false); reloadBuses(); }}
-            initialBus={selectedBus}
+            initialBus={{
+              id: selectedBus.id,
+              bienSoXe: selectedBus.plateNumber,
+              sucChua: selectedBus.capacity,
+              trangThai: toBEStatus(selectedBus.status),
+              dongXe: selectedBus.model,
+            }}
             mode="edit"
           />}
         </DialogContent>
