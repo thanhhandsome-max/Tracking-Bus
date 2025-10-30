@@ -22,40 +22,19 @@ class TripController {
       } = req.query;
       const offset = (page - 1) * limit;
 
-      let trips = await ChuyenDiModel.getAll();
+      // Dùng SQL-level filter để chính xác hơn (đặc biệt với ngày/thời gian)
+      const filters = {
+        ngayChay,
+        trangThai,
+        maTuyen,
+        maXe,
+        maTaiXe,
+      };
+
+      let trips = await ChuyenDiModel.getAll(filters);
       let totalCount = trips.length;
 
-      // Lọc theo ngày chạy
-      if (ngayChay) {
-        trips = trips.filter((trip) => trip.ngayChay === ngayChay);
-        totalCount = trips.length;
-      }
-
-      // Lọc theo trạng thái
-      if (trangThai) {
-        trips = trips.filter((trip) => trip.trangThai === trangThai);
-        totalCount = trips.length;
-      }
-
-      // Lọc theo tuyến đường
-      if (maTuyen) {
-        trips = trips.filter((trip) => trip.maTuyen === maTuyen);
-        totalCount = trips.length;
-      }
-
-      // Lọc theo xe buýt
-      if (maXe) {
-        trips = trips.filter((trip) => trip.maXe === maXe);
-        totalCount = trips.length;
-      }
-
-      // Lọc theo tài xế
-      if (maTaiXe) {
-        trips = trips.filter((trip) => trip.maTaiXe === maTaiXe);
-        totalCount = trips.length;
-      }
-
-      // Phân trang
+      // Phân trang (server-side slicing)
       const paginatedTrips = trips.slice(offset, offset + parseInt(limit));
 
       res.status(200).json({
@@ -592,7 +571,29 @@ class TripController {
        * Note: Hiện tại chưa dùng gioBatDauThucTe
        * Day 4 sẽ bổ sung logic override thời gian
        */
-      const trip = await tripService.startTrip(id);
+      // Kiểm tra chuyến đi tồn tại
+      const existing = await ChuyenDiModel.getById(id);
+      if (!existing) {
+        return res.status(404).json({ success: false, message: "Không tìm thấy chuyến đi" });
+      }
+
+      // Chỉ start khi đang 'chua_khoi_hanh'
+      if (existing.trangThai !== "chua_khoi_hanh") {
+        return res.status(400).json({ success: false, message: "Chỉ có thể bắt đầu chuyến đi chưa khởi hành" });
+      }
+
+      const startTime = gioBatDauThucTe || new Date(); // TIMESTAMP
+
+      const updated = await ChuyenDiModel.update(id, {
+        trangThai: "dang_chay",
+        gioBatDauThucTe: startTime,
+      });
+
+      if (!updated) {
+        return res.status(400).json({ success: false, message: "Không thể bắt đầu chuyến đi" });
+      }
+
+      const trip = await ChuyenDiModel.getById(id);
 
       /**
        * 📡 BƯỚC 3: EMIT SOCKET.IO EVENT (CHỜ DAY 3)
@@ -705,8 +706,8 @@ class TripController {
   // Kết thúc chuyến đi
   static async endTrip(req, res) {
     try {
-      const { id } = req.params;
-      const { gioKetThucThucTe, ghiChu } = req.body;
+  const { id } = req.params;
+  const { gioKetThucThucTe, ghiChu } = req.body;
 
       if (!id) {
         return res.status(400).json({
@@ -732,12 +733,11 @@ class TripController {
         });
       }
 
-      const endTime =
-        gioKetThucThucTe || new Date().toISOString().slice(11, 16);
+      const endTime = gioKetThucThucTe || new Date();
 
       // Cập nhật trạng thái và giờ kết thúc
       const isUpdated = await ChuyenDiModel.update(id, {
-        trangThai: "da_hoan_thanh",
+        trangThai: "hoan_thanh",
         gioKetThucThucTe: endTime,
         ghiChu: ghiChu || trip.ghiChu,
       });
