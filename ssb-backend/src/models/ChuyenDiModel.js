@@ -8,6 +8,7 @@ const ChuyenDiModel = {
         cd.*,
         lt.loaiChuyen,
         lt.gioKhoiHanh,
+        lt.maTaiXe,
         td.tenTuyen,
         xb.bienSoXe,
         nd.hoTen as tenTaiXe
@@ -21,7 +22,8 @@ const ChuyenDiModel = {
     const params = [];
 
     if (filters.ngayChay) {
-      query += " AND cd.ngayChay = ?";
+      // So khớp theo ngày, bỏ phần thời gian nếu có
+      query += " AND DATE(cd.ngayChay) = DATE(?)";
       params.push(filters.ngayChay);
     }
     if (filters.trangThai) {
@@ -31,6 +33,18 @@ const ChuyenDiModel = {
     if (filters.maLichTrinh) {
       query += " AND cd.maLichTrinh = ?";
       params.push(filters.maLichTrinh);
+    }
+    if (filters.maTaiXe) {
+      query += " AND lt.maTaiXe = ?";
+      params.push(filters.maTaiXe);
+    }
+    if (filters.maXe) {
+      query += " AND lt.maXe = ?";
+      params.push(filters.maXe);
+    }
+    if (filters.maTuyen) {
+      query += " AND lt.maTuyen = ?";
+      params.push(filters.maTuyen);
     }
 
     query += " ORDER BY cd.ngayChay DESC, lt.gioKhoiHanh";

@@ -1,7 +1,7 @@
 import { io, Socket } from "socket.io-client";
 
 const SOCKET_URL =
-  process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001";
+  process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:4000";
 
 class SocketService {
   private socket: Socket | null = null;
@@ -10,15 +10,17 @@ class SocketService {
   connect(token: string) {
     this.token = token;
 
-    if (this.socket?.connected) {
-      this.disconnect();
+    // Always tear down existing socket before creating a new one (even if not connected)
+    if (this.socket) {
+      try { this.socket.disconnect(); } catch {}
+      this.socket = null;
     }
 
     this.socket = io(SOCKET_URL, {
       auth: {
         token: token,
       },
-      transports: ["websocket", "polling"],
+      transports: ["websocket"],
     });
 
     this.setupEventListeners();
@@ -43,20 +45,34 @@ class SocketService {
     }
   }
 
+  // Convenience helpers for rooms and telemetry
+  joinTrip(tripId: number | string) {
+    this.socket?.emit('join_trip', tripId)
+  }
+  leaveTrip(tripId: number | string) {
+    this.socket?.emit('leave_trip', tripId)
+  }
+  sendDriverGPS(data: { tripId: number | string; lat: number; lng: number; speed?: number; heading?: number }) {
+    this.socket?.emit('driver_gps', data)
+  }
+
   private setupEventListeners() {
     if (!this.socket) return;
 
     // Connection events
     this.socket.on("connect", () => {
       console.log("Socket.IO connected");
+      try { window.dispatchEvent(new CustomEvent("socketConnected")); } catch {}
     });
 
     this.socket.on("disconnect", (reason) => {
       console.log("Socket.IO disconnected:", reason);
+      try { window.dispatchEvent(new CustomEvent("socketDisconnected", { detail: reason })); } catch {}
     });
 
     this.socket.on("connect_error", (error) => {
       console.error("Socket.IO connection error:", error);
+      try { window.dispatchEvent(new CustomEvent("socketConnectError", { detail: error })); } catch {}
     });
 
     // Authentication events
@@ -81,6 +97,12 @@ class SocketService {
       );
     });
 
+    // Alias: server may emit snake_case 'bus_position_update'
+    this.socket.on("bus_position_update", (data) => {
+      console.log("Bus position updated:", data);
+      window.dispatchEvent(new CustomEvent("busPositionUpdate", { detail: data }));
+    });
+
     this.socket.on("bus_location_response", (data) => {
       console.log("Bus location response:", data);
       window.dispatchEvent(
@@ -93,6 +115,21 @@ class SocketService {
       console.log("Trip status updated:", data);
       window.dispatchEvent(
         new CustomEvent("tripStatusUpdate", { detail: data })
+      );
+    });
+
+    // Explicit started/completed aliases (if server emits these)
+    this.socket.on("trip_started", (data) => {
+      console.log("Trip started:", data);
+      window.dispatchEvent(
+        new CustomEvent("tripStarted", { detail: data })
+      );
+    });
+
+    this.socket.on("trip_completed", (data) => {
+      console.log("Trip completed:", data);
+      window.dispatchEvent(
+        new CustomEvent("tripCompleted", { detail: data })
       );
     });
 
@@ -139,6 +176,21 @@ class SocketService {
       console.log("Parent notification:", data);
       window.dispatchEvent(
         new CustomEvent("parentNotification", { detail: data })
+      );
+    });
+
+    // Day 4: stop proximity and delay alerts
+    this.socket.on("approach_stop", (data) => {
+      console.log("Approach stop:", data);
+      window.dispatchEvent(
+        new CustomEvent("approachStop", { detail: data })
+      );
+    });
+
+    this.socket.on("delay_alert", (data) => {
+      console.log("Delay alert:", data);
+      window.dispatchEvent(
+        new CustomEvent("delayAlert", { detail: data })
       );
     });
   }

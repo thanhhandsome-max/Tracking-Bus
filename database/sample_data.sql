@@ -27,10 +27,10 @@ INSERT INTO NguoiDung (hoTen, email, matKhau, soDienThoai, vaiTro) VALUES
 ('Lý Thị Mai', 'phuhuynh4@schoolbus.vn', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', '0909000008', 'phu_huynh');
 
 -- Insert sample drivers
-INSERT INTO TaiXe (maTaiXe, soBangLai, ngayHetHanBangLai, soNamKinhNghiem, trangThai) VALUES
-(2, 'B2-123456789', '2028-05-20', 5, 'hoat_dong'),
-(3, 'B2-987654321', '2027-12-31', 8, 'hoat_dong'),
-(7, 'B2-456789123', '2029-03-15', 3, 'hoat_dong');
+INSERT INTO TaiXe (maTaiXe, tenTaiXe, soBangLai, ngayHetHanBangLai, soNamKinhNghiem, trangThai) VALUES
+(2, 'Trần Văn Tài', 'B2-123456789', '2028-05-20', 5, 'hoat_dong'),
+(3, 'Lê Văn Hùng', 'B2-987654321', '2027-12-31', 8, 'hoat_dong'),
+(7, 'Hoàng Văn Nam', 'B2-456789123', '2029-03-15', 3, 'hoat_dong');
 
 -- Insert sample buses
 INSERT INTO XeBuyt (bienSoXe, dongXe, sucChua, trangThai) VALUES

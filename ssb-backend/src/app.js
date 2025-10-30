@@ -11,7 +11,8 @@ import studentRoutes from "./routes/api/student.js";
 import routeRoutes from "./routes/api/route.js";
 import scheduleRoutes from "./routes/api/schedule.js";
 import authRouters from "./routes/api/auth.route.js";
-import tripRoutes from "./routes/api/trip.route.js"; // dòng này dùng để mount trip routes
+// Use the comprehensive trip router that includes list/detail/start/end
+import tripRoutes from "./routes/api/trip.js"; // dòng này dùng để mount trip routes
 import telemetryRoutes from "./routes/api/telemetry.route.js"; // GPS & Telemetry routes
 
 // Import middlewares

@@ -1,8 +1,9 @@
 export * from '../../lib/api'
 export { api } from '../../lib/api'
 // API client for Smart School Bus Tracking System
+// Default to backend dev URL if env not provided
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
 
 interface ApiResponse<T = any> {
   success: boolean;
@@ -26,13 +27,17 @@ class ApiClient {
     this.baseURL = baseURL;
     // Get token from localStorage on initialization
     if (typeof window !== "undefined") {
-      this.token = localStorage.getItem("token");
+      // Prefer 'ssb_token' but fall back to 'token' for compatibility
+      this.token =
+        localStorage.getItem("ssb_token") || localStorage.getItem("token");
     }
   }
 
   setToken(token: string) {
     this.token = token;
     if (typeof window !== "undefined") {
+      // Write to both keys to keep older code paths working
+      localStorage.setItem("ssb_token", token);
       localStorage.setItem("token", token);
     }
   }
@@ -40,6 +45,7 @@ class ApiClient {
   clearToken() {
     this.token = null;
     if (typeof window !== "undefined") {
+      localStorage.removeItem("ssb_token");
       localStorage.removeItem("token");
     }
   }
@@ -49,6 +55,14 @@ class ApiClient {
     options: RequestInit = {}
   ): Promise<ApiResponse<T>> {
     const url = `${this.baseURL}${endpoint}`;
+
+    // Always read the latest token from localStorage at request time
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("token");
+      if (stored && stored !== this.token) {
+        this.token = stored;
+      }
+    }
 
     const headers: HeadersInit = {
       "Content-Type": "application/json",
@@ -75,7 +89,8 @@ class ApiClient {
 
       return data;
     } catch (error) {
-      console.error("API request error:", error);
+      // Giảm nhiễu console cho các fallback logic (ví dụ: gọi endpoint có thể không tồn tại)
+      console.warn("API request warning:", error);
       throw error;
     }
   }
@@ -84,7 +99,7 @@ class ApiClient {
   async login(email: string, password: string) {
     return this.request("/auth/login", {
       method: "POST",
-      body: JSON.stringify({ email, matKhau: password }),
+      body: JSON.stringify({ email, password }),
     });
   }
 
