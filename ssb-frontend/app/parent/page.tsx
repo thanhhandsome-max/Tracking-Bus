@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { useAuth } from "@/lib/auth-context"
 import { useRouter } from "next/navigation"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
@@ -13,17 +13,20 @@ import { MapView } from "@/components/tracking/MapView"
 import { apiClient } from "@/lib/api"
 import { useTripBusPosition, useTripAlerts } from "@/hooks/use-socket"
 import { useToast } from "@/hooks/use-toast"
+// Removed filter selects per request
 
 export default function ParentDashboard() {
-  const { user } = useAuth()
+  const { user, loading } = useAuth()
   const router = useRouter()
-  // For testing we track a fixed trip room (match backend test script)
-  const TRIP_ID = 42
-  const { busPosition } = useTripBusPosition(TRIP_ID)
+  // Selection
+  const [selectedRouteId, setSelectedRouteId] = useState<number | undefined>(undefined)
+  const [selectedTripId, setSelectedTripId] = useState<number | undefined>(undefined)
+
+  const { busPosition } = useTripBusPosition(selectedTripId)
   const [busLocation, setBusLocation] = useState<{ lat: number; lng: number }>({ lat: 21.0285, lng: 105.8542 })
   const [lastUpdate, setLastUpdate] = useState<number | null>(null)
   const { toast } = useToast()
-  const { approachStop, delayAlert } = useTripAlerts(TRIP_ID)
+  const { approachStop, delayAlert } = useTripAlerts(selectedTripId)
   const [banner, setBanner] = useState<{ type: 'info' | 'warning'; title: string; description?: string } | null>(null)
   const [stops, setStops] = useState<{ id: string; lat: number; lng: number; label?: string }[]>([])
   const [busInfo, setBusInfo] = useState<{ id: string; plateNumber: string; route: string } | null>(null)
@@ -51,7 +54,9 @@ export default function ParentDashboard() {
     if (approachStop) {
       toast({
         title: 'Xe sắp đến điểm dừng',
-        description: `Trip ${TRIP_ID} sắp đến điểm ${approachStop.stopName || approachStop.stopId || ''}`,
+        description: `Trip ${selectedTripId ?? ''} sắp đến điểm ${approachStop.stopName || approachStop.stopId || ''}${
+          approachStop.distance ? ` (còn ${Math.round(approachStop.distance)}m)` : ''
+        }`,
       })
       setBanner({ type: 'info', title: 'Xe sắp đến điểm dừng', description: approachStop.stopName || `Điểm ${approachStop.stopId || ''}` })
     }
@@ -67,47 +72,89 @@ export default function ParentDashboard() {
     }
   }, [delayAlert, toast])
 
-  // Load child's route/bus info from API (best effort, structure may vary)
+  // Note: Removed initial fetching of students/routes to avoid 401/404 when not needed.
+
+  // When route changes or student changes, load stops for that route
   useEffect(() => {
-    async function load() {
+    async function loadStops(routeId?: number) {
+      if (!routeId) return
       try {
-        // Try to get a route by id=1 as fallback demo; in real flow, query student's assigned route
-        try {
-          const routeRes = await apiClient.getRouteById(1)
-          const routeData: any = (routeRes as any).data || routeRes
-          const points: any[] = routeData?.diemDung || routeData?.route?.diemDung || []
-          const mapped = points.map((s: any) => ({ id: (s.maDiem || s.id || `${s.viDo}_${s.kinhDo}`) + '', lat: Number(s.viDo || s.lat || s.latitude), lng: Number(s.kinhDo || s.lng || s.longitude), label: s.tenDiem || s.ten }))
-          setStops(mapped.filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng)))
-        } catch {}
-        setBusInfo({ id: '5', plateNumber: '29B-12345', route: `Trip ${TRIP_ID}` })
+        const routeRes = await apiClient.getRouteById(routeId)
+        const routeData: any = (routeRes as any).data || routeRes
+        const points: any[] = routeData?.diemDung || routeData?.route?.diemDung || []
+        const mapped = points.map((s: any) => ({ id: (s.maDiem || s.id || `${s.viDo}_${s.kinhDo}`) + '', lat: Number(s.viDo || s.lat || s.latitude), lng: Number(s.kinhDo || s.lng || s.longitude), label: s.tenDiem || s.ten }))
+        setStops(mapped.filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng)))
       } catch (e) {
-        console.warn('Parent route load failed', e)
+        console.warn('[Parent] loadStops failed', e)
       }
     }
-    load()
-  }, [])
+    loadStops(selectedRouteId)
+  }, [selectedRouteId])
+
+  // Resolve and select a trip for current selection (run after auth ready)
+  useEffect(() => {
+    async function resolveTrip() {
+      try {
+        const today = new Date()
+        const yyyy = today.getFullYear()
+        const mm = String(today.getMonth() + 1).padStart(2, '0')
+        const dd = String(today.getDate()).padStart(2, '0')
+        const ngayChay = `${yyyy}-${mm}-${dd}`
+
+        const paramsBase: any = { ngayChay }
+        if (selectedRouteId) paramsBase.maTuyen = selectedRouteId
+
+        // Prefer running trips
+        const runningRes: any = await apiClient.getTrips({ ...paramsBase, trangThai: 'dang_chay' }).catch(() => ({ data: [] }))
+        let trips: any[] = (runningRes && (runningRes.data || runningRes)) || []
+
+        // Fallback: not started yet
+        if (!trips || trips.length === 0) {
+          const scheduledRes: any = await apiClient.getTrips({ ...paramsBase, trangThai: 'chua_khoi_hanh' }).catch(() => ({ data: [] }))
+          trips = (scheduledRes && (scheduledRes.data || scheduledRes)) || []
+        }
+
+        if (trips.length > 0) {
+          const first = trips[0]
+          const tid = Number(first.maChuyen || first.id)
+          setSelectedTripId(Number.isFinite(tid) ? tid : undefined)
+          // derive route id from trip
+          const rid = Number(first.maTuyen || first.routeId)
+          setSelectedRouteId(Number.isFinite(rid) ? rid : undefined)
+          // Best effort bus info
+          setBusInfo({ id: (first.maXe || first.busId || 'bus') + '', plateNumber: first.bienSoXe || '29B-12345', route: first.tenTuyen || `Trip ${tid}` })
+        } else {
+          setSelectedTripId(undefined)
+        }
+      } catch (e) {
+        console.warn('[Parent] resolveTrip failed', e)
+        setSelectedTripId(undefined)
+      }
+    }
+    if (!loading && user) resolveTrip()
+  }, [selectedRouteId, loading, user])
 
   if (!user || user.role?.toLowerCase() !== "parent") {
     return null
   }
 
-  // Mock data for parent's child
   const childInfo = {
     name: "Nguyễn Minh An",
     grade: "Lớp 3A",
     status: "on-bus",
-    busNumber: "29B-12345",
+    busNumber: busInfo?.plateNumber || "29B-12345",
     driverName: "Trần Văn Hùng",
     driverPhone: "0912345678",
     pickupTime: "07:15",
     dropoffTime: "16:30",
     currentStop: "Điểm đón 3/5",
-    estimatedArrival: "5 phút",
+    estimatedArrival: delayAlert?.delayMinutes ? `Trễ ${delayAlert.delayMinutes} phút` : "5 phút",
   }
 
   return (
     <DashboardLayout sidebar={<ParentSidebar />}>
       <div className="space-y-6">
+        {/* Approach/Delay banner */}
         {banner && (
           <div
             className={`flex items-start gap-3 p-3 rounded-lg border ${
@@ -203,7 +250,14 @@ export default function ParentDashboard() {
                 <CardTitle className="flex items-center gap-2">
                 <MapPin className="w-5 h-5 text-primary" />
                 Vị trí xe buýt
-                  <Badge variant="outline" className="ml-2">Trip {TRIP_ID}</Badge>
+                  {selectedTripId ? (
+                    <Badge variant="outline" className="ml-2">Trip {selectedTripId}</Badge>
+                  ) : (
+                    <Badge variant="secondary" className="ml-2">Chưa có chuyến</Badge>
+                  )}
+                  {delayAlert?.delayMinutes ? (
+                    <Badge variant="destructive" className="ml-2">Trễ {delayAlert.delayMinutes} phút</Badge>
+                  ) : null}
                   {lastUpdate && (
                     <span className="text-xs text-muted-foreground ml-auto">
                       Cập nhật: {new Date(lastUpdate).toLocaleTimeString()} | ({busLocation.lat.toFixed(5)}, {busLocation.lng.toFixed(5)})
@@ -213,13 +267,17 @@ export default function ParentDashboard() {
             </CardHeader>
             <CardContent>
                   {/* Replace placeholder with Leaflet MapView */}
-                  <MapView
-                    buses={[{ id: busInfo?.id || '5', plateNumber: busInfo?.plateNumber || childInfo.busNumber, route: busInfo?.route || `Trip ${TRIP_ID}`, status: 'running', lat: busLocation.lat, lng: busLocation.lng, speed: 30, students: 12 }] as any}
-                    stops={stops}
-                    height="500px"
-                    followFirstMarker
-                    autoFitOnUpdate
-                  />
+                  {selectedTripId ? (
+                    <MapView
+                      buses={[{ id: busInfo?.id || 'bus', plateNumber: busInfo?.plateNumber || childInfo.busNumber, route: busInfo?.route || `Trip ${selectedTripId}`, status: delayAlert?.delayMinutes ? 'late' : 'running', lat: busLocation.lat, lng: busLocation.lng, speed: 30, students: 12 }] as any}
+                      stops={stops}
+                      height="500px"
+                      followFirstMarker
+                      autoFitOnUpdate
+                    />
+                  ) : (
+                    <div className="h-[500px] flex items-center justify-center text-sm text-muted-foreground border rounded-lg">Không có chuyến phù hợp để hiển thị bản đồ</div>
+                  )}
                 </CardContent>
           </Card>
 

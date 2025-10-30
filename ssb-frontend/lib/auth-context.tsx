@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react'
 import * as authService from './services/auth.service'
-import { api } from './api'
+import { api, apiClient } from './api'
 import { socketService } from './socket'
 
 export type UserRole = "admin" | "driver" | "parent"
@@ -32,6 +32,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const token = localStorage.getItem('ssb_token')
     if (token) {
       api.setToken(token)
+      // Ensure both API clients carry the token
+      try { apiClient.setToken(token) } catch {}
       // connect socket with JWT (non-blocking)
       try {
         socketService.connect(token).catch((e) => {
@@ -66,6 +68,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // connect socket after successful login
       const token = typeof window !== 'undefined' ? localStorage.getItem('ssb_token') : null
       if (token) {
+        // Propagate token to both clients
+        try { api.setToken(token) } catch {}
+        try { apiClient.setToken(token) } catch {}
         try {
           socketService.connect(token).catch((e) => console.warn('Socket connect failed (login):', e))
         } catch (err) {
@@ -81,6 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function logout() {
     setUser(null)
     await authService.logout()
+    try { apiClient.clearToken() } catch {}
     try {
       socketService.disconnect()
     } catch (err) {

@@ -119,12 +119,23 @@ export function MapView({
             markers={markers}
             followFirstMarker={followFirstMarker}
             autoFitOnUpdate={autoFitOnUpdate}
+            selectedId={selectedBus ? String(selectedBus.id) : undefined}
+            onMarkerClick={(id) => {
+              if (!onSelectBus) return
+              const b = buses.find((x) => String(x.id) === String(id))
+              if (b) onSelectBus(b as any)
+            }}
           />
-          <div className="absolute bottom-4 left-4 bg-card/90 backdrop-blur-sm border border-border rounded-lg p-3 shadow-lg">
+          <div className="absolute bottom-4 left-4 bg-card/90 backdrop-blur-sm border border-border rounded-lg p-3 shadow-lg pointer-events-none"
+               style={{ zIndex: 99999 }}>
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-green-500" />
                 <span className="text-xs text-foreground">Đang chạy</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-gray-500" />
+                <span className="text-xs text-foreground">Đứng yên</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-yellow-500" />
