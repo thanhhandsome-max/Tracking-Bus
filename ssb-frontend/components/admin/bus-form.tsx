@@ -12,9 +12,8 @@ import { apiClient } from '@/lib/api'
 // Type Bus (chuẩn hóa field dùng cho form)
 type Bus = {
   id?: string | number
-  bienSoXe?: string
+  // FE naming
   plateNumber?: string
-  sucChua?: number
   capacity?: number
   trangThai?: string
   status?: string
@@ -53,8 +52,16 @@ export function BusForm({ onClose, onSuccess, initialBus, mode = 'create', onCre
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!plateNumber || !capacity) {
-      toast({ title: "Lỗi", description: "Vui lòng nhập đầy đủ thông tin", variant: "destructive" })
+
+    const trimmedPlate = plateNumber.trim()
+    const numCapacity = Number(capacity)
+
+    if (!trimmedPlate || !Number.isFinite(numCapacity) || numCapacity <= 0) {
+      toast({
+        title: "Lỗi",
+        description: "Vui lòng nhập biển số và sức chứa hợp lệ",
+        variant: "destructive",
+      })
       return
     }
     setSubmitting(true)
@@ -91,26 +98,50 @@ export function BusForm({ onClose, onSuccess, initialBus, mode = 'create', onCre
     }
   }
 
+  const submitText = mode === "edit" ? (submitting ? "Đang lưu..." : "Lưu thay đổi") : submitting ? "Đang lưu..." : "Thêm xe buýt"
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="plateNumber">Biển số xe *</Label>
-          <Input id="plateNumber" placeholder="51A-12345" value={plateNumber} onChange={e => setPlateNumber(e.target.value)} />
+          <Input
+            id="plateNumber"
+            placeholder="51A-12345"
+            value={plateNumber}
+            onChange={(e) => setPlateNumber(e.target.value)}
+          />
         </div>
+
         <div className="space-y-2">
           <Label htmlFor="capacity">Sức chứa *</Label>
-          <Input id="capacity" type="number" placeholder="45" value={capacity} onChange={e => setCapacity(e.target.value)} />
+          <Input
+            id="capacity"
+            type="number"
+            min={1}
+            placeholder="45"
+            value={capacity}
+            onChange={(e) => setCapacity(e.target.value)}
+          />
         </div>
       </div>
+
       <div className="space-y-2">
         <Label htmlFor="model">Dòng xe</Label>
-        <Input id="model" placeholder="Hyundai County" value={model} onChange={e => setModel(e.target.value)} />
+        <Input
+          id="model"
+          placeholder="Hyundai County"
+          value={model}
+          onChange={(e) => setModel(e.target.value)}
+        />
       </div>
+
       <div className="space-y-2">
         <Label htmlFor="status">Trạng thái</Label>
-        <Select value={status} onValueChange={setStatus}>
-          <SelectTrigger id="status"><SelectValue /></SelectTrigger>
+        <Select value={status} onValueChange={(v) => setStatus(v as UIStatus)}>
+          <SelectTrigger id="status">
+            <SelectValue placeholder="Chọn trạng thái" />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="active">Hoạt động</SelectItem>
             <SelectItem value="maintenance">Bảo trì</SelectItem>
@@ -118,6 +149,7 @@ export function BusForm({ onClose, onSuccess, initialBus, mode = 'create', onCre
           </SelectContent>
         </Select>
       </div>
+
       <div className="flex justify-end gap-3 pt-4">
         <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>Hủy</Button>
         <Button type="submit" className="bg-primary hover:bg-primary/90" disabled={submitting}>{mode === 'edit' ? 'Lưu thay đổi' : 'Thêm xe buýt'}</Button>
