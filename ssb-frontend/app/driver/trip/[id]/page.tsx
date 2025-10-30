@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useEffect, useState } from "react"
+import { useParams, useRouter } from "next/navigation"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { DriverSidebar } from "@/components/driver/driver-sidebar"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -42,7 +42,14 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { IncidentForm } from "@/components/driver/incident-form"
-import TripMap from "@/components/driver/trip-map"
+import { useTripBusPosition } from "@/hooks/use-socket"
+import { startTrip, endTrip } from "@/lib/services/trip.service"
+import { useGPS } from "@/hooks/use-gps"
+import { apiClient } from "@/lib/api"
+import { useToast } from "@/hooks/use-toast"
+import { cn } from "@/lib/utils"
+import dynamic from "next/dynamic"
+const LeafletMap = dynamic(() => import("@/components/map/leaflet-map"), { ssr: false })
 // Input and ScrollArea removed (old admin chat UI deleted)
 
 const mockTrip = {
@@ -163,10 +170,73 @@ const mockTrip = {
 
 export default function TripDetailPage() {
   const router = useRouter()
+  const params = useParams()
   const [trip, setTrip] = useState(mockTrip)
   const [isIncidentDialogOpen, setIsIncidentDialogOpen] = useState(false)
   const [stopNotes, setStopNotes] = useState<Record<string, string>>({})
   // old admin chat state removed
+  const [atCurrentStop, setAtCurrentStop] = useState(false)
+  const [processing, setProcessing] = useState(false)
+  const { toast } = useToast()
+
+  // Realtime: join driver's trip room and move the vehicle marker when updates arrive
+  const tripIdParam = (params?.id as string) || ""
+  const tripIdNum = Number(tripIdParam)
+  // DEV: Cho phép override tripId bằng biến môi trường để chạy script test (ví dụ 42)
+  const testTripIdEnv = process.env.NEXT_PUBLIC_TEST_TRIP_ID
+  const testTripId = testTripIdEnv ? Number(testTripIdEnv) : undefined
+  // Nếu có NEXT_PUBLIC_TEST_TRIP_ID thì ưu tiên dùng để đảm bảo nhận được sự kiện từ script
+  const effectiveTripId = (typeof testTripId === 'number' && Number.isFinite(testTripId))
+    ? testTripId
+    : (Number.isFinite(tripIdNum) ? tripIdNum : undefined)
+  const { busPosition } = useTripBusPosition(effectiveTripId)
+  const { start: startGPS, stop: stopGPS, running: gpsRunning } = useGPS(effectiveTripId)
+  // Khởi tạo theo vị trí test script (Hà Nội) để tránh nhảy từ HCM ra HN khi mới vào trang
+  const [busLocation, setBusLocation] = useState<{ lat: number; lng: number }>({ lat: 21.0285, lng: 105.8542 })
+  useEffect(() => {
+    if (busPosition && Number.isFinite(busPosition.lat) && Number.isFinite(busPosition.lng)) {
+      // Log for quick verification during test
+      console.log('[Driver Trip] busPosition', busPosition)
+      setBusLocation({ lat: busPosition.lat, lng: busPosition.lng })
+    }
+  }, [busPosition])
+
+  // Load trip detail from API (prefer /trips/:id; fallback to /schedules/:id)
+  useEffect(() => {
+    async function loadDetail() {
+      try {
+        if (!tripIdNum) return
+        try {
+          const res = await apiClient.getTripById(tripIdNum)
+          const data: any = (res as any).data || res
+          // Map minimal fields used by UI
+          const route = data?.routeInfo?.tenTuyen || data?.tuyen?.tenTuyen || data?.tenTuyen || trip.route
+          const stops = data?.routeInfo?.diemDung || data?.tuyen?.diemDung || data?.stops || []
+          setTrip((prev) => ({
+            ...prev,
+            id: (data?.maChuyen || data?.id || prev.id) + '',
+            route: route || prev.route,
+            stops: Array.isArray(stops) && stops.length > 0 ? prev.stops.map((s, i) => ({ ...s, name: stops[i]?.tenDiem || s.name })) : prev.stops,
+          }))
+        } catch (e) {
+          const res = await apiClient.getScheduleById(tripIdNum)
+          const data: any = (res as any).data || res
+          const route = data?.routeInfo?.tenTuyen || data?.tuyen?.tenTuyen || data?.route?.tenTuyen
+          const stops = data?.routeInfo?.diemDung || data?.route?.diemDung || []
+          setTrip((prev) => ({
+            ...prev,
+            id: (data?.maChuyen || data?.id || prev.id) + '',
+            route: route || prev.route,
+            stops: Array.isArray(stops) && stops.length > 0 ? prev.stops.map((s, i) => ({ ...s, name: stops[i]?.tenDiem || s.name })) : prev.stops,
+          }))
+        }
+      } catch (e) {
+        console.warn('Failed to load trip detail', e)
+      }
+    }
+    loadDetail()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tripIdNum])
 
   const currentStop = trip.stops[trip.currentStop]
   const progress = ((trip.currentStop + 1) / trip.stops.length) * 100
@@ -203,11 +273,13 @@ export default function TripDetailPage() {
     }))
   }
 
-  const handleArriveStop = () => {
-    // Logic to mark arrival at stop
+  const arriveCurrentStop = () => {
+    // Có thể cập nhật trạng thái điểm dừng nếu muốn hiển thị khác biệt
+    setAtCurrentStop(true)
   }
 
-  const handleLeaveStop = () => {
+  const leaveCurrentStop = () => {
+    // Chuyển sang điểm tiếp theo
     if (trip.currentStop < trip.stops.length - 1) {
       setTrip((prev) => ({
         ...prev,
@@ -220,8 +292,62 @@ export default function TripDetailPage() {
               : stop,
         ),
       }))
+      setAtCurrentStop(false)
     }
   }
+
+  async function doStartTrip() {
+    try {
+      setProcessing(true)
+      await startTrip(tripIdNum)
+      startGPS()
+      toast({ title: 'Đã bắt đầu chuyến đi', description: `Trip ${tripIdNum} đang chạy` })
+    } catch (e) {
+      toast({ title: 'Không thể bắt đầu chuyến', description: (e as Error)?.message || 'Vui lòng thử lại', variant: 'destructive' })
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  const finishTrip = async () => {
+    try {
+      setProcessing(true)
+      // Gọi API kết thúc nếu backend có hỗ trợ
+      await endTrip(tripIdNum)
+      stopGPS()
+      toast({ title: 'Hoàn thành chuyến đi', description: `Trip ${tripIdNum} đã kết thúc` })
+      // Điều hướng về giao diện chính Driver
+      router.push('/driver')
+    } catch (e) {
+      toast({ title: 'Không thể kết thúc chuyến', description: (e as Error)?.message || 'Vui lòng thử lại', variant: 'destructive' })
+      // Vẫn cho phép quay về trang chính nếu muốn
+      router.push('/driver')
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  // Một nút duy nhất, thay đổi theo trạng thái
+  const isLastStop = trip.currentStop === trip.stops.length - 1
+  // Single CTA simplified to: if GPS not running → Start Trip; else follow stop flow
+  const showStart = !gpsRunning
+  const primaryCta = showStart
+    ? {
+        label: 'Bắt đầu chuyến đi',
+        onClick: doStartTrip,
+        icon: Navigation,
+        variant: 'default' as const,
+        className: 'bg-primary hover:bg-primary/90 text-white',
+      }
+    : {
+        label: !atCurrentStop ? (isLastStop ? 'Đến điểm cuối' : 'Đến điểm dừng') : (isLastStop ? 'Kết thúc chuyến đi' : 'Rời điểm dừng'),
+        onClick: !atCurrentStop ? arriveCurrentStop : (isLastStop ? finishTrip : leaveCurrentStop),
+        icon: !atCurrentStop ? Navigation : (isLastStop ? Flag : ArrowRight),
+        variant: (atCurrentStop && isLastStop) ? 'destructive' as const : 'default' as const,
+        className: (!atCurrentStop) ? 'bg-sky-600 hover:bg-sky-700 text-white' : (isLastStop ? '' : 'bg-amber-500 hover:bg-amber-600 text-white'),
+      }
+
+  // Header nút Start/End không còn cần thiết khi dùng luồng 1 nút ở phần điểm dừng
 
   // chat handler removed
 
@@ -234,6 +360,7 @@ export default function TripDetailPage() {
             <h1 className="text-3xl font-bold text-foreground">{trip.route}</h1>
             <p className="text-muted-foreground mt-1">Chuyến đi đang diễn ra</p>
           </div>
+          <div />
           <Dialog open={isIncidentDialogOpen} onOpenChange={setIsIncidentDialogOpen}>
             <DialogTrigger asChild>
               <Button
@@ -332,6 +459,9 @@ export default function TripDetailPage() {
                   <CardTitle className="flex items-center gap-2">
                     <MapPin className="w-5 h-5 text-primary" />
                     {currentStop.name}
+                    {effectiveTripId && (
+                      <Badge variant="outline" className="ml-2">Trip {effectiveTripId}</Badge>
+                    )}
                   </CardTitle>
                   <Badge className="bg-primary text-primary-foreground">Điểm hiện tại</Badge>
                 </div>
@@ -350,29 +480,28 @@ export default function TripDetailPage() {
               <CardContent className="space-y-4">
                 <Card className="border-border/50 bg-muted/30">
                       <CardContent className="p-4">
-                        {/* Real Trip Map - uses NEXT_PUBLIC_GOOGLE_MAPS_API_KEY if available */}
-                        <TripMap
-                          center={{ lat: 10.762622, lng: 106.660172 }}
-                          zoom={13}
-                          markers={[
-                            { id: "vehicle", lat: 10.762622, lng: 106.660172, label: `${trip.vehicle.plateNumber} - ${trip.route}` },
-                            // Add current stop marker
-                            { id: `stop-${currentStop.id}`, lat: 10.765, lng: 106.661, label: currentStop.name },
-                          ]}
-                        />
-                    <div className="mt-3 space-y-2">
-                      <div className="flex items-start gap-2 text-sm">
-                        <Navigation2 className="w-4 h-4 text-primary mt-0.5" />
-                        <div>
-                          <p className="font-medium text-foreground">Rẽ phải tại đường Lê Lợi</p>
-                          <p className="text-xs text-muted-foreground">Sau 200m</p>
-                        </div>
-                      </div>
-                      <div className="flex items-start gap-2 text-sm">
-                        <AlertCircle className="w-4 h-4 text-warning mt-0.5" />
-                        <p className="text-muted-foreground">Lưu ý: Đường đang đông xe</p>
-                      </div>
-                    </div>
+                                {/* Leaflet map (replaces Google Maps) */}
+                                <div className="h-[640px] w-full">
+                                  <LeafletMap
+                                    height="640px"
+                                    center={{ lat: busLocation.lat, lng: busLocation.lng }}
+                                    zoom={13}
+                                    followFirstMarker={true}
+                                    autoFitOnUpdate={true}
+                                    markers={[
+                                      {
+                                        // Use bus id from event if present; fallback to '5' to match test script
+                                        id: (busPosition?.busId ?? 5) + "",
+                                        lat: busLocation.lat,
+                                        lng: busLocation.lng,
+                                        label: `${trip.vehicle.plateNumber} - ${trip.route}`,
+                                        type: 'bus' as const,
+                                        status: 'running',
+                                      },
+                                    ]}
+                                  />
+                                </div>
+                    {/* Removed route hints to bring students list closer */}
                   </CardContent>
                 </Card>
 
@@ -446,17 +575,7 @@ export default function TripDetailPage() {
                   />
                 </div>
 
-                {/* Action Buttons */}
-                <div className="grid grid-cols-2 gap-3 pt-4">
-                  <Button variant="outline" onClick={handleArriveStop} className="bg-transparent">
-                    <Navigation className="w-4 h-4 mr-2" />
-                    Đến điểm dừng
-                  </Button>
-                  <Button onClick={handleLeaveStop} className="bg-primary hover:bg-primary/90">
-                    Rời điểm dừng
-                    <ArrowRight className="w-4 h-4 ml-2" />
-                  </Button>
-                </div>
+                {/* Nút hành động đã chuyển ra dạng nổi (floating) để dễ thấy và bấm hơn */}
               </CardContent>
             </Card>
 
@@ -538,35 +657,25 @@ export default function TripDetailPage() {
 
             <Card className="border-border/50">
               <CardHeader>
-                <CardTitle>Chi tiết thời tiết</CardTitle>
+                <CardTitle>Thao tác</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Droplets className="w-4 h-4 text-info" />
-                    <span className="text-sm text-muted-foreground">Độ ẩm</span>
-                  </div>
-                  <span className="text-sm font-medium">{trip.weather.humidity}%</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Wind className="w-4 h-4 text-info" />
-                    <span className="text-sm text-muted-foreground">Gió</span>
-                  </div>
-                  <span className="text-sm font-medium">{trip.weather.wind} km/h</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Cloud className="w-4 h-4 text-info" />
-                    <span className="text-sm text-muted-foreground">Tình trạng</span>
-                  </div>
-                  <span className="text-sm font-medium">{trip.weather.condition}</span>
-                </div>
+              <CardContent>
+                <Button
+                  size="lg"
+                  variant={primaryCta.variant}
+                  onClick={primaryCta.onClick}
+                  disabled={processing}
+                  className={cn('w-full h-12 rounded-lg', primaryCta.className)}
+                >
+                  <primaryCta.icon className="w-5 h-5 mr-2" />
+                  {processing ? 'Đang xử lý…' : primaryCta.label}
+                </Button>
               </CardContent>
             </Card>
           </div>
         </div>
       </div>
+      {/* Floating CTA removed; moved into the right sidebar's "Thao tác" card */}
     </DashboardLayout>
   )
 }

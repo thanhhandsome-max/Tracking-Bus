@@ -67,7 +67,7 @@ export function DashboardLayout({ children, sidebar }: DashboardLayoutProps) {
                   className="flex items-center gap-3 h-10 px-3 hover:bg-accent"
                 >
                   <Avatar className="w-8 h-8">
-                    <AvatarImage src={user?.avatar || "/placeholder.svg"} />
+                    <AvatarImage src={"/placeholder.svg"} />
                     <AvatarFallback className="bg-primary text-primary-foreground text-xs">
                       {user?.name?.charAt(0) || "U"}
                     </AvatarFallback>
