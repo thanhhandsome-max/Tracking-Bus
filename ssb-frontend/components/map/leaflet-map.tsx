@@ -16,6 +16,10 @@ type Props = {
   followFirstMarker?: boolean
   // When true, fit bounds to all markers on every update (useful when there are multiple points)
   autoFitOnUpdate?: boolean
+  // Highlight specific bus marker (by id)
+  selectedId?: string
+  // Callback when a marker is clicked
+  onMarkerClick?: (id: string) => void
 }
 
 export default function LeafletMap({
@@ -25,6 +29,8 @@ export default function LeafletMap({
   markers = [],
   followFirstMarker = true,
   autoFitOnUpdate = false,
+  selectedId,
+  onMarkerClick,
 }: Props) {
   const mapRef = useRef<HTMLDivElement | null>(null)
   const leafletMapRef = useRef<L.Map | null>(null)
@@ -51,6 +57,7 @@ export default function LeafletMap({
       }).addTo(map)
 
       leafletMapRef.current = map
+
     }
 
     // Remove any non-marker overlay layers we added previously (e.g., polylines)
@@ -108,8 +115,11 @@ export default function LeafletMap({
         // Update icon if status/type changes for buses
         if (m.type === 'bus') {
           const status = (m as any).status || ''
-          const color = status === 'running' ? '#10b981' : '#f97316'
-          existing.setIcon(createBusIcon(color, 28))
+          const isSelected = selectedId && (selectedId + '') === id
+          const color = status === 'running'
+            ? (isSelected ? '#2563eb' : '#10b981') // blue when selected, green when running
+            : (status === 'idle' ? '#6b7280' : (status === 'late' ? '#f59e0b' : '#f97316'))
+          existing.setIcon(createBusIcon(color, isSelected ? 34 : 28))
         }
         // Smoothly move to new position
         tweenMove(id, existing, m.lat, m.lng)
@@ -119,8 +129,11 @@ export default function LeafletMap({
         let mk: L.Marker
         if (m.type === 'bus') {
           const status = (m as any).status || ''
-          const color = status === 'running' ? '#10b981' : '#f97316'
-          mk = L.marker([m.lat, m.lng], { icon: createBusIcon(color, 28) })
+          const isSelected = selectedId && (selectedId + '') === id
+          const color = status === 'running'
+            ? (isSelected ? '#2563eb' : '#10b981')
+            : (status === 'idle' ? '#6b7280' : (status === 'late' ? '#f59e0b' : '#f97316'))
+          mk = L.marker([m.lat, m.lng], { icon: createBusIcon(color, isSelected ? 34 : 28) })
         } else if (m.type === 'stop') {
           mk = L.marker([m.lat, m.lng], { icon: createStopPinIcon('#ef4444', 28, 36) })
         } else {
@@ -128,6 +141,9 @@ export default function LeafletMap({
         }
         if ((mk as any).bindPopup && m.label) (mk as any).bindPopup(m.label)
         mk.addTo(map)
+        if (onMarkerClick) {
+          mk.on('click', () => onMarkerClick(id))
+        }
         markerMapRef.current.set(id, mk)
       }
       latlngs.push([m.lat, m.lng])

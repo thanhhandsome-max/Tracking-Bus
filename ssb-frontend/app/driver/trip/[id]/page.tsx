@@ -43,7 +43,7 @@ import {
 } from "@/components/ui/dialog"
 import { IncidentForm } from "@/components/driver/incident-form"
 import { useTripBusPosition } from "@/hooks/use-socket"
-import { startTrip, endTrip } from "@/lib/services/trip.service"
+import { startTripStrict as startTrip, endTrip } from "@/lib/services/trip.service"
 import { useGPS } from "@/hooks/use-gps"
 import { apiClient } from "@/lib/api"
 import { useToast } from "@/hooks/use-toast"
@@ -177,6 +177,8 @@ export default function TripDetailPage() {
   // old admin chat state removed
   const [atCurrentStop, setAtCurrentStop] = useState(false)
   const [processing, setProcessing] = useState(false)
+  const [started, setStarted] = useState(false)
+  const [tripStatus, setTripStatus] = useState<'chua_khoi_hanh'|'dang_chay'|'hoan_thanh'|'huy'|undefined>(undefined)
   const { toast } = useToast()
 
   // Realtime: join driver's trip room and move the vehicle marker when updates arrive
@@ -201,35 +203,26 @@ export default function TripDetailPage() {
     }
   }, [busPosition])
 
-  // Load trip detail from API (prefer /trips/:id; fallback to /schedules/:id)
+  // Load trip detail from API (ONLY trips; no schedules fallback)
   useEffect(() => {
     async function loadDetail() {
       try {
         if (!tripIdNum) return
-        try {
-          const res = await apiClient.getTripById(tripIdNum)
-          const data: any = (res as any).data || res
-          // Map minimal fields used by UI
-          const route = data?.routeInfo?.tenTuyen || data?.tuyen?.tenTuyen || data?.tenTuyen || trip.route
-          const stops = data?.routeInfo?.diemDung || data?.tuyen?.diemDung || data?.stops || []
-          setTrip((prev) => ({
-            ...prev,
-            id: (data?.maChuyen || data?.id || prev.id) + '',
-            route: route || prev.route,
-            stops: Array.isArray(stops) && stops.length > 0 ? prev.stops.map((s, i) => ({ ...s, name: stops[i]?.tenDiem || s.name })) : prev.stops,
-          }))
-        } catch (e) {
-          const res = await apiClient.getScheduleById(tripIdNum)
-          const data: any = (res as any).data || res
-          const route = data?.routeInfo?.tenTuyen || data?.tuyen?.tenTuyen || data?.route?.tenTuyen
-          const stops = data?.routeInfo?.diemDung || data?.route?.diemDung || []
-          setTrip((prev) => ({
-            ...prev,
-            id: (data?.maChuyen || data?.id || prev.id) + '',
-            route: route || prev.route,
-            stops: Array.isArray(stops) && stops.length > 0 ? prev.stops.map((s, i) => ({ ...s, name: stops[i]?.tenDiem || s.name })) : prev.stops,
-          }))
+        const res = await apiClient.getTripById(tripIdNum)
+        const data: any = (res as any).data || res
+        // Map minimal fields used by UI
+        const route = data?.routeInfo?.tenTuyen || data?.tuyen?.tenTuyen || data?.tenTuyen || trip.route
+        const stops = data?.routeInfo?.diemDung || data?.tuyen?.diemDung || data?.stops || []
+        if (data?.trangThai) {
+          setTripStatus(data.trangThai)
+          if (data.trangThai === 'dang_chay') setStarted(true)
         }
+        setTrip((prev) => ({
+          ...prev,
+          id: (data?.maChuyen || data?.id || prev.id) + '',
+          route: route || prev.route,
+          stops: Array.isArray(stops) && stops.length > 0 ? prev.stops.map((s, i) => ({ ...s, name: stops[i]?.tenDiem || s.name })) : prev.stops,
+        }))
       } catch (e) {
         console.warn('Failed to load trip detail', e)
       }
@@ -299,9 +292,15 @@ export default function TripDetailPage() {
   async function doStartTrip() {
     try {
       setProcessing(true)
-      await startTrip(tripIdNum)
+      const res = await startTrip(tripIdNum)
       startGPS()
-      toast({ title: 'Đã bắt đầu chuyến đi', description: `Trip ${tripIdNum} đang chạy` })
+      setStarted(true)
+      setTripStatus('dang_chay')
+      const newId = (res as any)?.data?.maChuyen || (res as any)?.trip?.maChuyen || tripIdNum
+      toast({ title: 'Đã bắt đầu chuyến đi', description: `Trip ${newId} đang chạy` })
+      if (newId && newId !== tripIdNum) {
+        router.push(`/driver/trip/${newId}`)
+      }
     } catch (e) {
       toast({ title: 'Không thể bắt đầu chuyến', description: (e as Error)?.message || 'Vui lòng thử lại', variant: 'destructive' })
     } finally {
@@ -315,6 +314,7 @@ export default function TripDetailPage() {
       // Gọi API kết thúc nếu backend có hỗ trợ
       await endTrip(tripIdNum)
       stopGPS()
+      setTripStatus('hoan_thanh')
       toast({ title: 'Hoàn thành chuyến đi', description: `Trip ${tripIdNum} đã kết thúc` })
       // Điều hướng về giao diện chính Driver
       router.push('/driver')
@@ -330,7 +330,15 @@ export default function TripDetailPage() {
   // Một nút duy nhất, thay đổi theo trạng thái
   const isLastStop = trip.currentStop === trip.stops.length - 1
   // Single CTA simplified to: if GPS not running → Start Trip; else follow stop flow
-  const showStart = !gpsRunning
+  const showStart = !gpsRunning && !started
+
+  // Derive UI display for status/speed/time
+  const currentSpeed = (typeof (busPosition as any)?.speed === 'number')
+    ? Math.round((busPosition as any).speed)
+    : trip.vehicle.speed
+  const lastUpdateISO = (busPosition as any)?.timestamp || (busPosition as any)?.time
+  const lastUpdateText = lastUpdateISO ? new Date(lastUpdateISO).toLocaleTimeString() : undefined
+  const statusLabel = tripStatus === 'dang_chay' ? 'Đang chạy' : (tripStatus === 'hoan_thanh' ? 'Đã kết thúc' : 'Chưa khởi hành')
   const primaryCta = showStart
     ? {
         label: 'Bắt đầu chuyến đi',
@@ -358,7 +366,7 @@ export default function TripDetailPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-foreground">{trip.route}</h1>
-            <p className="text-muted-foreground mt-1">Chuyến đi đang diễn ra</p>
+            <p className="text-muted-foreground mt-1">{statusLabel}{lastUpdateText ? ` • Cập nhật: ${lastUpdateText}` : ''}</p>
           </div>
           <div />
           <Dialog open={isIncidentDialogOpen} onOpenChange={setIsIncidentDialogOpen}>

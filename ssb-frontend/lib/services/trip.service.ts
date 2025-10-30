@@ -32,10 +32,11 @@ async function postJSON(url: string, body: any) {
 export async function startTrip(tripId: number | string) {
   if (API_BASE) {
     try {
+      // Try trip start first (most common)
       return await postJSON(`${API_BASE}/trips/${tripId}/start`, {})
     } catch (err: any) {
-      // Fallback: many backends expose schedule status instead of trip start
       try {
+        // Fallback: if a schedule endpoint exists and the id is schedule id
         return await postJSON(`${API_BASE}/schedules/${tripId}/status`, { trangThai: 'dang_chay' })
       } catch (err2) {
         throw err
@@ -49,12 +50,23 @@ export async function startTrip(tripId: number | string) {
   return { ok: true }
 }
 
+// Strict version: always call trips endpoint directly (no schedule fallback)
+export async function startTripStrict(tripId: number | string) {
+  if (API_BASE) {
+    return await postJSON(`${API_BASE}/trips/${tripId}/start`, {})
+  }
+  try {
+    window.dispatchEvent(new CustomEvent('tripStarted', { detail: { tripId } }))
+  } catch {}
+  return { ok: true }
+}
+
 export async function endTrip(tripId: number | string) {
   if (API_BASE) {
     try {
       return await postJSON(`${API_BASE}/trips/${tripId}/end`, {})
     } catch (err: any) {
-      // Fallback to schedules status endpoint
+      // Fallback to schedules status endpoint (if BE supports it)
       try {
         return await postJSON(`${API_BASE}/schedules/${tripId}/status`, { trangThai: 'hoan_thanh' })
       } catch (err2) {

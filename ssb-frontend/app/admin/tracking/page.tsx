@@ -28,10 +28,12 @@ export default function TrackingPage() {
           id: (b.maXe || b.id) + '',
           plateNumber: b.bienSoXe || b.plateNumber || '',
           route: b.tenTuyen || b.route || '-',
-          status: (b.trangThai === 'hoat_dong' ? 'running' : b.trangThai) || 'running',
-          lat: Number(b.viDo || b.lat || 10.762622),
-          lng: Number(b.kinhDo || b.lng || 106.660172),
-          speed: Number(b.tocDo || b.speed || 0),
+          speed: Number(b.tocDo ?? b.speed ?? 0),
+          status: (Number(b.tocDo ?? b.speed ?? 0) > 0)
+            ? 'running'
+            : ((b.trangThai === 'su_co' || b.status === 'incident') ? 'incident' : 'idle'),
+          lat: Number(b.viDo ?? b.lat ?? 10.762622),
+          lng: Number(b.kinhDo ?? b.lng ?? 106.660172),
           students: Number(b.soHocSinh || b.students || 0),
           progress: Number(b.tienDo || b.progress || 0),
         }))
@@ -49,6 +51,33 @@ export default function TrackingPage() {
       }
     }
     load()
+  }, [])
+
+  // Realtime: update bus list when bus position events arrive (so speed/status UI stays fresh)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const d: any = (e as CustomEvent).detail
+      if (!d) return
+      const id = (d.busId ?? d.id ?? d.vehicleId ?? d.bus?.id)
+      const lat = d.lat ?? d.latitude ?? d.coords?.lat
+      const lng = d.lng ?? d.longitude ?? d.coords?.lng ?? d.lon
+      const speed = typeof d.speed === 'number' ? d.speed : undefined
+      if (!id && lat == null && lng == null && speed == null) return
+      setBuses((prev) => prev.map((b) => {
+        if ((b.id + '') !== (id + '')) return b
+        const nextLat = (typeof lat === 'number') ? lat : b.lat
+        const nextLng = (typeof lng === 'number') ? lng : b.lng
+        const nextSpeed = (typeof speed === 'number') ? speed : b.speed || 0
+        const nextStatus = (nextSpeed > 0) ? 'running' : (b.status === 'incident' ? 'incident' : 'idle')
+        return { ...b, lat: nextLat, lng: nextLng, speed: nextSpeed, status: nextStatus }
+      }))
+    }
+    window.addEventListener('busPositionUpdate', handler as EventListener)
+    window.addEventListener('busLocationUpdate', handler as EventListener)
+    return () => {
+      window.removeEventListener('busPositionUpdate', handler as EventListener)
+      window.removeEventListener('busLocationUpdate', handler as EventListener)
+    }
   }, [])
 
   return (
@@ -77,14 +106,12 @@ export default function TrackingPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                {buses.length > 0 && (
-                  <MapView
-                    buses={buses as any}
-                    selectedBus={selectedBus as any}
-                    onSelectBus={(b: any) => setSelectedBus(b)}
-                    autoFitOnUpdate
-                  />
-                )}
+                <MapView
+                  buses={buses as any}
+                  selectedBus={selectedBus as any}
+                  onSelectBus={(b: any) => setSelectedBus(b)}
+                  autoFitOnUpdate
+                />
               </CardContent>
             </Card>
           </div>
@@ -122,10 +149,18 @@ export default function TrackingPage() {
                                   ? "border-primary text-primary"
                                   : bus.status === "late"
                                     ? "border-warning text-warning"
-                                    : "border-destructive text-destructive"
+                                    : bus.status === "incident"
+                                      ? "border-destructive text-destructive"
+                                      : "border-muted-foreground text-muted-foreground"
                               }
                             >
-                              {bus.status === "running" ? "Đang chạy" : bus.status === "late" ? "Trễ" : "Sự cố"}
+                              {bus.status === "running"
+                                ? "Đang chạy"
+                                : bus.status === "late"
+                                  ? "Trễ"
+                                  : bus.status === "incident"
+                                    ? "Sự cố"
+                                    : "Đứng yên"}
                             </Badge>
                           </div>
 
