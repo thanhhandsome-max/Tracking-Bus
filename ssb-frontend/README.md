@@ -28,3 +28,17 @@ Continue building your app on:
 2. Deploy your chats from the v0 interface
 3. Changes are automatically pushed to this repository
 4. Vercel deploys the latest version from this repository
+
+## Auth Guards
+
+- The app provides client-side guards in `lib/guards`:
+	- `RequireAuth` redirects unauthenticated users to `/login`.
+	- `RequireRole` enforces role-based access and redirects users to their own dashboard (e.g. `/admin`, `/driver`, `/parent`).
+			- `RequireRole` enforces role-based access and redirects users to their own dashboard (e.g. `/admin`, `/driver`, `/parent`).
+- Route sections are protected via App Router layouts:
+	- `app/admin/layout.tsx` → only `admin`
+	- `app/driver/layout.tsx` → only `driver`
+	- `app/parent/layout.tsx` → only `parent`
+
+To protect a new section, add a `layout.tsx` under that route and wrap `{children}` with `RequireRole`.
+

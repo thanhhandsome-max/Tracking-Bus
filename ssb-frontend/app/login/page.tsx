@@ -4,19 +4,17 @@ import type React from "react"
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { useAuth, type UserRole } from "@/lib/auth-context"
+import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Bus, Lock, Mail, User } from "lucide-react"
+import { Lock, Mail } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
-  const [role, setRole] = useState<UserRole>("admin")
   const { login, loading, user } = useAuth()
   const { toast } = useToast()
   const router = useRouter()
@@ -108,24 +106,6 @@ export default function LoginPage() {
                 </CardHeader>
                 <CardContent>
                   <form onSubmit={handleSubmit} className="space-y-4">
-                    {/* Role Selection */}
-                    <div className="space-y-2">
-                      <Label htmlFor="role" className="flex items-center gap-2">
-                        <User className="w-4 h-4" />
-                        Vai trò
-                      </Label>
-                      <Select value={role} onValueChange={(value) => setRole(value as UserRole)}>
-                        <SelectTrigger id="role">
-                          <SelectValue placeholder="Chọn vai trò" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="admin">Quản lý Nhà trường</SelectItem>
-                          <SelectItem value="driver">Tài xế</SelectItem>
-                          <SelectItem value="parent">Phụ huynh</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
                     {/* Email */}
                     <div className="space-y-2">
                       <Label htmlFor="email" className="flex items-center gap-2">
@@ -174,15 +154,7 @@ export default function LoginPage() {
                       {loading ? "Đang đăng nhập..." : "Đăng nhập"}
                     </Button>
 
-                    {/* Demo Credentials */}
-                    <div className="mt-6 p-4 rounded-lg bg-muted/50 border border-border/50">
-                      <p className="text-xs text-muted-foreground mb-2 font-medium">Demo credentials:</p>
-                      <div className="space-y-1 text-xs text-muted-foreground">
-                        <p>Admin: admin@school.edu.vn / admin123</p>
-                        <p>Driver: driver@school.edu.vn / driver123</p>
-                        <p>Parent: parent@school.edu.vn / parent123</p>
-                      </div>
-                    </div>
+                    {/* Demo credentials removed */}
                   </form>
                 </CardContent>
               </Card>
