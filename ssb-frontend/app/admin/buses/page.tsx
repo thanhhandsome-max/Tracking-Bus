@@ -20,6 +20,7 @@ import { Plus, Search, Edit, Trash2, Eye } from "lucide-react"
 import { BusForm } from "@/components/admin/bus-form"
 import { Bus as BusType, getBusesWithMeta } from "@/lib/services/bus.service"
 import { apiClient } from '@/lib/api'
+type BusType = { id: string; plateNumber: string; capacity?: number; status?: string; raw?: any }
 // state for buses
 // will be fetched from backend via busService.getBuses()
 
@@ -30,6 +31,8 @@ export default function BusesPage() {
   const [showEdit, setShowEdit] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  const [editingBus, setEditingBus] = useState<BusType | null>(null)
   const [buses, setBuses] = useState<BusType[]>([])
   const [loading, setLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
@@ -106,7 +109,63 @@ export default function BusesPage() {
                 <DialogTitle>Thêm xe buýt mới</DialogTitle>
                 <DialogDescription>Nhập thông tin xe buýt để thêm vào hệ thống</DialogDescription>
               </DialogHeader>
-              <BusForm onClose={() => setIsAddDialogOpen(false)} />
+              <BusForm onClose={() => setIsAddDialogOpen(false)} onCreated={() => {
+                // refresh list after creation
+                (async () => {
+                  try {
+                    setLoading(true)
+                    const res = await apiClient.getBuses({ limit: 100 })
+                    const data = (res as any).data || []
+                    const items = Array.isArray(data) ? data : data?.data || []
+                    const mapped: BusType[] = items.map((b: any) => ({
+                      id: String(b.maXe || b.id || b._id || ''),
+                      plateNumber: b.bienSoXe || b.plateNumber || '',
+                      capacity: b.sucChua || b.capacity,
+                      status: b.trangThai || b.status,
+                      raw: b,
+                    }))
+                    setBuses(mapped)
+                  } finally {
+                    setLoading(false)
+                  }
+                })()
+              }} />
+            </DialogContent>
+          </Dialog>
+          <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Chỉnh sửa xe buýt</DialogTitle>
+                <DialogDescription>Cập nhật thông tin xe buýt</DialogDescription>
+              </DialogHeader>
+              <BusForm
+                mode="edit"
+                initialBus={{
+                  id: editingBus?.id,
+                  bienSoXe: editingBus?.plateNumber,
+                  sucChua: editingBus?.capacity,
+                  trangThai: editingBus?.status,
+                }}
+                onClose={() => setIsEditDialogOpen(false)}
+                onUpdated={async () => {
+                  try {
+                    setLoading(true)
+                    const res = await apiClient.getBuses({ limit: 100 })
+                    const data = (res as any).data || []
+                    const items = Array.isArray(data) ? data : data?.data || []
+                    const mapped: BusType[] = items.map((b: any) => ({
+                      id: String(b.maXe || b.id || b._id || ''),
+                      plateNumber: b.bienSoXe || b.plateNumber || '',
+                      capacity: b.sucChua || b.capacity,
+                      status: b.trangThai || b.status,
+                      raw: b,
+                    }))
+                    setBuses(mapped)
+                  } finally {
+                    setLoading(false)
+                  }
+                }}
+              />
             </DialogContent>
           </Dialog>
         </div>
