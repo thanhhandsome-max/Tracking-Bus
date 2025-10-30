@@ -18,9 +18,9 @@ import {
 } from "@/components/ui/dialog"
 import { Plus, Search, Edit, Trash2, Eye } from "lucide-react"
 import { BusForm } from "@/components/admin/bus-form"
-import { Bus as BusType, getBusesWithMeta } from "@/lib/services/bus.service"
+import { getBusesWithMeta } from "@/lib/services/bus.service"
 import { apiClient } from '@/lib/api'
-type BusType = { id: string; plateNumber: string; capacity?: number; status?: string; raw?: any }
+type BusType = { id: string; plateNumber: string; model?: string; capacity?: number; status?: string; raw?: any }
 // state for buses
 // will be fetched from backend via busService.getBuses()
 
@@ -120,6 +120,7 @@ export default function BusesPage() {
                     const mapped: BusType[] = items.map((b: any) => ({
                       id: String(b.maXe || b.id || b._id || ''),
                       plateNumber: b.bienSoXe || b.plateNumber || '',
+                      model: b.model || '',
                       capacity: b.sucChua || b.capacity,
                       status: b.trangThai || b.status,
                       raw: b,
@@ -145,6 +146,7 @@ export default function BusesPage() {
                   bienSoXe: editingBus?.plateNumber,
                   sucChua: editingBus?.capacity,
                   trangThai: editingBus?.status,
+                  model: editingBus?.model,
                 }}
                 onClose={() => setIsEditDialogOpen(false)}
                 onUpdated={async () => {
@@ -156,6 +158,7 @@ export default function BusesPage() {
                     const mapped: BusType[] = items.map((b: any) => ({
                       id: String(b.maXe || b.id || b._id || ''),
                       plateNumber: b.bienSoXe || b.plateNumber || '',
+                      model: b.model || '',
                       capacity: b.sucChua || b.capacity,
                       status: b.trangThai || b.status,
                       raw: b,

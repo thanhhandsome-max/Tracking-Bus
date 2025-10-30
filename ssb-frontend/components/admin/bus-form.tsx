@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,8 +8,8 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { apiClient } from '@/lib/api'
-import { apiClient } from "@/lib/api"
 
+// Type Bus (chuẩn hóa field dùng cho form)
 type Bus = {
   id?: string | number
   bienSoXe?: string
@@ -19,45 +18,39 @@ type Bus = {
   capacity?: number
   trangThai?: string
   status?: string
+  model?: string
 }
 
+// Props form chuẩn
 interface BusFormProps {
   onClose: () => void
   onSuccess?: () => void
-  initialBus?: any
+  initialBus?: Bus | null
   mode?: 'edit' | 'create'
   onCreated?: (bus: any) => void
   onUpdated?: (bus: any) => void
-  mode?: "create" | "edit"
-  initialBus?: Bus | null
 }
 
-export function BusForm({ onClose, onSuccess, initialBus, mode }: BusFormProps) {
-  const [plateNumber, setPlateNumber] = useState(initialBus?.plateNumber || "")
+export function BusForm({ onClose, onSuccess, initialBus, mode = 'create', onCreated, onUpdated }: BusFormProps) {
+  const [plateNumber, setPlateNumber] = useState(initialBus?.plateNumber || initialBus?.bienSoXe || "")
   const [model, setModel] = useState(initialBus?.model || "")
-  const [capacity, setCapacity] = useState(initialBus?.capacity?.toString() || "")
+  const [capacity, setCapacity] = useState(
+    initialBus?.capacity?.toString() ||
+    initialBus?.sucChua?.toString() ||
+    ""
+  )
   const [status, setStatus] = useState(
     initialBus?.status === 'hoat_dong' || initialBus?.status === 'active' ? 'active'
       : initialBus?.status === 'bao_tri' || initialBus?.status === 'maintenance' ? 'maintenance'
-      : initialBus?.status === 'ngung_hoat_dong' || initialBus?.status === 'inactive' ? 'inactive' : 'active'
+      : initialBus?.status === 'ngung_hoat_dong' || initialBus?.status === 'inactive' ? 'inactive'
+      : initialBus?.trangThai === 'hoat_dong' ? 'active'
+      : initialBus?.trangThai === 'bao_tri' ? 'maintenance'
+      : initialBus?.trangThai === 'ngung_hoat_dong' ? 'inactive'
+      : 'active'
   )
-export function BusForm({ onClose, onCreated, onUpdated, mode = "create", initialBus = null }: BusFormProps) {
-  const [plateNumber, setPlateNumber] = useState<string>(
-    (initialBus?.bienSoXe as string) || (initialBus?.plateNumber as string) || ""
-  )
-  const [capacity, setCapacity] = useState<string>(
-    initialBus?.sucChua !== undefined
-      ? String(initialBus?.sucChua)
-      : initialBus?.capacity !== undefined
-      ? String(initialBus?.capacity)
-      : ""
-  )
-  const [status, setStatus] = useState<string>((initialBus?.trangThai as string) || (initialBus?.status as string) || "active")
   const [submitting, setSubmitting] = useState(false)
   const { toast } = useToast()
-  const [submitting, setSubmitting] = useState(false)
 
-  const handleSubmit = async (e: React.FormEvent) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!plateNumber || !capacity) {
@@ -70,7 +63,7 @@ export function BusForm({ onClose, onCreated, onUpdated, mode = "create", initia
       if (status === 'active') beStatus = 'hoat_dong'
       else if (status === 'maintenance') beStatus = 'bao_tri'
       else if (status === 'inactive') beStatus = 'ngung_hoat_dong'
-      if (mode === 'edit' && initialBus) {
+      if (mode === 'edit' && initialBus && initialBus.id !== undefined) {
         await apiClient.updateBus(initialBus.id, {
           bienSoXe: plateNumber,
           dongXe: model,
@@ -78,7 +71,8 @@ export function BusForm({ onClose, onCreated, onUpdated, mode = "create", initia
           trangThai: beStatus
         })
         toast({ title: "Cập nhật thành công", description: "Thông tin xe đã được lưu" })
-      } else {
+        onUpdated?.(initialBus)
+      } else if (mode !== 'edit') {
         await apiClient.createBus({
           bienSoXe: plateNumber,
           dongXe: model,
@@ -86,40 +80,14 @@ export function BusForm({ onClose, onCreated, onUpdated, mode = "create", initia
           trangThai: beStatus
         })
         toast({ title: "Thành công", description: "Đã thêm xe buýt mới" })
+        onCreated?.({ plateNumber, model, capacity, beStatus })
       }
       if (onSuccess) onSuccess()
-      else window.location.reload()
     } catch (err: any) {
       toast({ title: "Lỗi", description: err?.message || "Thao tác thất bại", variant: "destructive" })
     } finally {
       setSubmitting(false)
       onClose()
-    }
-
-    try {
-      setSubmitting(true)
-      const payload = {
-        bienSoXe: plateNumber.trim(),
-        sucChua: Number(capacity),
-        trangThai: status,
-      }
-      if (mode === "edit" && initialBus?.id != null) {
-        const res = await apiClient.updateBus(initialBus.id, payload)
-        const updated = (res as any).data || res
-        toast({ title: "Thành công", description: "Đã cập nhật xe buýt" })
-        onUpdated?.(updated)
-        onClose()
-      } else {
-        const res = await apiClient.createBus(payload)
-        const created = (res as any).data || res
-        toast({ title: "Thành công", description: "Đã thêm xe buýt mới" })
-        onCreated?.(created)
-        onClose()
-      }
-    } catch (err: any) {
-      toast({ title: "Không thành công", description: err?.message || "Tạo xe thất bại", variant: "destructive" })
-    } finally {
-      setSubmitting(false)
     }
   }
 
@@ -153,14 +121,7 @@ export function BusForm({ onClose, onCreated, onUpdated, mode = "create", initia
       <div className="flex justify-end gap-3 pt-4">
         <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>Hủy</Button>
         <Button type="submit" className="bg-primary hover:bg-primary/90" disabled={submitting}>{mode === 'edit' ? 'Lưu thay đổi' : 'Thêm xe buýt'}</Button>
-        <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
-          Hủy
-        </Button>
-        <Button type="submit" className="bg-primary hover:bg-primary/90" disabled={submitting}>
-          {submitting ? "Đang lưu..." : "Thêm xe buýt"}
-        </Button>
       </div>
     </form>
   )
 }
-
