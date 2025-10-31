@@ -24,6 +24,7 @@ import {
   FileText,
 } from "lucide-react"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import apiClient from "@/lib/api"
 import { Checkbox } from "@/components/ui/checkbox"
 
 interface IncidentFormProps {
@@ -100,7 +101,7 @@ export function IncidentForm({ onClose, tripId }: IncidentFormProps) {
     }, 1000)
   })
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     if (!type || !description) {
@@ -111,13 +112,32 @@ export function IncidentForm({ onClose, tripId }: IncidentFormProps) {
       })
       return
     }
-
-    toast({
-      title: "Đã gửi báo cáo",
-      description: "Admin sẽ nhận được thông báo ngay lập tức",
-    })
-
-    onClose()
+    try {
+      // Map severity to backend mucDo
+      const severityMap: Record<string, string> = {
+        low: "nhe",
+        medium: "trung_binh",
+        high: "nghiem_trong", // treating 'high' as serious for now
+        critical: "nghiem_trong",
+      }
+      const payload = {
+        maChuyen: Number(tripId) || undefined,
+        moTa: `[${type}] ${description}`,
+        mucDo: severityMap[severity] || "nhe",
+      }
+      await apiClient.createIncident(payload as any)
+      toast({
+        title: "Đã gửi báo cáo",
+        description: "Admin sẽ nhận được thông báo ngay lập tức",
+      })
+      onClose()
+    } catch (err: any) {
+      toast({
+        title: "Gửi báo cáo thất bại",
+        description: err?.message || "Vui lòng thử lại",
+        variant: "destructive",
+      })
+    }
   }
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -325,8 +345,9 @@ export function IncidentForm({ onClose, tripId }: IncidentFormProps) {
                 <Checkbox
                   id={student}
                   checked={affectedStudents.includes(student)}
-                  onCheckedChange={(checked) => {
-                    if (checked) {
+                  onCheckedChange={(checked: boolean | "indeterminate") => {
+                    const isChecked = checked === true
+                    if (isChecked) {
                       setAffectedStudents([...affectedStudents, student])
                     } else {
                       setAffectedStudents(affectedStudents.filter((s) => s !== student))

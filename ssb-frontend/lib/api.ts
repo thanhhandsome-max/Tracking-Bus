@@ -449,6 +449,91 @@ class ApiClient {
   async getHealthHistory() {
     return this.request("/health/history");
   }
+
+  // Incident endpoints
+  async getIncidents(params?: {
+    mucDo?: string;
+    maChuyen?: number;
+    trangThai?: string;
+    tuNgay?: string;
+    denNgay?: string;
+    limit?: number;
+    offset?: number;
+  }) {
+    const queryParams = new URLSearchParams();
+    if (params?.mucDo) queryParams.append("mucDo", params.mucDo);
+    if (params?.maChuyen) queryParams.append("maChuyen", String(params.maChuyen));
+    if (params?.trangThai) queryParams.append("trangThai", params.trangThai);
+    if (params?.tuNgay) queryParams.append("tuNgay", params.tuNgay);
+    if (params?.denNgay) queryParams.append("denNgay", params.denNgay);
+    if (params?.limit) queryParams.append("limit", String(params.limit));
+    if (params?.offset) queryParams.append("offset", String(params.offset));
+    const q = queryParams.toString();
+    return this.request(`/incidents${q ? `?${q}` : ""}`);
+  }
+
+  async createIncident(payload: { maChuyen: number; moTa: string; mucDo?: string; trangThai?: string }) {
+    return this.request("/incidents", { method: "POST", body: JSON.stringify(payload) });
+  }
+
+  async updateIncident(id: number, payload: { moTa?: string; mucDo?: string; trangThai?: string }) {
+    return this.request(`/incidents/${id}`, { method: "PUT", body: JSON.stringify(payload) });
+  }
+
+  async deleteIncident(id: number) {
+    return this.request(`/incidents/${id}`, { method: "DELETE" });
+  }
+
+  // Notifications endpoints
+  async getNotifications(params?: { loaiThongBao?: string; daDoc?: boolean; limit?: number; offset?: number }) {
+    const queryParams = new URLSearchParams();
+    if (params?.loaiThongBao) queryParams.append("loaiThongBao", params.loaiThongBao);
+    if (params?.daDoc !== undefined) queryParams.append("daDoc", String(params.daDoc));
+    if (params?.limit) queryParams.append("limit", String(params.limit));
+    if (params?.offset) queryParams.append("offset", String(params.offset));
+    const q = queryParams.toString();
+    return this.request(`/notifications${q ? `?${q}` : ""}`);
+  }
+
+  async getUnreadCount() {
+    return this.request("/notifications/unread-count");
+  }
+
+  async markNotificationRead(id: number) {
+    return this.request(`/notifications/${id}/read`, { method: "PATCH" });
+  }
+
+  async markAllNotificationsRead() {
+    return this.request(`/notifications/read-all`, { method: "PATCH" });
+  }
+
+  async deleteNotification(id: number) {
+    return this.request(`/notifications/${id}`, { method: "DELETE" });
+  }
+
+  async deleteAllReadNotifications() {
+    return this.request(`/notifications/clean-read`, { method: "DELETE" });
+  }
+
+  // Reports endpoints
+  async getReportsOverview(params?: { from?: string; to?: string }) {
+    const queryParams = new URLSearchParams();
+    if (params?.from) queryParams.append("from", params.from);
+    if (params?.to) queryParams.append("to", params.to);
+    const q = queryParams.toString();
+    return this.request(`/reports/overview${q ? `?${q}` : ""}`);
+  }
+
+  // Trip history for parent
+  async getTripHistory(params?: { from?: string; to?: string; page?: number; limit?: number }) {
+    const queryParams = new URLSearchParams();
+    if (params?.from) queryParams.append("from", params.from);
+    if (params?.to) queryParams.append("to", params.to);
+    if (params?.page) queryParams.append("page", String(params.page));
+    if (params?.limit) queryParams.append("limit", String(params.limit));
+    const q = queryParams.toString();
+    return this.request(`/trips/history${q ? `?${q}` : ""}`);
+  }
 }
 
 // Create singleton instance

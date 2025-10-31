@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -32,68 +32,20 @@ import {
   TrendingUp,
   TrendingDown,
 } from "lucide-react"
+import apiClient from "@/lib/api"
 
-// Mock data for incidents
-const mockIncidents = [
-  {
-    id: "INC-001",
-    type: "Tắc đường",
-    severity: "Medium",
-    status: "Đã xử lý",
-    description: "Tắc đường nghiêm trọng trên đường Nguyễn Huệ",
-    location: "Đường Nguyễn Huệ, Q.1",
-    date: "2024-01-15",
-    time: "07:30",
-    resolvedAt: "2024-01-15 08:15",
-    affectedStudents: 12,
-  },
-  {
-    id: "INC-002",
-    type: "Sự cố xe",
-    severity: "High",
-    status: "Đang xử lý",
-    description: "Lốp xe bị xì hơi, cần hỗ trợ khẩn cấp",
-    location: "Đường Lê Lợi, Q.3",
-    date: "2024-01-15",
-    time: "08:15",
-    affectedStudents: 18,
-  },
-  {
-    id: "INC-003",
-    type: "Học sinh",
-    severity: "Low",
-    status: "Đã xử lý",
-    description: "Học sinh Nguyễn Văn A không có mặt tại điểm đón",
-    location: "Điểm đón số 3",
-    date: "2024-01-14",
-    time: "07:00",
-    resolvedAt: "2024-01-14 07:30",
-    affectedStudents: 1,
-  },
-  {
-    id: "INC-004",
-    type: "Tai nạn",
-    severity: "Critical",
-    status: "Đã xử lý",
-    description: "Va chạm nhẹ với xe máy, không có thương tích",
-    location: "Giao lộ Trần Hưng Đạo - Lý Thường Kiệt",
-    date: "2024-01-13",
-    time: "16:45",
-    resolvedAt: "2024-01-13 18:00",
-    affectedStudents: 15,
-  },
-  {
-    id: "INC-005",
-    type: "Khác",
-    severity: "Low",
-    status: "Chờ xử lý",
-    description: "Điều hòa không hoạt động",
-    location: "Xe buýt 29B-12345",
-    date: "2024-01-15",
-    time: "09:00",
-    affectedStudents: 0,
-  },
-]
+type UIIncident = {
+  id: string
+  type: string
+  severity: string
+  status: string
+  description: string
+  location?: string
+  date: string
+  time: string
+  resolvedAt?: string
+  affectedStudents?: number
+}
 
 export default function DriverIncidentsPage() {
   const [searchQuery, setSearchQuery] = useState("")
@@ -102,18 +54,53 @@ export default function DriverIncidentsPage() {
   const [filterStatus, setFilterStatus] = useState("all")
   const [selectedIncident, setSelectedIncident] = useState<any>(null)
   const [isFormOpen, setIsFormOpen] = useState(false)
+  const [incidents, setIncidents] = useState<UIIncident[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await apiClient.getIncidents({ limit: 100 })
+        const arr = Array.isArray(res?.data) ? res.data : []
+        const items = arr.map((i: any) => {
+          const dt = i.thoiGianBao ? new Date(i.thoiGianBao) : new Date()
+          const severityMap: Record<string, string> = {
+            nhe: "Low",
+            trung_binh: "Medium",
+            nghiem_trong: "High",
+          }
+          return {
+            id: `INC-${i.maSuCo}`,
+            type: "Sự cố",
+            severity: severityMap[i.mucDo] || "Low",
+            status: i.trangThai === "da_xu_ly" ? "Đã xử lý" : i.trangThai === "dang_xu_ly" ? "Đang xử lý" : "Chờ xử lý",
+            description: i.moTa,
+            location: i.bienSoXe ? `Xe ${i.bienSoXe}` : undefined,
+            date: dt.toLocaleDateString("vi-VN"),
+            time: dt.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
+          } as UIIncident
+        })
+        setIncidents(items)
+      } catch (e) {
+        setIncidents([])
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+  }, [])
 
   // Calculate statistics
-  const totalIncidents = mockIncidents.length
-  const pendingIncidents = mockIncidents.filter((i) => i.status === "Chờ xử lý" || i.status === "Đang xử lý").length
-  const resolvedIncidents = mockIncidents.filter((i) => i.status === "Đã xử lý").length
-  const criticalIncidents = mockIncidents.filter((i) => i.severity === "Critical" || i.severity === "High").length
+  const totalIncidents = incidents.length
+  const pendingIncidents = incidents.filter((i) => i.status === "Chờ xử lý" || i.status === "Đang xử lý").length
+  const resolvedIncidents = incidents.filter((i) => i.status === "Đã xử lý").length
+  const criticalIncidents = incidents.filter((i) => i.severity === "Critical" || i.severity === "High").length
 
   // Filter incidents
-  const filteredIncidents = mockIncidents.filter((incident) => {
+  const filteredIncidents = incidents.filter((incident) => {
     const matchesSearch =
       incident.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      incident.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (incident.location || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
       incident.id.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesType = filterType === "all" || incident.type === filterType
     const matchesSeverity = filterSeverity === "all" || incident.severity === filterSeverity
@@ -309,7 +296,9 @@ export default function DriverIncidentsPage() {
 
       {/* Incidents List */}
       <div className="space-y-3">
-        {filteredIncidents.length === 0 ? (
+        {loading ? (
+          <Card className="p-12 text-center">Đang tải dữ liệu...</Card>
+        ) : filteredIncidents.length === 0 ? (
           <Card className="p-12 text-center">
             <AlertTriangle className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-foreground mb-2">Không tìm thấy sự cố</h3>
@@ -348,7 +337,7 @@ export default function DriverIncidentsPage() {
                             {incident.date} lúc {incident.time}
                           </span>
                         </div>
-                        {incident.affectedStudents > 0 && (
+                        {typeof incident.affectedStudents === "number" && incident.affectedStudents > 0 && (
                           <div className="flex items-center gap-1">
                             <AlertCircle className="w-3 h-3" />
                             <span>{incident.affectedStudents} học sinh bị ảnh hưởng</span>

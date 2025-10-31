@@ -9,11 +9,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { CheckCircle2, AlertCircle, Info, MapPin, Clock, Bell, BellOff, Trash2 } from "lucide-react"
+import apiClient from "@/lib/api"
+// socket events are bridged via window CustomEvent 'notificationNew' in lib/socket
 
 export default function ParentNotifications() {
   const { user } = useAuth()
   const router = useRouter()
   const [filter, setFilter] = useState("all")
+  const [notifications, setNotifications] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     if (user && user.role !== "parent") {
@@ -25,61 +29,75 @@ export default function ParentNotifications() {
     return null
   }
 
-  // Mock notifications data
-  const notifications = [
-    {
-      id: 1,
-      type: "success",
-      title: "Đã đón con bạn",
-      message: "Con bạn đã được đón lúc 07:17 tại Điểm đón 3",
-      time: "5 phút trước",
-      date: "2024-01-15",
-      read: false,
-      icon: CheckCircle2,
-    },
-    {
-      id: 2,
-      type: "info",
-      title: "Xe buýt đang trên đường",
-      message: "Xe buýt 29B-12345 đang di chuyển đến điểm đón của bạn",
-      time: "15 phút trước",
-      date: "2024-01-15",
-      read: false,
-      icon: MapPin,
-    },
-    {
-      id: 3,
-      type: "warning",
-      title: "Xe buýt chậm 3 phút",
-      message: "Do tắc đường, xe buýt sẽ đến muộn khoảng 3 phút",
-      time: "20 phút trước",
-      date: "2024-01-15",
-      read: false,
-      icon: AlertCircle,
-    },
-    {
-      id: 4,
-      type: "success",
-      title: "Đã trả con bạn",
-      message: "Con bạn đã được trả an toàn lúc 17:02 tại Điểm trả 3",
-      time: "2 giờ trước",
-      date: "2024-01-14",
-      read: true,
-      icon: CheckCircle2,
-    },
-    {
-      id: 5,
-      type: "info",
-      title: "Thay đổi lịch trình",
-      message: "Lịch trình ngày mai sẽ thay đổi do bảo trì xe buýt",
-      time: "1 ngày trước",
-      date: "2024-01-14",
-      read: true,
-      icon: Info,
-    },
-  ]
+  const iconForType = (t: string) => (t === "warning" ? AlertCircle : t === "success" ? CheckCircle2 : Info)
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await apiClient.getNotifications({ limit: 100 })
+        const arr = Array.isArray(res?.data) ? res.data : []
+        const mapped = arr.map((n: any) => {
+          const t = n.loaiThongBao === "su_co" ? "warning" : n.loaiThongBao === "chuyen_di" ? "info" : "info"
+          const dt = n.thoiGianGui ? new Date(n.thoiGianGui) : new Date()
+          return {
+            id: n.maThongBao,
+            type: t,
+            title: n.tieuDe || "Thông báo",
+            message: n.noiDung,
+            time: dt.toLocaleString("vi-VN"),
+            date: dt.toISOString().slice(0, 10),
+            read: !!n.daDoc,
+            icon: iconForType(t),
+          }
+        })
+        setNotifications(mapped)
+      } catch (e) {
+        setNotifications([])
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+
+    const handler = (e: any) => {
+      const payload = e.detail
+      const dt = payload.thoiGianGui ? new Date(payload.thoiGianGui) : new Date()
+      const t = payload.loaiThongBao === "su_co" ? "warning" : payload.loaiThongBao === "chuyen_di" ? "info" : "info"
+      const item = {
+        id: payload.maThongBao || Date.now(),
+        type: t,
+        title: payload.tieuDe || "Thông báo",
+        message: payload.noiDung,
+        time: dt.toLocaleString("vi-VN"),
+        date: dt.toISOString().slice(0, 10),
+        read: false,
+        icon: iconForType(t),
+      }
+      setNotifications((prev) => [item, ...prev])
+    }
+    window.addEventListener("notificationNew", handler)
+
+    return () => {
+      window.removeEventListener("notificationNew", handler)
+    }
+  }, [])
 
   const unreadCount = notifications.filter((n) => !n.read).length
+
+  const markAllRead = async () => {
+    await apiClient.markAllNotificationsRead()
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
+  }
+
+  const deleteAllRead = async () => {
+    await apiClient.deleteAllReadNotifications()
+    setNotifications((prev) => prev.filter((n) => !n.read))
+  }
+
+  const deleteOne = async (id: number) => {
+    await apiClient.deleteNotification(id)
+    setNotifications((prev) => prev.filter((n) => n.id !== id))
+  }
 
   return (
     <DashboardLayout sidebar={<ParentSidebar />}>
@@ -90,11 +108,11 @@ export default function ParentNotifications() {
             <p className="text-muted-foreground mt-1">Nhận thông báo về chuyến đi của con bạn</p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="gap-2 bg-transparent">
+            <Button onClick={markAllRead} variant="outline" size="sm" className="gap-2 bg-transparent">
               <Bell className="w-4 h-4" />
               Đánh dấu đã đọc
             </Button>
-            <Button variant="outline" size="sm" className="gap-2 bg-transparent">
+            <Button onClick={deleteAllRead} variant="outline" size="sm" className="gap-2 bg-transparent">
               <Trash2 className="w-4 h-4" />
               Xóa tất cả
             </Button>
@@ -161,7 +179,7 @@ export default function ParentNotifications() {
               </TabsList>
 
               <TabsContent value="all" className="space-y-3 mt-6">
-                {notifications.map((notification) => (
+                {(loading ? [] : notifications).map((notification) => (
                   <div
                     key={notification.id}
                     className={`p-4 rounded-lg border transition-colors cursor-pointer ${
@@ -199,7 +217,7 @@ export default function ParentNotifications() {
                             <p className="text-sm text-muted-foreground">{notification.message}</p>
                             <p className="text-xs text-muted-foreground mt-2">{notification.time}</p>
                           </div>
-                          <Button variant="ghost" size="sm">
+                          <Button onClick={() => deleteOne(notification.id)} variant="ghost" size="sm">
                             <Trash2 className="w-4 h-4" />
                           </Button>
                         </div>
