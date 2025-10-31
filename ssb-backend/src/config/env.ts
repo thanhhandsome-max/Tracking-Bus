@@ -25,7 +25,7 @@ interface Config {
     refreshExpiresIn: string;
   };
   frontend: {
-    origin: string;
+    origin: string | string[];
   };
   socket: {
     corsOrigin: string;
@@ -95,7 +95,7 @@ const config: Config = {
     refreshExpiresIn: process.env["JWT_REFRESH_EXPIRES_IN"] || "7d",
   },
   frontend: {
-    origin: process.env["FE_ORIGIN"]!,
+    origin: process.env["FE_ORIGIN"]!.split(",").map((o) => o.trim()), // Hỗ trợ nhiều origins
   },
   socket: {
     corsOrigin: process.env["SOCKET_CORS_ORIGIN"] || process.env["FE_ORIGIN"]!,

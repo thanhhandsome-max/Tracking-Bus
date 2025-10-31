@@ -2,12 +2,41 @@ import { Server } from "socket.io";
 import { verifyWsJWT } from "../utils/wsAuth.js";
 import TelemetryService from "../services/telemetryService.js";
 
+import config from "../config/env.js";
+
 export function initSocketIO(httpServer) {
   console.log("🚀 Initializing Socket.IO server...");
 
+  // Get allowed origins from config (supports multiple origins)
+  const allowedOrigins = Array.isArray(config.frontend.origin) 
+    ? config.frontend.origin 
+    : [config.frontend.origin];
+
   const io = new Server(httpServer, {
     cors: {
-      origin: process.env.FRONTEND_URL || "http://localhost:3000",
+      origin: (origin, callback) => {
+        // Allow requests with no origin (like mobile apps)
+        if (!origin) {
+          return callback(null, true);
+        }
+        
+        // Check if origin is in allowed list
+        const isAllowed = allowedOrigins.some(allowed => {
+          if (typeof allowed === 'string') {
+            // Support wildcard patterns
+            const pattern = allowed.replace(/\*/g, '.*');
+            const regex = new RegExp(`^${pattern}$`);
+            return regex.test(origin) || allowed === origin;
+          }
+          return false;
+        });
+        
+        if (isAllowed) {
+          callback(null, true);
+        } else {
+          callback(new Error('Not allowed by CORS'));
+        }
+      },
       credentials: true,
     },
     transports: ["websocket", "polling"],

@@ -16,6 +16,19 @@ const TrangThaiHocSinhModel = {
     return rows[0];
   },
 
+  // Lấy tất cả học sinh trên chuyến đi
+  async getByTripId(maChuyen) {
+    const [rows] = await pool.query(
+      `SELECT ts.*, hs.hoTen, hs.lop, hs.anhDaiDien
+       FROM TrangThaiHocSinh ts
+       LEFT JOIN HocSinh hs ON ts.maHocSinh = hs.maHocSinh
+       WHERE ts.maChuyen = ?
+       ORDER BY ts.thuTuDiemDon`,
+      [maChuyen]
+    );
+    return rows;
+  },
+
   // Thêm trạng thái học sinh mới
   async create(data) {
     const {
