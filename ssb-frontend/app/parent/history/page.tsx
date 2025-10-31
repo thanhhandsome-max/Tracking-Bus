@@ -10,11 +10,14 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Calendar, Clock, CheckCircle2, XCircle, Search } from "lucide-react"
+import apiClient from "@/lib/api"
 
 export default function ParentHistory() {
   const { user } = useAuth()
   const router = useRouter()
   const [searchQuery, setSearchQuery] = useState("")
+  const [items, setItems] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     if (user && user.role !== "parent") {
@@ -26,80 +29,27 @@ export default function ParentHistory() {
     return null
   }
 
-  // Mock trip history data
-  const tripHistory = [
-    {
-      id: 1,
-      date: "2024-01-15",
-      type: "morning",
-      busNumber: "29B-12345",
-      driverName: "Trần Văn Hùng",
-      pickupTime: "07:15",
-      actualPickupTime: "07:17",
-      dropoffTime: "07:45",
-      actualDropoffTime: "07:48",
-      status: "completed",
-      delay: 2,
-    },
-    {
-      id: 2,
-      date: "2024-01-15",
-      type: "afternoon",
-      busNumber: "29B-12345",
-      driverName: "Trần Văn Hùng",
-      pickupTime: "16:30",
-      actualPickupTime: "16:30",
-      dropoffTime: "17:00",
-      actualDropoffTime: "17:02",
-      status: "completed",
-      delay: 0,
-    },
-    {
-      id: 3,
-      date: "2024-01-14",
-      type: "morning",
-      busNumber: "29B-12345",
-      driverName: "Trần Văn Hùng",
-      pickupTime: "07:15",
-      actualPickupTime: "07:15",
-      dropoffTime: "07:45",
-      actualDropoffTime: "07:43",
-      status: "completed",
-      delay: 0,
-    },
-    {
-      id: 4,
-      date: "2024-01-14",
-      type: "afternoon",
-      busNumber: "29B-12345",
-      driverName: "Trần Văn Hùng",
-      pickupTime: "16:30",
-      actualPickupTime: null,
-      dropoffTime: "17:00",
-      actualDropoffTime: null,
-      status: "absent",
-      delay: 0,
-    },
-    {
-      id: 5,
-      date: "2024-01-13",
-      type: "morning",
-      busNumber: "29B-12345",
-      driverName: "Trần Văn Hùng",
-      pickupTime: "07:15",
-      actualPickupTime: "07:20",
-      dropoffTime: "07:45",
-      actualDropoffTime: "07:52",
-      status: "completed",
-      delay: 5,
-    },
-  ]
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await apiClient.getTripHistory({ limit: 100 })
+        const arr = Array.isArray(res?.data) ? res.data : []
+        setItems(arr)
+      } catch (e) {
+        setItems([])
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+  }, [])
 
+  const totalTrips = items.length
   const stats = {
-    totalTrips: 48,
-    onTimeRate: 92,
-    avgDelay: 2,
-    absences: 2,
+    totalTrips,
+    onTimeRate: 0,
+    avgDelay: 0,
+    absences: 0,
   }
 
   return (
@@ -187,35 +137,35 @@ export default function ParentHistory() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {tripHistory.map((trip) => (
+              {(loading ? [] : items).map((trip: any, idx: number) => (
                 <div
-                  key={trip.id}
+                  key={idx}
                   className="p-4 rounded-lg border border-border/50 hover:bg-muted/30 transition-colors"
                 >
                   <div className="flex items-start justify-between">
                     <div className="space-y-3 flex-1">
                       <div className="flex items-center gap-3">
                         <Badge variant="outline" className="font-mono">
-                          {trip.date}
+                          {trip.ngayChay}
                         </Badge>
-                        <Badge variant={trip.type === "morning" ? "default" : "secondary"}>
-                          {trip.type === "morning" ? "Buổi sáng" : "Buổi chiều"}
+                        <Badge variant={trip.loaiChuyen === "don_sang" ? "default" : "secondary"}>
+                          {trip.loaiChuyen === "don_sang" ? "Buổi sáng" : "Buổi chiều"}
                         </Badge>
-                        {trip.status === "completed" && (
+                        {trip.trangThai === "hoan_thanh" && (
                           <Badge variant="default" className="bg-green-500/20 text-green-700 hover:bg-green-500/30">
                             <CheckCircle2 className="w-3 h-3 mr-1" />
                             Hoàn thành
                           </Badge>
                         )}
-                        {trip.status === "absent" && (
+                        {trip.trangThai === "vang" && (
                           <Badge variant="default" className="bg-red-500/20 text-red-700 hover:bg-red-500/30">
                             <XCircle className="w-3 h-3 mr-1" />
                             Vắng mặt
                           </Badge>
                         )}
-                        {trip.delay > 0 && (
+                        {false && (
                           <Badge variant="default" className="bg-orange-500/20 text-orange-700 hover:bg-orange-500/30">
-                            Trễ {trip.delay} phút
+                            Trễ 0 phút
                           </Badge>
                         )}
                       </div>
@@ -223,20 +173,20 @@ export default function ParentHistory() {
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                         <div className="space-y-1">
                           <p className="text-muted-foreground">Xe buýt</p>
-                          <p className="font-medium text-foreground">{trip.busNumber}</p>
-                          <p className="text-xs text-muted-foreground">{trip.driverName}</p>
+                          <p className="font-medium text-foreground">{trip.bienSoXe || ""}</p>
+                          <p className="text-xs text-muted-foreground">{trip.tenTuyen || ""}</p>
                         </div>
 
                         <div className="space-y-1">
                           <p className="text-muted-foreground">Thời gian đón</p>
-                          <p className="font-medium text-foreground">{trip.actualPickupTime || "Không có"}</p>
-                          <p className="text-xs text-muted-foreground">Dự kiến: {trip.pickupTime}</p>
+                          <p className="font-medium text-foreground">{""}</p>
+                          <p className="text-xs text-muted-foreground">Dự kiến: {trip.gioKhoiHanh}</p>
                         </div>
 
                         <div className="space-y-1">
                           <p className="text-muted-foreground">Thời gian trả</p>
-                          <p className="font-medium text-foreground">{trip.actualDropoffTime || "Không có"}</p>
-                          <p className="text-xs text-muted-foreground">Dự kiến: {trip.dropoffTime}</p>
+                          <p className="font-medium text-foreground">{""}</p>
+                          <p className="text-xs text-muted-foreground">Dự kiến: {""}</p>
                         </div>
                       </div>
                     </div>

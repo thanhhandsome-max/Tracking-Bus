@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { AdminSidebar } from "@/components/admin/admin-sidebar"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -35,10 +35,78 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts"
+import apiClient from "@/lib/api"
+import { Skeleton } from "@/components/ui/skeleton"
+import { useToast } from "@/hooks/use-toast"
 
 export default function ReportsPage() {
   const [dateRange, setDateRange] = useState("7days")
   const [reportType, setReportType] = useState("overview")
+  const [loading, setLoading] = useState(true)
+  const { toast } = useToast()
+
+  // Backend stats
+  const [stats, setStats] = useState<{
+    totalTrips: number
+    onTimeRate: number
+    totalStudents: number
+    avgDelay: number
+    incidents: number
+    activeBuses: number
+  } | null>(null)
+
+  // Map dateRange to from/to (YYYY-MM-DD)
+  const { from, to } = useMemo(() => {
+    const now = new Date()
+    const end = new Date(now)
+    let start = new Date(now)
+    if (dateRange === "7days") start.setDate(start.getDate() - 6)
+    else if (dateRange === "30days") start.setDate(start.getDate() - 29)
+    else if (dateRange === "90days") start.setDate(start.getDate() - 89)
+    else start.setDate(start.getDate() - 6) // default 7 days
+    const toISO = end.toISOString().slice(0, 10)
+    const fromISO = start.toISOString().slice(0, 10)
+    return { from: fromISO, to: toISO }
+  }, [dateRange])
+
+  useEffect(() => {
+    let mounted = true
+    async function load() {
+      try {
+        setLoading(true)
+        const res = await apiClient.getReportsOverview({ from, to })
+        const data: any = (res as any)?.data || {}
+        const buses = data.buses || {}
+        const trips = data.trips || {}
+        // Derive UI stats with safe fallbacks
+        const totalTrips = Number(trips.total || 0)
+        const completed = Number(trips.completed || 0)
+        const delayed = Number(trips.delayed || 0)
+        const onTime = Math.max(completed - delayed, 0)
+        const onTimeRate = totalTrips > 0 ? Math.round((onTime / totalTrips) * 100) : 0
+        const avgDelay = Number(trips.averageDurationMinutes || 0) > 0 ? Math.max(Math.round((delayed / (totalTrips || 1)) * 10) / 10, 0) : 0
+        const activeBuses = Number(buses.active || 0)
+        // Note: totalStudents/incidents are not provided by BE yet → keep placeholders  from UI context
+        const derived = {
+          totalTrips,
+          onTimeRate,
+          totalStudents: 490, // TODO: replace when BE provides
+          avgDelay: 3.2, // TODO: replace when BE provides
+          incidents: 53, // TODO: replace when BE provides
+          activeBuses,
+        }
+        if (mounted) setStats(derived)
+      } catch (e: any) {
+        console.warn("Failed to load reports overview", e)
+        toast({ title: "Không tải được báo cáo", description: e?.message || "Vui lòng thử lại", variant: "destructive" })
+        if (mounted) setStats(null)
+      } finally {
+        if (mounted) setLoading(false)
+      }
+    }
+    load()
+    return () => { mounted = false }
+  }, [from, to, toast])
 
   // Mock data for charts
   const tripTrendData = [
@@ -81,13 +149,13 @@ export default function ReportsPage() {
     { name: "Hoàng Văn Minh", trips: 38, onTimeRate: 85, rating: 4.2 },
   ]
 
-  const stats = {
-    totalTrips: 213,
-    onTimeRate: 92,
-    totalStudents: 490,
-    avgDelay: 3.2,
-    incidents: 53,
-    activeBuses: 5,
+  const uiStats = stats || {
+    totalTrips: 0,
+    onTimeRate: 0,
+    totalStudents: 0,
+    avgDelay: 0,
+    incidents: 0,
+    activeBuses: 0,
   }
 
   return (
@@ -125,7 +193,7 @@ export default function ReportsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">Tổng chuyến đi</p>
-                  <p className="text-2xl font-bold text-foreground mt-1">{stats.totalTrips}</p>
+                  <p className="text-2xl font-bold text-foreground mt-1">{uiStats.totalTrips}</p>
                   <div className="flex items-center gap-1 mt-2">
                     <TrendingUp className="w-3 h-3 text-green-500" />
                     <span className="text-xs text-green-500">+12%</span>
@@ -143,7 +211,7 @@ export default function ReportsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">Tỷ lệ đúng giờ</p>
-                  <p className="text-2xl font-bold text-green-500 mt-1">{stats.onTimeRate}%</p>
+                  <p className="text-2xl font-bold text-green-500 mt-1">{uiStats.onTimeRate}%</p>
                   <div className="flex items-center gap-1 mt-2">
                     <TrendingUp className="w-3 h-3 text-green-500" />
                     <span className="text-xs text-green-500">+3%</span>
@@ -161,7 +229,7 @@ export default function ReportsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">Học sinh</p>
-                  <p className="text-2xl font-bold text-foreground mt-1">{stats.totalStudents}</p>
+                  <p className="text-2xl font-bold text-foreground mt-1">{uiStats.totalStudents}</p>
                   <div className="flex items-center gap-1 mt-2">
                     <TrendingUp className="w-3 h-3 text-green-500" />
                     <span className="text-xs text-green-500">+5</span>
@@ -179,7 +247,7 @@ export default function ReportsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">Trễ TB</p>
-                  <p className="text-2xl font-bold text-orange-500 mt-1">{stats.avgDelay}m</p>
+                  <p className="text-2xl font-bold text-orange-500 mt-1">{uiStats.avgDelay}m</p>
                   <div className="flex items-center gap-1 mt-2">
                     <TrendingDown className="w-3 h-3 text-green-500" />
                     <span className="text-xs text-green-500">-0.5m</span>
@@ -197,7 +265,7 @@ export default function ReportsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">Sự cố</p>
-                  <p className="text-2xl font-bold text-foreground mt-1">{stats.incidents}</p>
+                  <p className="text-2xl font-bold text-foreground mt-1">{uiStats.incidents}</p>
                   <div className="flex items-center gap-1 mt-2">
                     <TrendingDown className="w-3 h-3 text-green-500" />
                     <span className="text-xs text-green-500">-8</span>
@@ -215,7 +283,7 @@ export default function ReportsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">Xe hoạt động</p>
-                  <p className="text-2xl font-bold text-foreground mt-1">{stats.activeBuses}</p>
+                  <p className="text-2xl font-bold text-foreground mt-1">{uiStats.activeBuses}</p>
                   <div className="flex items-center gap-1 mt-2">
                     <span className="text-xs text-muted-foreground">Tổng: 5</span>
                   </div>
@@ -279,7 +347,7 @@ export default function ReportsPage() {
                     <div className="p-4 rounded-lg bg-muted/30">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-sm text-muted-foreground">Tổng chuyến đi</span>
-                        <span className="text-lg font-bold text-foreground">{stats.totalTrips}</span>
+                        <span className="text-lg font-bold text-foreground">{uiStats.totalTrips}</span>
                       </div>
                       <div className="w-full bg-muted rounded-full h-2">
                         <div className="bg-primary h-2 rounded-full" style={{ width: "100%" }} />

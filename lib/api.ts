@@ -16,8 +16,10 @@ interface ApiError {
 }
 
 class ApiClient {
-  private baseURL: string;
-  private token: string | null = null;
+  private baseURL: string
+  private token: string | null = null
+  private isRefreshing = false
+  private refreshPromise: Promise<string | null> | null = null
 
   constructor() {
     // Use API v1 by default to match backend routes
@@ -45,7 +47,8 @@ class ApiClient {
       if (token) {
         localStorage.setItem("ssb_token", token);
       } else {
-        localStorage.removeItem("ssb_token");
+        localStorage.removeItem('ssb_token')
+        localStorage.removeItem('ssb_refresh_token')
       }
     }
   }
@@ -109,35 +112,63 @@ class ApiClient {
       },
     };
 
+    const doFetch = async () => {
+      const response = await fetch(url, config)
+      const json = await response.json().catch(() => ({}))
+      return { response, json }
+    }
+
     try {
-      const response = await fetch(url, config);
+      let { response, json } = await doFetch()
 
-      // Handle HTTP errors
+      // Attempt refresh on 401 once
+      if (!response.ok && response.status === 401 && typeof window !== 'undefined') {
+        const refreshToken = localStorage.getItem('ssb_refresh_token')
+        if (refreshToken) {
+          if (!this.isRefreshing) {
+            this.isRefreshing = true
+            this.refreshPromise = fetch(`${this.baseURL}/auth/refresh`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${refreshToken}` },
+            })
+              .then(async (r) => {
+                const body = await r.json().catch(() => ({}))
+                if (!r.ok) return null
+                const newToken = body?.data?.token || body?.token
+                if (newToken) this.setToken(newToken)
+                return newToken || null
+              })
+              .finally(() => {
+                this.isRefreshing = false
+              })
+          }
+          const newToken = await (this.refreshPromise as Promise<string | null>)
+          this.refreshPromise = null
+          if (newToken) {
+            config.headers = { ...(config.headers as any), Authorization: `Bearer ${newToken}` }
+            const retried = await doFetch()
+            response = retried.response
+            json = retried.json
+          }
+        }
+      }
+
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
         const error: ApiError = {
-          message: errorData.message || "API request failed",
+          message: json?.message || 'API request failed',
           status: response.status,
-          code: errorData.code,
-        };
-        throw error;
+          code: json?.code,
+        }
+        throw error
       }
 
-      const data = await response.json();
-      return data;
+      return json
     } catch (error) {
-      // If error is already formatted as ApiError, throw it
-      if (
-        error &&
-        typeof error === "object" &&
-        "status" in error &&
-        "message" in error
-      ) {
-        throw error;
+      if (error && typeof error === 'object' && 'status' in error && 'message' in error) {
+        throw error as ApiError
       }
-      // Otherwise, handle the error
-      const apiError = this.handleError(error);
-      throw apiError;
+      const apiError = this.handleError(error)
+      throw apiError
     }
   }
 
@@ -291,6 +322,16 @@ class ApiClient {
     return this.request(`/buses/${id}`, {
       method: "DELETE",
     });
+  }
+
+  // Stats endpoints
+  async getBusStats() {
+    return this.request('/buses/stats')
+  }
+
+  async getTripStats(params: { from: string; to: string }) {
+    const q = new URLSearchParams({ from: params.from, to: params.to }).toString()
+    return this.request(`/trips/stats?${q}`)
   }
 }
 

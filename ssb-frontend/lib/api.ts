@@ -27,6 +27,8 @@ interface ApiResponse<T = any> {
 class ApiClient {
   private baseURL: string;
   private token: string | null = null;
+  private isRefreshing = false;
+  private refreshPromise: Promise<string | null> | null = null;
 
   constructor(baseURL: string) {
     this.baseURL = baseURL;
@@ -52,6 +54,7 @@ class ApiClient {
     if (typeof window !== "undefined") {
       localStorage.removeItem("ssb_token");
       localStorage.removeItem("token");
+      localStorage.removeItem("ssb_refresh_token");
     }
   }
 
@@ -80,21 +83,55 @@ class ApiClient {
       ).Authorization = `Bearer ${this.token}`;
     }
 
+    const doFetch = async (): Promise<{ ok: boolean; status: number; json: any }> => {
+      const resp = await fetch(url, { ...options, headers });
+      const json = await resp.json().catch(() => ({}));
+      return { ok: resp.ok, status: resp.status, json };
+    };
+
     try {
-      const response = await fetch(url, {
-        ...options,
-        headers,
-      });
+      let { ok, status, json } = await doFetch();
 
-      const data = await response.json();
+      // Auto refresh token on 401 once
+      if (!ok && status === 401 && typeof window !== "undefined") {
+        const refreshToken = localStorage.getItem("ssb_refresh_token");
+        if (refreshToken) {
+          // prevent parallel refresh storms
+          if (!this.isRefreshing) {
+            this.isRefreshing = true;
+            this.refreshPromise = fetch(`${this.baseURL}/auth/refresh`, {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${refreshToken}` },
+            })
+              .then(async (r) => {
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok) return null;
+                const newToken = data?.data?.token || data?.token;
+                if (newToken) this.setToken(newToken);
+                return newToken || null;
+              })
+              .finally(() => {
+                this.isRefreshing = false;
+              });
+          }
+          const newToken = await (this.refreshPromise as Promise<string | null>);
+          this.refreshPromise = null;
 
-      if (!response.ok) {
-        throw new Error(data.message || "API request failed");
+          if (newToken) {
+            // retry original call with new token
+            (headers as Record<string, string>).Authorization = `Bearer ${newToken}`;
+            const retried = await doFetch();
+            ok = retried.ok; status = retried.status; json = retried.json;
+          }
+        }
       }
 
-      return data;
+      if (!ok) {
+        throw new Error(json?.message || "API request failed");
+      }
+
+      return json;
     } catch (error) {
-      // Giảm nhiễu console cho các fallback logic (ví dụ: gọi endpoint có thể không tồn tại)
       console.warn("API request warning:", error);
       throw error;
     }
@@ -199,6 +236,14 @@ class ApiClient {
 
   async getBusStats() {
     return this.request("/buses/stats");
+  }
+
+  async getTripStats(params?: { from: string; to: string }) {
+    const queryParams = new URLSearchParams();
+    if (params?.from) queryParams.append("from", params.from);
+    if (params?.to) queryParams.append("to", params.to);
+    const query = queryParams.toString();
+    return this.request(`/trips/stats${query ? `?${query}` : ""}`);
   }
 
   // Driver endpoints
@@ -453,6 +498,91 @@ class ApiClient {
 
   async getHealthHistory() {
     return this.request("/health/history");
+  }
+
+  // Incident endpoints
+  async getIncidents(params?: {
+    mucDo?: string;
+    maChuyen?: number;
+    trangThai?: string;
+    tuNgay?: string;
+    denNgay?: string;
+    limit?: number;
+    offset?: number;
+  }) {
+    const queryParams = new URLSearchParams();
+    if (params?.mucDo) queryParams.append("mucDo", params.mucDo);
+    if (params?.maChuyen) queryParams.append("maChuyen", String(params.maChuyen));
+    if (params?.trangThai) queryParams.append("trangThai", params.trangThai);
+    if (params?.tuNgay) queryParams.append("tuNgay", params.tuNgay);
+    if (params?.denNgay) queryParams.append("denNgay", params.denNgay);
+    if (params?.limit) queryParams.append("limit", String(params.limit));
+    if (params?.offset) queryParams.append("offset", String(params.offset));
+    const q = queryParams.toString();
+    return this.request(`/incidents${q ? `?${q}` : ""}`);
+  }
+
+  async createIncident(payload: { maChuyen: number; moTa: string; mucDo?: string; trangThai?: string }) {
+    return this.request("/incidents", { method: "POST", body: JSON.stringify(payload) });
+  }
+
+  async updateIncident(id: number, payload: { moTa?: string; mucDo?: string; trangThai?: string }) {
+    return this.request(`/incidents/${id}`, { method: "PUT", body: JSON.stringify(payload) });
+  }
+
+  async deleteIncident(id: number) {
+    return this.request(`/incidents/${id}`, { method: "DELETE" });
+  }
+
+  // Notifications endpoints
+  async getNotifications(params?: { loaiThongBao?: string; daDoc?: boolean; limit?: number; offset?: number }) {
+    const queryParams = new URLSearchParams();
+    if (params?.loaiThongBao) queryParams.append("loaiThongBao", params.loaiThongBao);
+    if (params?.daDoc !== undefined) queryParams.append("daDoc", String(params.daDoc));
+    if (params?.limit) queryParams.append("limit", String(params.limit));
+    if (params?.offset) queryParams.append("offset", String(params.offset));
+    const q = queryParams.toString();
+    return this.request(`/notifications${q ? `?${q}` : ""}`);
+  }
+
+  async getUnreadCount() {
+    return this.request("/notifications/unread-count");
+  }
+
+  async markNotificationRead(id: number) {
+    return this.request(`/notifications/${id}/read`, { method: "PATCH" });
+  }
+
+  async markAllNotificationsRead() {
+    return this.request(`/notifications/read-all`, { method: "PATCH" });
+  }
+
+  async deleteNotification(id: number) {
+    return this.request(`/notifications/${id}`, { method: "DELETE" });
+  }
+
+  async deleteAllReadNotifications() {
+    return this.request(`/notifications/clean-read`, { method: "DELETE" });
+  }
+
+  // Reports endpoints
+  async getReportsOverview(params?: { from?: string; to?: string }) {
+    const queryParams = new URLSearchParams();
+    if (params?.from) queryParams.append("from", params.from);
+    if (params?.to) queryParams.append("to", params.to);
+    const q = queryParams.toString();
+    return this.request(`/reports/overview${q ? `?${q}` : ""}`);
+  }
+
+  // Trip history for parent
+  async getTripHistory(params?: { from?: string; to?: string; page?: number; limit?: number }) {
+    const queryParams = new URLSearchParams();
+    if (params?.from) queryParams.append("from", params.from);
+    if (params?.to) queryParams.append("to", params.to);
+    if (params?.page) queryParams.append("page", String(params.page));
+    if (params?.limit) queryParams.append("limit", String(params.limit));
+    const q = queryParams.toString();
+    return this.request(`/trips/history${q ? `?${q}` : ""}`);
   }
 }
 

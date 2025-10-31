@@ -1,4 +1,4 @@
-const pool = require("../config/db.config.js");
+import pool from "../config/db.js";
 
 class ThongBaoModel {
   // Tạo thông báo mới
@@ -166,4 +166,5 @@ class ThongBaoModel {
   }
 }
 
-module.exports = new ThongBaoModel();
+const instance = new ThongBaoModel();
+export default instance;

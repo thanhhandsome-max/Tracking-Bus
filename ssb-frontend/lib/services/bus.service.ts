@@ -14,11 +14,13 @@ export type Bus = {
  * Fetch list of buses from backend: GET /buses
  * Returns array of mapped Bus objects
  */
-export async function getBuses(params: { page?: number; limit?: number; search?: string } = {}): Promise<Bus[]> {
+export async function getBuses(params: { page?: number; limit?: number; search?: string; sortBy?: string; sortDir?: 'ASC'|'DESC'|'asc'|'desc' } = {}): Promise<Bus[]> {
 	const qs: string[] = []
 	if (params.page) qs.push(`page=${params.page}`)
 	if (params.limit) qs.push(`limit=${params.limit}`)
 	if (params.search) qs.push(`search=${encodeURIComponent(params.search)}`)
+  if (params.sortBy) qs.push(`sortBy=${encodeURIComponent(params.sortBy)}`)
+  if (params.sortDir) qs.push(`sortDir=${encodeURIComponent(params.sortDir)}`)
 	const query = qs.length ? `?${qs.join('&')}` : ''
 
 	const res = await api.get(`/buses${query}`)
@@ -41,11 +43,13 @@ export async function getBuses(params: { page?: number; limit?: number; search?:
 /**
  * Fetch buses and return items + pagination metadata
  */
-export async function getBusesWithMeta(params: { page?: number; limit?: number; search?: string } = {}) {
+export async function getBusesWithMeta(params: { page?: number; limit?: number; search?: string; sortBy?: string; sortDir?: 'ASC'|'DESC'|'asc'|'desc' } = {}) {
 	const qs: string[] = []
 	if (params.page) qs.push(`page=${params.page}`)
 	if (params.limit) qs.push(`limit=${params.limit}`)
 	if (params.search) qs.push(`search=${encodeURIComponent(params.search)}`)
+  if (params.sortBy) qs.push(`sortBy=${encodeURIComponent(params.sortBy)}`)
+  if (params.sortDir) qs.push(`sortDir=${encodeURIComponent(params.sortDir)}`)
 	const query = qs.length ? `?${qs.join('&')}` : ''
 
 	const res = await api.get(`/buses${query}`)

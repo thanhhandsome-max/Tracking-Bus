@@ -8,6 +8,63 @@ import HocSinhModel from "../models/HocSinhModel.js";
 import tripService from "../services/tripService.js"; // kết nối tới service xử lý logic trip
 
 class TripController {
+  // Lịch sử chuyến đi cho phụ huynh (các chuyến có con tham gia)
+  static async getHistory(req, res) {
+    try {
+      const userId = req.user?.userId;
+      const { from, to, page = 1, limit = 10 } = req.query;
+
+      // Lấy danh sách con của phụ huynh
+      const children = await HocSinhModel.getByParent(userId);
+      const childIds = children.map((c) => c.maHocSinh);
+      if (childIds.length === 0) {
+        return res.status(200).json({ success: true, data: [], pagination: { currentPage: 1, totalPages: 0, totalItems: 0, itemsPerPage: Number(limit) } });
+      }
+
+      // Truy vấn lịch sử các chuyến có con tham gia
+      const pool = (await import("../config/db.js")).default;
+      const params = [childIds];
+      let where = "tth.maHocSinh IN (?)";
+      if (from) { where += " AND cd.ngayChay >= ?"; params.push(from); }
+      if (to) { where += " AND cd.ngayChay <= ?"; params.push(to); }
+
+      const [rows] = await pool.query(
+        `SELECT cd.maChuyen, cd.ngayChay, cd.trangThai,
+                lt.loaiChuyen, lt.gioKhoiHanh,
+                td.tenTuyen,
+                xb.bienSoXe,
+                tth.maHocSinh, hs.hoTen as tenHocSinh, tth.trangThai as trangThaiHocSinh
+         FROM TrangThaiHocSinh tth
+         JOIN ChuyenDi cd ON tth.maChuyen = cd.maChuyen
+         JOIN LichTrinh lt ON cd.maLichTrinh = lt.maLichTrinh
+         JOIN TuyenDuong td ON lt.maTuyen = td.maTuyen
+         JOIN XeBuyt xb ON lt.maXe = xb.maXe
+         JOIN HocSinh hs ON tth.maHocSinh = hs.maHocSinh
+         WHERE ${where}
+         ORDER BY cd.ngayChay DESC, lt.gioKhoiHanh DESC`,
+        params
+      );
+
+      // Phân trang tại controller (có thể tối ưu SQL sau)
+      const total = rows.length;
+      const start = (Number(page) - 1) * Number(limit);
+      const data = rows.slice(start, start + Number(limit));
+
+      return res.status(200).json({
+        success: true,
+        data,
+        pagination: {
+          currentPage: Number(page),
+          totalPages: Math.ceil(total / Number(limit)),
+          totalItems: total,
+          itemsPerPage: Number(limit),
+        },
+      });
+    } catch (error) {
+      console.error("TripController.getHistory error:", error);
+      return res.status(500).json({ success: false, message: "Lỗi server" });
+    }
+  }
   // Lấy danh sách tất cả chuyến đi
   static async getAll(req, res) {
     try {

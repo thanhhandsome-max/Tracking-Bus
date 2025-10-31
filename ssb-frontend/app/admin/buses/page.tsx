@@ -36,6 +36,8 @@ export default function BusesPage() {
   const [buses, setBuses] = useState<BusType[]>([])
   const [loading, setLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
+  const [sortBy, setSortBy] = useState<string>('maXe')
+  const [sortDir, setSortDir] = useState<'ASC'|'DESC'>('DESC')
 
   // Map any status string from list to backend enum for BusForm
   const toBEStatus = (s?: string) => (
@@ -50,7 +52,7 @@ export default function BusesPage() {
     setLoading(true)
     setError(null)
     try {
-      const res = await getBusesWithMeta({ limit: 100 })
+      const res = await getBusesWithMeta({ limit: 100, sortBy, sortDir })
       const schRes = await (apiClient.getSchedules as any)({ dangApDung: 'true' })
       const schArr: any[] = Array.isArray(schRes?.data) ? schRes.data : Array.isArray(schRes) ? schRes : [];
       const schMap: Record<string, any> = {}
@@ -70,7 +72,7 @@ export default function BusesPage() {
       setLoading(true)
       setError(null)
       try {
-        const res = await getBusesWithMeta({ limit: 100 })
+        const res = await getBusesWithMeta({ limit: 100, sortBy, sortDir })
         // Lấy tất cả schedule có dangApDung=true
         const schRes = await (apiClient.getSchedules as any)({ dangApDung: 'true' })
         const schArr: any[] = Array.isArray(schRes?.data) ? schRes.data : Array.isArray(schRes) ? schRes : [];
@@ -92,7 +94,7 @@ export default function BusesPage() {
     }
     load()
     return () => { mounted = false }
-  }, [])
+  }, [sortBy, sortDir])
 
   const filteredBuses = buses.filter((bus) => (bus.plateNumber || '').toLowerCase().includes(searchQuery.toLowerCase()))
 
@@ -214,14 +216,37 @@ export default function BusesPage() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle>Danh sách xe buýt</CardTitle>
-              <div className="relative w-64">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  placeholder="Tìm theo biển số..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
-                />
+              <div className="flex items-center gap-3">
+                <div className="hidden md:flex items-center gap-2">
+                  <label className="text-sm text-muted-foreground">Sắp xếp:</label>
+                  <select
+                    className="h-9 border rounded-md bg-transparent px-2"
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value)}
+                  >
+                    <option value="maXe">Mã xe</option>
+                    <option value="bienSoXe">Biển số</option>
+                    <option value="sucChua">Sức chứa</option>
+                    <option value="trangThai">Trạng thái</option>
+                  </select>
+                  <select
+                    className="h-9 border rounded-md bg-transparent px-2"
+                    value={sortDir}
+                    onChange={(e) => setSortDir(e.target.value as any)}
+                  >
+                    <option value="ASC">Tăng dần</option>
+                    <option value="DESC">Giảm dần</option>
+                  </select>
+                </div>
+                <div className="relative w-64">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Tìm theo biển số..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
               </div>
             </div>
           </CardHeader>
