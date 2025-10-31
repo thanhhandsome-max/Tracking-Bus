@@ -8,7 +8,7 @@ import http from "http";
 import { Server } from "socket.io";
 import cors from "cors";
 import dotenv from "dotenv";
-import { verifyWsJWT } from './middlewares/socketAuth.js'; 
+import { verifyWsJWT } from "./middlewares/socketAuth.js";
 
 import config from "./config/env.js";
 import {
@@ -253,6 +253,18 @@ const io = initSocketIO(server);
 
 // Store Socket.IO instance in app for use in routes
 app.set("io", io);
+
+// 🔥 Day 5: Test Firebase connection
+import { testFirebaseConnection } from "./config/firebase.js";
+testFirebaseConnection().then((success) => {
+  if (success) {
+    console.log("✅ [Firebase] Connection verified");
+  } else {
+    console.warn(
+      "⚠️  [Firebase] Connection failed - push notifications disabled"
+    );
+  }
+});
 
 // Global error handler (must be last)
 app.use(errorHandler);
