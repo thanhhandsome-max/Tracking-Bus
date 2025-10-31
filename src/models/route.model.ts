@@ -32,4 +32,4 @@ const routeSchema: Schema<IRoute> = new Schema({
   ],
 }, { timestamps: true });
 
-export default mongoose.model<IRoute>('Route', routeSchema);
+export default mongoose.models.Route || mongoose.model<IRoute>('Route', routeSchema);

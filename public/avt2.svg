@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+  <!-- Background -->
+  <circle cx="100" cy="100" r="100" fill="#ef4444"/>
+  
+  <!-- Face -->
+  <circle cx="100" cy="85" r="35" fill="#fef3c7"/>
+  
+  <!-- Hair with buns -->
+  <ellipse cx="100" cy="65" rx="38" ry="25" fill="#7c2d12"/>
+  <circle cx="70" cy="60" r="15" fill="#7c2d12"/>
+  <circle cx="130" cy="60" r="15" fill="#7c2d12"/>
+  
+  <!-- Eyes -->
+  <circle cx="90" cy="80" r="4" fill="#1f2937"/>
+  <circle cx="110" cy="80" r="4" fill="#1f2937"/>
+  
+  <!-- Smile -->
+  <path d="M 85 90 Q 100 100 115 90" stroke="#1f2937" stroke-width="2" fill="none"/>
+  
+  <!-- Body -->
+  <rect x="65" y="115" width="70" height="85" rx="10" fill="#fca5a5"/>
+</svg>

@@ -1,6 +1,11 @@
 // src/models/trip.model.ts
 
 import mongoose, { Schema, Document } from 'mongoose';
+import type { IRoute } from './route.model';
+import type { IBus } from './bus.model';
+import type { IDriver } from './driver.model';
+import type { IStudent } from './student.model';
+import type { IStop } from './stop.model';
 
 /**
  * Interface cho chi tiết của một điểm dừng trong một chuyến đi cụ thể.
@@ -71,4 +76,4 @@ const tripSchema: Schema<ITrip> = new Schema({
 tripSchema.index({ tripDate: 1, status: 1 });
 tripSchema.index({ busId: 1, tripDate: -1 });
 
-export default mongoose.model<ITrip>('Trip', tripSchema);
+export default mongoose.models.Trip || mongoose.model<ITrip>('Trip', tripSchema);
