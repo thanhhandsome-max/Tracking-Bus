@@ -1,0 +1,60 @@
+.header-container {
+  margin-left: 60px;
+  margin-right: 60px;
+  padding-left: 16px;
+  padding-right: 16px;
+
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
+}
+.header-container .logo {
+      display: flex;
+
+}
+.nav-link1 {
+    color: white;       /* Set text color to white */
+    font-size: 1.1em;  /* Increase the font size */
+        text-decoration: none;  /* Remove underline */
+    margin-right: 40px;
+
+    
+}
+.user-info{
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.user-avatar{
+    width: 40px;
+    height: 40px;
+    background-color: #3b82f6;
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 1.2rem;
+}
+@media (min-width: 640px) {
+  .header-container {
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .header-container {
+    padding-left: 32px;
+    padding-right: 32px;
+  }
+}
+.footer{
+    padding : 10px;
+    background-color: rgb(182, 182, 182);
+    margin-top: 20px;
+    color:rgb(233, 238, 243);
+    text-align: center;
+}

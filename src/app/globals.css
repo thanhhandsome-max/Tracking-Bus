@@ -1,0 +1,12 @@
+@import "tailwindcss/preflight";
+@import "tailwindcss/utilities";
+
+
+
+/* Project global styles - keep below Tailwind directives */
+html, body {
+	height: 100%;
+}
+body {
+	margin: 0;
+}
