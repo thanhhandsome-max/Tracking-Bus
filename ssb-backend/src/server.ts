@@ -30,6 +30,9 @@ import scheduleRoutes from "./routes/api/schedule.js";
 import routeRoutes from "./routes/api/route.js";
 import studentRoutes from "./routes/api/student.js";
 import driverRoutes from "./routes/api/driver.js";
+import incidentRoutes from "./routes/api/incidents.js";
+import notificationRoutes from "./routes/api/notifications.js";
+import reportsRoutes from "./routes/api/reports.js";
 
 // Create Express app
 const app = express();
@@ -178,6 +181,9 @@ app.use(`${API_PREFIX}/students`, studentRoutes);
 app.use(`${API_PREFIX}/trips`, tripRoutes);
 app.use(`${API_PREFIX}/schedules`, scheduleRoutes);
 app.use(`${API_PREFIX}/routes`, routeRoutes);
+app.use(`${API_PREFIX}/incidents`, incidentRoutes);
+app.use(`${API_PREFIX}/notifications`, notificationRoutes);
+app.use(`${API_PREFIX}/reports`, reportsRoutes);
 
 // app.use(`${API_PREFIX}/reports`, (_req, res) => {
 //   res.json({
