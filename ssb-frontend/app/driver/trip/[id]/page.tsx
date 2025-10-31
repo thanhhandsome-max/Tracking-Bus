@@ -409,7 +409,7 @@ export default function TripDetailPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">Tốc độ</p>
-                  <p className="text-2xl font-bold text-foreground">{trip.vehicle.speed} km/h</p>
+                  <p className="text-2xl font-bold text-foreground">{currentSpeed} km/h</p>
                 </div>
                 <Gauge className="w-8 h-8 text-primary" />
               </div>

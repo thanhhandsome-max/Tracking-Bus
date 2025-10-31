@@ -33,6 +33,7 @@ import {
   TrendingDown,
 } from "lucide-react"
 import apiClient from "@/lib/api"
+import { useToast } from "@/hooks/use-toast"
 
 type UIIncident = {
   id: string
@@ -56,6 +57,7 @@ export default function DriverIncidentsPage() {
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [incidents, setIncidents] = useState<UIIncident[]>([])
   const [loading, setLoading] = useState(true)
+  const { toast } = useToast()
 
   useEffect(() => {
     const load = async () => {
@@ -146,6 +148,28 @@ export default function DriverIncidentsPage() {
         return <Clock className="w-4 h-4" />
       default:
         return <Clock className="w-4 h-4" />
+    }
+  }
+
+  async function markResolved(incident: UIIncident) {
+    try {
+      const idNum = Number(incident.id.replace(/[^\d]/g, ""))
+      await apiClient.updateIncident(idNum, { trangThai: "da_xu_ly" })
+      setIncidents((prev) => prev.map((i) => i.id === incident.id ? { ...i, status: "Đã xử lý" } : i))
+      toast({ title: "Đã cập nhật", description: `${incident.id} → Đã xử lý` })
+    } catch (e: any) {
+      toast({ title: "Cập nhật thất bại", description: e?.message || "Vui lòng thử lại", variant: "destructive" })
+    }
+  }
+
+  async function removeIncident(incident: UIIncident) {
+    try {
+      const idNum = Number(incident.id.replace(/[^\d]/g, ""))
+      await apiClient.deleteIncident(idNum)
+      setIncidents((prev) => prev.filter((i) => i.id !== incident.id))
+      toast({ title: "Đã xóa", description: `${incident.id} đã được xóa` })
+    } catch (e: any) {
+      toast({ title: "Xóa thất bại", description: e?.message || "Vui lòng thử lại", variant: "destructive" })
     }
   }
 
@@ -353,6 +377,28 @@ export default function DriverIncidentsPage() {
                     </div>
                   </div>
                 </div>
+                <div className="flex gap-2 flex-shrink-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => markResolved(incident)}
+                    className="gap-2 bg-transparent"
+                    disabled={incident.status === "Đã xử lý"}
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    Đánh dấu xử lý
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => removeIncident(incident)}
+                    className="gap-2"
+                  >
+                    <XCircle className="w-4 h-4" />
+                    Xóa
+                  </Button>
+                </div>
+
                 <Dialog>
                   <DialogTrigger asChild>
                     <Button variant="outline" size="sm" className="gap-2 flex-shrink-0 bg-transparent">
