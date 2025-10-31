@@ -10,6 +10,11 @@ const DiemDungModel = {
     return rows;
   },
 
+  // Alias for getByRoute (used by telemetryService)
+  async getByRouteId(maTuyen) {
+    return this.getByRoute(maTuyen);
+  },
+
   // Lấy điểm dừng theo ID
   async getById(id) {
     const [rows] = await pool.query(`SELECT * FROM DiemDung WHERE maDiem = ?`, [

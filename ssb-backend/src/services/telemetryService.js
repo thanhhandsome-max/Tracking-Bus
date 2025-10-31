@@ -24,6 +24,10 @@ import ChuyenDiModel from "../models/ChuyenDiModel.js";
 import LichTrinhModel from "../models/LichTrinhModel.js";
 import TuyenDuongModel from "../models/TuyenDuongModel.js";
 import DiemDungModel from "../models/DiemDungModel.js";
+import HocSinhModel from "../models/HocSinhModel.js";
+import NguoiDungModel from "../models/NguoiDungModel.js";
+import { syncBusLocation } from "./firebaseSync.service.js"; // 🔥 Day 5: Firebase sync
+import { notifyApproachStop, notifyDelay } from "./firebaseNotify.service.js"; // 🔥 Day 5: Push Notifications
 
 /**
  * 🗺️ IN-MEMORY CACHE - Lưu vị trí xe bus
@@ -75,10 +79,63 @@ const RATE_LIMIT_MS = 2000;
 const GEOFENCE_RADIUS = 60; // meters
 
 /**
+ * 🚨 DELAY ALERT CACHE - Lưu lần gửi cuối cùng cho mỗi trip
+ *
+ * Structure: Map<tripId, timestamp>
+ * Ví dụ: Map { 22 => 1730198765432, 45 => 1730199123456 }
+ *
+ * Gửi lại sau mỗi 3 phút để nhắc nhở phụ huynh
+ */
+const delayAlertLastSent = new Map();
+
+/**
  * ⏰ DELAY THRESHOLD - Ngưỡng coi là "trễ"
  * 5 phút = Cảnh báo nếu xe trễ hơn 5 phút so với ETA
  */
 const DELAY_THRESHOLD_MIN = 5;
+
+/**
+ * 🔄 DELAY ALERT INTERVAL - Gửi lại delay alert sau mỗi X phút
+ * 3 phút = 180,000 ms
+ */
+const DELAY_ALERT_INTERVAL_MS = 3 * 60 * 1000; // 3 minutes
+
+/**
+ * 📱 LẤY FCM TOKENS CỦA PHỤ HUYNH
+ *
+ * @param {number} tripId - ID chuyến đi
+ * @returns {Promise<string[]>} Danh sách FCM tokens
+ */
+async function getParentTokensForTrip(tripId) {
+  try {
+    // 1. Lấy danh sách học sinh trên chuyến đi
+    const students = await HocSinhModel.getByTripId(tripId);
+    if (!students || students.length === 0) {
+      return [];
+    }
+
+    // 2. Lấy danh sách mã phụ huynh
+    const parentIds = students.map((s) => s.maPhuHuynh).filter((id) => id); // Loại bỏ null/undefined
+
+    if (parentIds.length === 0) {
+      return [];
+    }
+
+    // 3. Lấy FCM tokens của phụ huynh
+    const tokens = [];
+    for (const parentId of parentIds) {
+      const parent = await NguoiDungModel.getById(parentId);
+      if (parent && parent.fcmToken) {
+        tokens.push(parent.fcmToken);
+      }
+    }
+
+    return tokens;
+  } catch (error) {
+    console.error("❌ getParentTokensForTrip error:", error);
+    return [];
+  }
+}
 
 class TelemetryService {
   /**
@@ -167,6 +224,25 @@ class TelemetryService {
 
       const events = ["bus_position_update"];
 
+      // 🔥 DAY 5: Sync to Firebase Realtime Database
+      // This allows FE to read position even when WebSocket is disconnected
+      try {
+        await syncBusLocation(busId, {
+          tripId,
+          lat,
+          lng,
+          speed: speed || 0,
+          heading: heading || 0,
+          timestamp: position.timestamp,
+        });
+      } catch (firebaseError) {
+        // Don't fail the entire request if Firebase sync fails
+        console.error(
+          "⚠️  Firebase sync failed (non-fatal):",
+          firebaseError.message
+        );
+      }
+
       // 🎯 CHECK GEOFENCE (Xe gần điểm dừng?)
       const approachEvent = await this.checkGeofence(
         tripId,
@@ -234,16 +310,38 @@ class TelemetryService {
         // Nếu trong vòng 60m → Emit event
         if (distance <= GEOFENCE_RADIUS) {
           console.log(
-            `📍 Xe gần điểm dừng ${stop.tenDiemDung} (${Math.round(distance)}m)`
+            `📍 Xe gần điểm dừng ${stop.tenDiem} (${Math.round(distance)}m)`
           );
 
-          io.to(`trip-${tripId}`).emit("approach_stop", {
+          const eventData = {
             tripId,
-            stopId: stop.maDiemDung,
-            stopName: stop.tenDiemDung,
+            stopId: stop.maDiem,
+            stopName: stop.tenDiem,
             distance_m: Math.round(distance),
             timestamp: new Date().toISOString(),
-          });
+          };
+
+          // Emit WebSocket event
+          console.log(`📡 emit: approach_stop to trip-${tripId}`, eventData);
+          io.to(`trip-${tripId}`).emit("approach_stop", eventData);
+
+          // 🔥 Day 5: Send Push Notification to parents
+          try {
+            const parentTokens = await getParentTokensForTrip(tripId);
+            if (parentTokens.length > 0) {
+              await notifyApproachStop(parentTokens, eventData);
+              console.log(
+                `📲 Sent push notification to ${parentTokens.length} parent(s) for approach_stop`
+              );
+            } else {
+              console.log("📲 No parent FCM tokens found for this trip");
+            }
+          } catch (notifyError) {
+            console.warn(
+              "⚠️  Failed to send push notification:",
+              notifyError.message
+            );
+          }
 
           return true;
         }
@@ -273,33 +371,87 @@ class TelemetryService {
    */
   static async checkDelay(tripId, currentPos, io, schedule, trip) {
     try {
-      // Lấy thời gian bắt đầu thực tế
-      if (!trip.gioBatDauThucTe) return false;
+      // Nếu chưa bắt đầu chuyến đi → không check delay
+      if (!trip.gioBatDauThucTe) {
+        console.log(`⏰ [DELAY CHECK] Trip ${tripId} - Chưa bắt đầu, skip`);
+        return false;
+      }
 
       const now = new Date();
-      const startTime = new Date(`${trip.ngayChay}T${trip.gioBatDauThucTe}:00`);
-      const plannedEndTime = new Date(
-        `${trip.ngayChay}T${schedule.gioKetThuc}:00`
-      );
 
-      // Tính thời gian đã chạy (phút)
-      const elapsedMin = (now - startTime) / 1000 / 60;
+      // Format ngày chạy về YYYY-MM-DD
+      const tripDate = new Date(trip.ngayChay);
+      const dateStr = tripDate.toISOString().split("T")[0]; // '2025-10-31'
 
-      // Tính thời gian dự kiến (phút)
-      const plannedDuration = (plannedEndTime - startTime) / 1000 / 60;
+      // Giờ dự kiến khởi hành (từ lịch trình)
+      const plannedStartTime = new Date(`${dateStr}T${schedule.gioKhoiHanh}`);
 
-      // Tính delay (phút)
-      const delayMin = elapsedMin - plannedDuration;
+      // Tính số phút trễ so với giờ dự kiến
+      const delayMin = (now - plannedStartTime) / 1000 / 60;
 
-      // Nếu trễ > 5 phút → Emit event
+      // 🔍 DEBUG LOG
+      console.log(`⏰ [DELAY CHECK] Trip ${tripId}:`);
+      console.log(`   - Ngày chạy (raw): ${trip.ngayChay}`);
+      console.log(`   - Ngày chạy (formatted): ${dateStr}`);
+      console.log(`   - Giờ khởi hành (lịch): ${schedule.gioKhoiHanh}`);
+      console.log(`   - Giờ hiện tại: ${now.toISOString()}`);
+      console.log(`   - Giờ dự kiến: ${plannedStartTime.toISOString()}`);
+      console.log(`   - Delay: ${Math.round(delayMin)} phút`);
+
+      // Nếu trễ > 5 phút → Emit event (gửi lại sau mỗi 3 phút)
       if (delayMin > DELAY_THRESHOLD_MIN) {
+        // 🚨 Kiểm tra lần gửi cuối cùng
+        const lastSent = delayAlertLastSent.get(tripId);
+        const now = Date.now();
+
+        // Nếu đã gửi trong vòng 3 phút → Skip
+        if (lastSent && now - lastSent < DELAY_ALERT_INTERVAL_MS) {
+          const waitTime = Math.ceil(
+            (DELAY_ALERT_INTERVAL_MS - (now - lastSent)) / 1000 / 60
+          );
+          console.log(
+            `⏰ [DELAY] Skip - Đã gửi rồi, gửi lại sau ${waitTime} phút`
+          );
+          return false;
+        }
+
         console.log(`⏰ Xe trễ ${Math.round(delayMin)} phút`);
 
-        io.to(`trip-${tripId}`).emit("delay_alert", {
+        const eventData = {
           tripId,
           delay_min: Math.round(delayMin),
+          delay_minutes: Math.round(delayMin), // 🔥 Alias cho FE
+          delayMinutes: Math.round(delayMin), // 🔥 Alias cho FE (camelCase)
+          stopName: schedule?.tenTuyenDuong || "tuyến hiện tại", // 🔥 Thêm stopName cho FCM
           timestamp: new Date().toISOString(),
-        });
+        };
+
+        // Emit WebSocket event
+        io.to(`trip-${tripId}`).emit("delay_alert", eventData);
+
+        // 🔥 Cập nhật thời gian gửi cuối
+        delayAlertLastSent.set(tripId, now);
+        console.log(
+          `🚨 Delay alert sent for trip ${tripId} (will send again after 3 minutes)`
+        );
+
+        // 🔥 Day 5: Send Push Notification to parents
+        try {
+          const parentTokens = await getParentTokensForTrip(tripId);
+          if (parentTokens.length > 0) {
+            await notifyDelay(parentTokens, eventData);
+            console.log(
+              `📲 Sent push notification to ${parentTokens.length} parent(s) for delay_alert`
+            );
+          } else {
+            console.log("📲 No parent FCM tokens found for this trip");
+          }
+        } catch (notifyError) {
+          console.warn(
+            "⚠️  Failed to send push notification:",
+            notifyError.message
+          );
+        }
 
         return true;
       }
@@ -325,10 +477,17 @@ class TelemetryService {
    * 🗑️ XÓA VỊ TRÍ XE (khi chuyến đi kết thúc)
    *
    * @param {number} busId - ID xe bus
+   * @param {number} tripId - ID chuyến đi
    */
-  static clearPosition(busId) {
+  static clearPosition(busId, tripId = null) {
     busPositions.delete(`bus-${busId}`);
     lastUpdateTime.delete(`bus-${busId}`);
+
+    // Xóa delay alert cache khi trip kết thúc
+    if (tripId) {
+      delayAlertLastSent.delete(tripId);
+      console.log(`🗑️ Cleared delay alert cache for trip ${tripId}`);
+    }
   }
 
   /**

@@ -1,9 +1,14 @@
-export * from '../../lib/api'
-export { api } from '../../lib/api'
+export * from "../../lib/api";
+export { api } from "../../lib/api";
 // API client for Smart School Bus Tracking System
 // Default to backend dev URL if env not provided
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
+
+// 🔍 DEBUG: Log API URL để kiểm tra .env.local
+if (typeof window !== "undefined") {
+  console.log("🌐 API_BASE_URL:", API_BASE_URL);
+}
 
 interface ApiResponse<T = any> {
   success: boolean;

@@ -12,17 +12,18 @@ router.get(
 );
 
 // List trips with optional filters (ngayChay, trangThai, maTaiXe...)
-router.get(
-  "/",
-  AuthMiddleware.authenticate,
-  TripController.getAll
-);
+router.get("/", AuthMiddleware.authenticate, TripController.getAll);
+
+// Get trip by ID
+router.get("/:id", AuthMiddleware.authenticate, TripController.getById);
 
 router.post(
   "/:id/start",
   AuthMiddleware.authenticate,
   TripController.startTrip
 );
+
+router.post("/:id/end", AuthMiddleware.authenticate, TripController.endTrip);
 
 export default router;
 

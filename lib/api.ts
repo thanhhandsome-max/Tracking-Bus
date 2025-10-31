@@ -4,15 +4,15 @@
  */
 
 interface ApiResponse<T = any> {
-  data: T
-  message?: string
-  success: boolean
+  data: T;
+  message?: string;
+  success: boolean;
 }
 
 interface ApiError {
-  message: string
-  status: number
-  code?: string
+  message: string;
+  status: number;
+  code?: string;
 }
 
 class ApiClient {
@@ -24,11 +24,17 @@ class ApiClient {
   constructor() {
     // Use API v1 by default to match backend routes
     // Default to port 4000 if backend env sets PORT=4000 during dev
-    this.baseURL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000/api/v1'
-    
+    this.baseURL =
+      process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
+
+    // 🔍 DEBUG: Log API URL để kiểm tra .env.local
+    if (typeof window !== "undefined") {
+      console.log("🌐 API_BASE_URL (root/lib/api.ts):", this.baseURL);
+    }
+
     // Get token from localStorage on initialization
-    if (typeof window !== 'undefined') {
-      this.token = localStorage.getItem('ssb_token')
+    if (typeof window !== "undefined") {
+      this.token = localStorage.getItem("ssb_token");
     }
   }
 
@@ -36,10 +42,10 @@ class ApiClient {
    * Set authentication token
    */
   setToken(token: string | null) {
-    this.token = token
-    if (typeof window !== 'undefined') {
+    this.token = token;
+    if (typeof window !== "undefined") {
       if (token) {
-        localStorage.setItem('ssb_token', token)
+        localStorage.setItem("ssb_token", token);
       } else {
         localStorage.removeItem('ssb_token')
         localStorage.removeItem('ssb_refresh_token')
@@ -52,14 +58,14 @@ class ApiClient {
    */
   private getAuthHeaders(): HeadersInit {
     const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-    }
+      "Content-Type": "application/json",
+    };
 
     if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`
+      headers["Authorization"] = `Bearer ${this.token}`;
     }
 
-    return headers
+    return headers;
   }
 
   /**
@@ -69,24 +75,24 @@ class ApiClient {
     if (error.response) {
       // Server responded with error status
       return {
-        message: error.response.data?.message || 'Server error',
+        message: error.response.data?.message || "Server error",
         status: error.response.status,
         code: error.response.data?.code,
-      }
+      };
     } else if (error.request) {
       // Network error
       return {
-        message: 'Network error - please check your connection',
+        message: "Network error - please check your connection",
         status: 0,
-        code: 'NETWORK_ERROR',
-      }
+        code: "NETWORK_ERROR",
+      };
     } else {
       // Other error
       return {
-        message: error.message || 'Unknown error occurred',
+        message: error.message || "Unknown error occurred",
         status: 0,
-        code: 'UNKNOWN_ERROR',
-      }
+        code: "UNKNOWN_ERROR",
+      };
     }
   }
 
@@ -97,14 +103,14 @@ class ApiClient {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<ApiResponse<T>> {
-    const url = `${this.baseURL}${endpoint}`
+    const url = `${this.baseURL}${endpoint}`;
     const config: RequestInit = {
       ...options,
       headers: {
         ...this.getAuthHeaders(),
         ...options.headers,
       },
-    }
+    };
 
     const doFetch = async () => {
       const response = await fetch(url, config)
@@ -169,48 +175,66 @@ class ApiClient {
   /**
    * GET request
    */
-  async get<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
-    return this.request<T>(endpoint, { ...options, method: 'GET' })
+  async get<T>(
+    endpoint: string,
+    options: RequestInit = {}
+  ): Promise<ApiResponse<T>> {
+    return this.request<T>(endpoint, { ...options, method: "GET" });
   }
 
   /**
    * POST request
    */
-  async post<T>(endpoint: string, data?: any, options: RequestInit = {}): Promise<ApiResponse<T>> {
+  async post<T>(
+    endpoint: string,
+    data?: any,
+    options: RequestInit = {}
+  ): Promise<ApiResponse<T>> {
     return this.request<T>(endpoint, {
       ...options,
-      method: 'POST',
+      method: "POST",
       body: data ? JSON.stringify(data) : undefined,
-    })
+    });
   }
 
   /**
    * PUT request
    */
-  async put<T>(endpoint: string, data?: any, options: RequestInit = {}): Promise<ApiResponse<T>> {
+  async put<T>(
+    endpoint: string,
+    data?: any,
+    options: RequestInit = {}
+  ): Promise<ApiResponse<T>> {
     return this.request<T>(endpoint, {
       ...options,
-      method: 'PUT',
+      method: "PUT",
       body: data ? JSON.stringify(data) : undefined,
-    })
+    });
   }
 
   /**
    * DELETE request
    */
-  async delete<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
-    return this.request<T>(endpoint, { ...options, method: 'DELETE' })
+  async delete<T>(
+    endpoint: string,
+    options: RequestInit = {}
+  ): Promise<ApiResponse<T>> {
+    return this.request<T>(endpoint, { ...options, method: "DELETE" });
   }
 
   /**
    * PATCH request
    */
-  async patch<T>(endpoint: string, data?: any, options: RequestInit = {}): Promise<ApiResponse<T>> {
+  async patch<T>(
+    endpoint: string,
+    data?: any,
+    options: RequestInit = {}
+  ): Promise<ApiResponse<T>> {
     return this.request<T>(endpoint, {
       ...options,
-      method: 'PATCH',
+      method: "PATCH",
       body: data ? JSON.stringify(data) : undefined,
-    })
+    });
   }
 
   // Student endpoints
@@ -221,13 +245,13 @@ class ApiClient {
     search?: string;
   }) {
     const queryParams = new URLSearchParams();
-    if (params?.page) queryParams.append('page', params.page.toString());
-    if (params?.limit) queryParams.append('limit', params.limit.toString());
-    if (params?.lop) queryParams.append('lop', params.lop);
-    if (params?.search) queryParams.append('search', params.search);
+    if (params?.page) queryParams.append("page", params.page.toString());
+    if (params?.limit) queryParams.append("limit", params.limit.toString());
+    if (params?.lop) queryParams.append("lop", params.lop);
+    if (params?.search) queryParams.append("search", params.search);
 
     const query = queryParams.toString();
-    return this.request(`/students${query ? `?${query}` : ''}`);
+    return this.request(`/students${query ? `?${query}` : ""}`);
   }
 
   async getStudentById(id: string | number) {
@@ -235,22 +259,22 @@ class ApiClient {
   }
 
   async createStudent(studentData: any) {
-    return this.request('/students', {
-      method: 'POST',
+    return this.request("/students", {
+      method: "POST",
       body: JSON.stringify(studentData),
     });
   }
 
   async updateStudent(id: string | number, studentData: any) {
     return this.request(`/students/${id}`, {
-      method: 'PUT',
+      method: "PUT",
       body: JSON.stringify(studentData),
     });
   }
 
   async deleteStudent(id: string | number) {
     return this.request(`/students/${id}`, {
-      method: 'DELETE',
+      method: "DELETE",
     });
   }
 
@@ -262,13 +286,13 @@ class ApiClient {
     trangThai?: string;
   }) {
     const queryParams = new URLSearchParams();
-    if (params?.page) queryParams.append('page', params.page.toString());
-    if (params?.limit) queryParams.append('limit', params.limit.toString());
-    if (params?.search) queryParams.append('search', params.search);
-    if (params?.trangThai) queryParams.append('trangThai', params.trangThai);
+    if (params?.page) queryParams.append("page", params.page.toString());
+    if (params?.limit) queryParams.append("limit", params.limit.toString());
+    if (params?.search) queryParams.append("search", params.search);
+    if (params?.trangThai) queryParams.append("trangThai", params.trangThai);
 
     const query = queryParams.toString();
-    return this.request(`/buses${query ? `?${query}` : ''}`);
+    return this.request(`/buses${query ? `?${query}` : ""}`);
   }
 
   async getBusById(id: string | number) {
@@ -281,22 +305,22 @@ class ApiClient {
     sucChua: number;
     trangThai?: string;
   }) {
-    return this.request('/buses', {
-      method: 'POST',
+    return this.request("/buses", {
+      method: "POST",
       body: JSON.stringify(busData),
     });
   }
 
   async updateBus(id: string | number, busData: any) {
     return this.request(`/buses/${id}`, {
-      method: 'PUT',
+      method: "PUT",
       body: JSON.stringify(busData),
     });
   }
 
   async deleteBus(id: string | number) {
     return this.request(`/buses/${id}`, {
-      method: 'DELETE',
+      method: "DELETE",
     });
   }
 
@@ -312,8 +336,8 @@ class ApiClient {
 }
 
 // Create singleton instance
-export const api = new ApiClient()
-export const apiClient = api // Alias for compatibility
+export const api = new ApiClient();
+export const apiClient = api; // Alias for compatibility
 
 // Export types
-export type { ApiResponse, ApiError }
+export type { ApiResponse, ApiError };
