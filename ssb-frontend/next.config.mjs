@@ -10,10 +10,15 @@ const nextConfig = {
     unoptimized: true,
   },
   // Allow cross-origin requests from network IP
+  // Thêm IP của các máy client cần truy cập vào đây
   allowedDevOrigins: [
-    "http://192.168.31.214:3000", // Thay bằng IP client cần truy cập
-    "http://192.168.31.217:3000", // IP server (nếu cần)
     "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://192.168.31.181:3000", // IP máy server của bạn
+    "http://10.110.249.34:3000", // IP máy client đang truy cập (từ lỗi)
+    // Thêm các IP khác nếu cần:
+    // "http://192.168.31.XXX:3000",
+    // "http://10.110.249.XXX:3000",
   ],
 };
 
