@@ -22,6 +22,8 @@ interface ApiResponse<T = any> {
 class ApiClient {
   private baseURL: string;
   private token: string | null = null;
+  private isRefreshing = false;
+  private refreshPromise: Promise<string | null> | null = null;
 
   constructor(baseURL: string) {
     this.baseURL = baseURL;
@@ -47,6 +49,7 @@ class ApiClient {
     if (typeof window !== "undefined") {
       localStorage.removeItem("ssb_token");
       localStorage.removeItem("token");
+      localStorage.removeItem("ssb_refresh_token");
     }
   }
 
@@ -75,21 +78,55 @@ class ApiClient {
       ).Authorization = `Bearer ${this.token}`;
     }
 
+    const doFetch = async (): Promise<{ ok: boolean; status: number; json: any }> => {
+      const resp = await fetch(url, { ...options, headers });
+      const json = await resp.json().catch(() => ({}));
+      return { ok: resp.ok, status: resp.status, json };
+    };
+
     try {
-      const response = await fetch(url, {
-        ...options,
-        headers,
-      });
+      let { ok, status, json } = await doFetch();
 
-      const data = await response.json();
+      // Auto refresh token on 401 once
+      if (!ok && status === 401 && typeof window !== "undefined") {
+        const refreshToken = localStorage.getItem("ssb_refresh_token");
+        if (refreshToken) {
+          // prevent parallel refresh storms
+          if (!this.isRefreshing) {
+            this.isRefreshing = true;
+            this.refreshPromise = fetch(`${this.baseURL}/auth/refresh`, {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${refreshToken}` },
+            })
+              .then(async (r) => {
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok) return null;
+                const newToken = data?.data?.token || data?.token;
+                if (newToken) this.setToken(newToken);
+                return newToken || null;
+              })
+              .finally(() => {
+                this.isRefreshing = false;
+              });
+          }
+          const newToken = await (this.refreshPromise as Promise<string | null>);
+          this.refreshPromise = null;
 
-      if (!response.ok) {
-        throw new Error(data.message || "API request failed");
+          if (newToken) {
+            // retry original call with new token
+            (headers as Record<string, string>).Authorization = `Bearer ${newToken}`;
+            const retried = await doFetch();
+            ok = retried.ok; status = retried.status; json = retried.json;
+          }
+        }
       }
 
-      return data;
+      if (!ok) {
+        throw new Error(json?.message || "API request failed");
+      }
+
+      return json;
     } catch (error) {
-      // Giảm nhiễu console cho các fallback logic (ví dụ: gọi endpoint có thể không tồn tại)
       console.warn("API request warning:", error);
       throw error;
     }
@@ -194,6 +231,14 @@ class ApiClient {
 
   async getBusStats() {
     return this.request("/buses/stats");
+  }
+
+  async getTripStats(params?: { from: string; to: string }) {
+    const queryParams = new URLSearchParams();
+    if (params?.from) queryParams.append("from", params.from);
+    if (params?.to) queryParams.append("to", params.to);
+    const query = queryParams.toString();
+    return this.request(`/trips/stats${query ? `?${query}` : ""}`);
   }
 
   // Driver endpoints
