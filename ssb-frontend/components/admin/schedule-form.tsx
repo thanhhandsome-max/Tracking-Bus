@@ -18,9 +18,11 @@ import { apiClient } from "@/lib/api"
 
 interface ScheduleFormProps {
   onClose: () => void
+  mode?: "create" | "edit"
+  initialSchedule?: any
 }
 
-export function ScheduleForm({ onClose }: ScheduleFormProps) {
+export function ScheduleForm({ onClose, mode = "create", initialSchedule }: ScheduleFormProps) {
   const [date, setDate] = useState<Date>()
   const [route, setRoute] = useState("")
   const [bus, setBus] = useState("")
@@ -57,6 +59,21 @@ export function ScheduleForm({ onClose }: ScheduleFormProps) {
     return () => { mounted = false }
   }, [])
 
+  // Populate form when editing
+  useEffect(() => {
+    if (mode === "edit" && initialSchedule) {
+      if (initialSchedule.raw?.ngayChay) {
+        const [year, month, day] = initialSchedule.raw.ngayChay.split('-')
+        setDate(new Date(parseInt(year), parseInt(month) - 1, parseInt(day)))
+      }
+      setRoute(String(initialSchedule.routeId || initialSchedule.raw?.maTuyen || ''))
+      setBus(String(initialSchedule.busId || initialSchedule.raw?.maXe || ''))
+      setDriver(String(initialSchedule.driverId || initialSchedule.raw?.maTaiXe || ''))
+      setTripType(initialSchedule.tripType || initialSchedule.raw?.loaiChuyen || '')
+      setStartTime(initialSchedule.startTime || initialSchedule.raw?.gioKhoiHanh || '')
+    }
+  }, [mode, initialSchedule])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -86,11 +103,21 @@ export function ScheduleForm({ onClose }: ScheduleFormProps) {
         ngayChay: ngayChay,
         dangApDung: true,
       }
-      await apiClient.createSchedule(payload)
-      toast({ title: "Thành công", description: "Đã tạo lịch trình mới" })
+      
+      if (mode === "edit" && initialSchedule?.id) {
+        await apiClient.updateSchedule(initialSchedule.id, payload)
+        toast({ title: "Thành công", description: "Đã cập nhật lịch trình" })
+      } else {
+        await apiClient.createSchedule(payload)
+        toast({ title: "Thành công", description: "Đã tạo lịch trình mới" })
+      }
       onClose()
     } catch (err: any) {
-      toast({ title: "Không thành công", description: err?.message || "Tạo lịch thất bại", variant: "destructive" })
+      toast({ 
+        title: "Không thành công", 
+        description: err?.message || (mode === "edit" ? "Cập nhật lịch thất bại" : "Tạo lịch thất bại"), 
+        variant: "destructive" 
+      })
     } finally {
       setSubmitting(false)
     }
@@ -189,7 +216,11 @@ export function ScheduleForm({ onClose }: ScheduleFormProps) {
           Hủy
         </Button>
         <Button type="submit" className="bg-primary hover:bg-primary/90" disabled={submitting}>
-          {submitting ? "Đang lưu..." : "Tạo lịch trình"}
+          {submitting 
+            ? "Đang lưu..." 
+            : mode === "edit" 
+              ? "Cập nhật lịch trình" 
+              : "Tạo lịch trình"}
         </Button>
       </div>
     </form>

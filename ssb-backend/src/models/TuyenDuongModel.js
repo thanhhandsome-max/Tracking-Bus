@@ -34,6 +34,15 @@ const TuyenDuongModel = {
     };
   },
 
+  // Lấy tuyến đường theo tên
+  async getByName(tenTuyen) {
+    const [tuyen] = await pool.query(
+      `SELECT * FROM TuyenDuong WHERE tenTuyen = ?`,
+      [tenTuyen]
+    );
+    return tuyen.length > 0 ? tuyen[0] : null;
+  },
+
   // Tạo tuyến đường mới
   async create(data) {
     const { tenTuyen, diemBatDau, diemKetThuc, thoiGianUocTinh } = data;

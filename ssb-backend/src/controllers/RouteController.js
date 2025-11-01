@@ -75,17 +75,34 @@ class RouteController {
       }
 
       // Lấy danh sách điểm dừng của tuyến đường
-      const stops = await DiemDungModel.getByRouteId(id);
+      let stops = [];
+      try {
+        stops = await DiemDungModel.getByRouteId(id);
+      } catch (stopError) {
+        console.error("Error fetching stops:", stopError);
+        // Continue even if stops fetch fails
+      }
 
       // Lấy lịch trình của tuyến đường
-      const schedules = await LichTrinhModel.getByRouteId(id);
+      let schedules = [];
+      try {
+        schedules = await LichTrinhModel.getByRouteId(id);
+      } catch (scheduleError) {
+        console.error("Error fetching schedules:", scheduleError);
+        // Continue even if schedules fetch fails
+      }
+
+      // Clean up route object - remove diemDung from TuyenDuongModel.getById if exists
+      // to avoid duplication
+      const { diemDung: existingDiemDung, ...routeWithoutDiemDung } = route;
 
       res.status(200).json({
         success: true,
         data: {
-          ...route,
-          stops,
-          schedules,
+          ...routeWithoutDiemDung,
+          diemDung: stops, // Use diemDung for compatibility with frontend
+          stops: stops, // Also include stops for backward compatibility
+          schedules: schedules || [],
         },
         message: "Lấy thông tin tuyến đường thành công",
       });

@@ -23,6 +23,15 @@ const DiemDungModel = {
     return rows[0];
   },
 
+  // Lấy điểm dừng theo tuyến và thứ tự
+  async getByRouteAndOrder(maTuyen, thuTu) {
+    const [rows] = await pool.query(
+      `SELECT * FROM DiemDung WHERE maTuyen = ? AND thuTu = ?`,
+      [maTuyen, thuTu]
+    );
+    return rows.length > 0 ? rows[0] : null;
+  },
+
   // Tạo điểm dừng mới
   async create(data) {
     const { maTuyen, tenDiem, kinhDo, viDo, thuTu } = data;

@@ -79,6 +79,11 @@ const LichTrinhModel = {
     return rows;
   },
 
+  // Alias for getByRoute (used by RouteController)
+  async getByRouteId(maTuyen) {
+    return this.getByRoute(maTuyen);
+  },
+
   // Lấy lịch trình theo xe buýt
   async getByBus(maXe) {
     const [rows] = await pool.query(
