@@ -60,6 +60,26 @@ const HocSinhModel = {
     return rows;
   },
 
+  // Lấy học sinh theo chuyến đi (cùng với thông tin phụ huynh)
+  async getByTripId(maChuyen) {
+    const [rows] = await pool.query(
+      `SELECT DISTINCT
+        hs.*,
+        nd.hoTen as tenPhuHuynh,
+        nd.soDienThoai as sdtPhuHuynh,
+        nd.email as emailPhuHuynh,
+        nd.maNguoiDung as maPhuHuynh,
+        ts.trangThai as trangThaiTrenChuyen
+       FROM TrangThaiHocSinh ts
+       JOIN HocSinh hs ON ts.maHocSinh = hs.maHocSinh
+       LEFT JOIN NguoiDung nd ON hs.maPhuHuynh = nd.maNguoiDung
+       WHERE ts.maChuyen = ? AND hs.trangThai = TRUE
+       ORDER BY ts.thuTuDiemDon`,
+      [maChuyen]
+    );
+    return rows;
+  },
+
   // Tạo học sinh mới
   async create(data) {
     const { hoTen, ngaySinh, lop, maPhuHuynh, diaChi, anhDaiDien } = data;

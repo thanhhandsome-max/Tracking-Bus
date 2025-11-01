@@ -235,21 +235,39 @@ class AuthMiddleware {
         const LichTrinhModel = (await import("../models/LichTrinhModel.js"))
           .default;
 
+        console.log(`🔍 [checkTripAccess] Checking trip ${tripId} for driver userId: ${req.user.userId}`);
+        
         const trip = await ChuyenDiModel.getById(tripId);
         if (!trip) {
+          console.log(`❌ [checkTripAccess] Trip ${tripId} not found in database`);
           return res.status(404).json({
             success: false,
             message: "Không tìm thấy chuyến đi",
           });
         }
 
+        console.log(`✅ [checkTripAccess] Trip ${tripId} found, schedule ID: ${trip.maLichTrinh}`);
+        
         const schedule = await LichTrinhModel.getById(trip.maLichTrinh);
-        if (!schedule || schedule.maTaiXe !== req.user.userId) {
+        if (!schedule) {
+          console.log(`❌ [checkTripAccess] Schedule ${trip.maLichTrinh} not found`);
+          return res.status(404).json({
+            success: false,
+            message: "Không tìm thấy lịch trình",
+          });
+        }
+        
+        console.log(`🔍 [checkTripAccess] Schedule driver ID: ${schedule.maTaiXe}, Current user ID: ${req.user.userId}`);
+        
+        if (schedule.maTaiXe !== req.user.userId) {
+          console.log(`❌ [checkTripAccess] Access denied: driver ID mismatch`);
           return res.status(403).json({
             success: false,
             message: "Không có quyền truy cập chuyến đi này",
           });
         }
+        
+        console.log(`✅ [checkTripAccess] Access granted for trip ${tripId}`);
       }
 
       // Phụ huynh có thể truy cập chuyến đi có học sinh của họ

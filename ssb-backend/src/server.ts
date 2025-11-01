@@ -8,7 +8,8 @@ import http from "http";
 import { Server } from "socket.io";
 import cors from "cors";
 import dotenv from "dotenv";
-import { verifyWsJWT } from './middlewares/socketAuth.js'; 
+import os from "os";
+import { verifyWsJWT } from "./middlewares/socketAuth.js";
 
 import config from "./config/env.js";
 import {
@@ -28,6 +29,8 @@ import busRoutes from "./routes/api/bus.js";
 import tripRoutes from "./routes/api/trip.route.js";
 import scheduleRoutes from "./routes/api/schedule.js";
 import routeRoutes from "./routes/api/route.js";
+import studentRoutes from "./routes/api/student.js";
+import driverRoutes from "./routes/api/driver.js";
 
 // Create Express app
 const app = express();
@@ -167,6 +170,12 @@ app.use(`${API_PREFIX}/auth`, authRoutes);
 // Bus routes - CRUD operations
 app.use(`${API_PREFIX}/buses`, busRoutes);
 
+// Driver routes
+app.use(`${API_PREFIX}/drivers`, driverRoutes);
+
+// Student routes
+app.use(`${API_PREFIX}/students`, studentRoutes);
+
 app.use(`${API_PREFIX}/trips`, tripRoutes);
 app.use(`${API_PREFIX}/schedules`, scheduleRoutes);
 app.use(`${API_PREFIX}/routes`, routeRoutes);
@@ -189,55 +198,6 @@ app.use(`${API_PREFIX}/reports/buses`, busRoutes);
 app.use(`${API_PREFIX}/reports/trips`, tripRoutes);
 app.use(`${API_PREFIX}/reports/schedules`, scheduleRoutes);
 
-app.use(`${API_PREFIX}/drivers`, (_req, res) => {
-  res.json({
-    success: true,
-    message: "Driver routes will be implemented in Day 2",
-    data: {
-      availableEndpoints: [
-        "GET /drivers",
-        "POST /drivers",
-        "GET /drivers/:id",
-        "PUT /drivers/:id",
-        "DELETE /drivers/:id",
-      ],
-    },
-  });
-});
-
-app.use(`${API_PREFIX}/routes`, (_req, res) => {
-  res.json({
-    success: true,
-    message: "Route routes will be implemented in Day 2",
-    data: {
-      availableEndpoints: [
-        "GET /routes",
-        "POST /routes",
-        "GET /routes/:id",
-        "PUT /routes/:id",
-        "DELETE /routes/:id",
-        "GET /routes/:id/stops",
-      ],
-    },
-  });
-});
-
-app.use(`${API_PREFIX}/schedules`, (_req, res) => {
-  res.json({
-    success: true,
-    message: "Schedule routes will be implemented in Day 2",
-    data: {
-      availableEndpoints: [
-        "GET /schedules",
-        "POST /schedules",
-        "GET /schedules/:id",
-        "PUT /schedules/:id",
-        "DELETE /schedules/:id",
-      ],
-    },
-  });
-});
-
 // API root endpoint - returns available endpoints
 app.get(`${API_PREFIX}`, (_req, res) => {
   res.json({
@@ -247,11 +207,13 @@ app.get(`${API_PREFIX}`, (_req, res) => {
       version: "1.0.0",
       endpoints: {
         auth: `${API_PREFIX}/auth`,
-        trips: `${API_PREFIX}/trips`,
-        buses: `${API_PREFIX}/reports/buses`,
+        buses: `${API_PREFIX}/buses`,
         drivers: `${API_PREFIX}/drivers`,
+        students: `${API_PREFIX}/students`,
+        trips: `${API_PREFIX}/trips`,
         routes: `${API_PREFIX}/routes`,
         schedules: `${API_PREFIX}/schedules`,
+        reports: `${API_PREFIX}/reports`,
         health: `${API_PREFIX}/health`,
       },
       documentation: "See docs/openapi.yaml for full API documentation",
@@ -293,19 +255,55 @@ const io = initSocketIO(server);
 // Store Socket.IO instance in app for use in routes
 app.set("io", io);
 
+// 🔥 Day 5: Test Firebase connection
+import { testFirebaseConnection } from "./config/firebase.js";
+testFirebaseConnection().then((success) => {
+  if (success) {
+    console.log("✅ [Firebase] Connection verified");
+  } else {
+    console.warn(
+      "⚠️  [Firebase] Connection failed - push notifications disabled"
+    );
+  }
+});
+
 // Global error handler (must be last)
 app.use(errorHandler);
 
 // Start server
 const PORT = config.port;
-server.listen(PORT, () => {
+// Listen on 0.0.0.0 to allow access from LAN
+const HOST = process.env.HOST || "0.0.0.0";
+server.listen(PORT, HOST, () => {
+  const localUrl = `http://localhost:${PORT}`;
+  const networkUrl = `http://${HOST === "0.0.0.0" ? getLocalIP() : HOST}:${PORT}`;
+  
   console.log(`🚀 SSB Backend Server running on port ${PORT}`);
   console.log(`📊 Environment: ${config.nodeEnv}`);
-  console.log(`🔗 API Base URL: http://localhost:${PORT}${API_PREFIX}`);
-  console.log(`❤️  Health Check: http://localhost:${PORT}${API_PREFIX}/health`);
-  console.log(`📡 Socket.IO: http://localhost:${PORT}`);
+  console.log(`🔗 API Base URL (Local): ${localUrl}${API_PREFIX}`);
+  console.log(`🔗 API Base URL (Network): ${networkUrl}${API_PREFIX}`);
+  console.log(`❤️  Health Check (Local): ${localUrl}${API_PREFIX}/health`);
+  console.log(`❤️  Health Check (Network): ${networkUrl}${API_PREFIX}/health`);
+  console.log(`📡 Socket.IO (Local): ${localUrl}`);
+  console.log(`📡 Socket.IO (Network): ${networkUrl}`);
   console.log(`📚 Documentation: docs/openapi.yaml`);
 });
+
+// Helper function to get local IP address
+function getLocalIP() {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    const ifaces = interfaces[name];
+    if (ifaces) {
+      for (const iface of ifaces) {
+        if (iface.family === "IPv4" && !iface.internal) {
+          return iface.address;
+        }
+      }
+    }
+  }
+  return "localhost";
+}
 
 // Graceful shutdown
 process.on("SIGTERM", () => {

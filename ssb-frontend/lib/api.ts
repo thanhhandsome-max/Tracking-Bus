@@ -1,9 +1,14 @@
-export * from '../../lib/api'
-export { api } from '../../lib/api'
+export * from "../../lib/api";
+export { api } from "../../lib/api";
 // API client for Smart School Bus Tracking System
 // Default to backend dev URL if env not provided
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
+
+// 🔍 DEBUG: Log API URL để kiểm tra .env.local
+if (typeof window !== "undefined") {
+  console.log("🌐 API_BASE_URL:", API_BASE_URL);
+}
 
 interface ApiResponse<T = any> {
   success: boolean;
@@ -56,6 +61,14 @@ class ApiClient {
   ): Promise<ApiResponse<T>> {
     const url = `${this.baseURL}${endpoint}`;
 
+    // Always read the latest token from localStorage at request time
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("token");
+      if (stored && stored !== this.token) {
+        this.token = stored;
+      }
+    }
+
     const headers: HeadersInit = {
       "Content-Type": "application/json",
       ...options.headers,
@@ -91,7 +104,7 @@ class ApiClient {
   async login(email: string, password: string) {
     return this.request("/auth/login", {
       method: "POST",
-      body: JSON.stringify({ email, matKhau: password }),
+      body: JSON.stringify({ email, password }),
     });
   }
 
