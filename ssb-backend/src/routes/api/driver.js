@@ -75,4 +75,13 @@ router.get(
   DriverController.getStats
 );
 
+// GET /api/v1/drivers/:id/history - Lịch sử chuyến đi của tài xế
+router.get(
+  "/:id/history",
+  AuthMiddleware.authenticate,
+  AuthMiddleware.authorize("quan_tri", "tai_xe"),
+  ValidationMiddleware.validateId,
+  DriverController.getHistory
+);
+
 export default router;

@@ -138,17 +138,61 @@ export default function ParentDashboard() {
     return null
   }
 
-  const childInfo = {
-    name: "Nguyễn Minh An",
-    grade: "Lớp 3A",
-    status: "on-bus",
-    busNumber: busInfo?.plateNumber || "29B-12345",
-    driverName: "Trần Văn Hùng",
-    driverPhone: "0912345678",
-    pickupTime: "07:15",
-    dropoffTime: "16:30",
-    currentStop: "Điểm đón 3/5",
-    estimatedArrival: delayAlert?.delayMinutes ? `Trễ ${delayAlert.delayMinutes} phút` : "5 phút",
+  const [childInfo, setChildInfo] = useState<{
+    name: string
+    grade: string
+    status: string
+    busNumber: string
+    driverName: string
+    driverPhone: string
+    pickupTime: string
+    dropoffTime: string
+    currentStop: string
+    estimatedArrival: string
+  } | null>(null)
+
+  // Load thông tin con từ API
+  useEffect(() => {
+    async function loadChildren() {
+      if (!user || user.role?.toLowerCase() !== "parent") return
+      try {
+        const res = await apiClient.getStudentsByParent()
+        const students = Array.isArray((res as any)?.data) ? (res as any).data : []
+        if (students.length > 0) {
+          const firstChild = students[0]
+          const tripInfo = firstChild.tripInfo || {}
+          const schedule = tripInfo.gioKhoiHanh || "07:15"
+          setChildInfo({
+            name: firstChild.hoTen || "Chưa có tên",
+            grade: firstChild.lop || "Chưa có lớp",
+            status: tripInfo.trangThai === "dang_chay" ? "on-bus" : "waiting",
+            busNumber: tripInfo.bienSoXe || busInfo?.plateNumber || "29B-12345",
+            driverName: tripInfo.tenTaiXe || "Chưa phân công",
+            driverPhone: tripInfo.sdtTaiXe || "—",
+            pickupTime: schedule.slice(0, 5) || "07:15",
+            dropoffTime: "16:30", // TODO: Load từ schedule
+            currentStop: "Điểm đón",
+            estimatedArrival: delayAlert?.delayMinutes ? `Trễ ${delayAlert.delayMinutes} phút` : "5 phút",
+          })
+        }
+      } catch (e) {
+        console.warn("[Parent] Failed to load children", e)
+      }
+    }
+    loadChildren()
+  }, [user])
+
+  const displayChildInfo = childInfo || {
+    name: "Chưa có thông tin",
+    grade: "—",
+    status: "waiting",
+    busNumber: busInfo?.plateNumber || "—",
+    driverName: "—",
+    driverPhone: "—",
+    pickupTime: "—",
+    dropoffTime: "—",
+    currentStop: "—",
+    estimatedArrival: "—",
   }
 
   return (
@@ -195,11 +239,11 @@ export default function ParentDashboard() {
             <div className="flex items-start justify-between">
               <div className="space-y-3">
                 <div>
-                  <h3 className="text-xl font-bold text-foreground">{childInfo.name}</h3>
-                  <p className="text-sm text-muted-foreground">{childInfo.grade}</p>
+                  <h3 className="text-xl font-bold text-foreground">{displayChildInfo.name}</h3>
+                  <p className="text-sm text-muted-foreground">{displayChildInfo.grade}</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  {childInfo.status === "on-bus" && (
+                  {displayChildInfo.status === "on-bus" && (
                     <>
                       <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
                       <Badge variant="default" className="bg-green-500/20 text-green-700 hover:bg-green-500/30">
@@ -207,7 +251,7 @@ export default function ParentDashboard() {
                       </Badge>
                     </>
                   )}
-                  {childInfo.status === "picked-up" && (
+                  {displayChildInfo.status === "picked-up" && (
                     <>
                       <CheckCircle2 className="w-4 h-4 text-green-500" />
                       <Badge variant="default" className="bg-green-500/20 text-green-700 hover:bg-green-500/30">
@@ -215,7 +259,7 @@ export default function ParentDashboard() {
                       </Badge>
                     </>
                   )}
-                  {childInfo.status === "waiting" && (
+                  {displayChildInfo.status === "waiting" && (
                     <>
                       <Clock className="w-4 h-4 text-orange-500" />
                       <Badge variant="default" className="bg-orange-500/20 text-orange-700 hover:bg-orange-500/30">
@@ -227,15 +271,25 @@ export default function ParentDashboard() {
                 <div className="flex items-center gap-4 text-sm">
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <MapPin className="w-4 h-4" />
-                    <span>{childInfo.currentStop}</span>
+                    <span>{displayChildInfo.currentStop}</span>
                   </div>
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <Clock className="w-4 h-4" />
-                    <span>Còn {childInfo.estimatedArrival}</span>
+                    <span>Còn {displayChildInfo.estimatedArrival}</span>
                   </div>
                 </div>
               </div>
-              <Button size="sm" className="gap-2">
+              <Button 
+                size="sm" 
+                className="gap-2"
+                onClick={() => {
+                  if (displayChildInfo.driverPhone && displayChildInfo.driverPhone !== "—") {
+                    window.location.href = `tel:${displayChildInfo.driverPhone}`
+                  } else {
+                    toast({ title: "Thông báo", description: "Chưa có số điện thoại tài xế" })
+                  }
+                }}
+              >
                 <Phone className="w-4 h-4" />
                 Gọi tài xế
               </Button>
@@ -269,7 +323,7 @@ export default function ParentDashboard() {
                   {/* Replace placeholder with Leaflet MapView */}
                   {selectedTripId ? (
                     <MapView
-                      buses={[{ id: busInfo?.id || 'bus', plateNumber: busInfo?.plateNumber || childInfo.busNumber, route: busInfo?.route || `Trip ${selectedTripId}`, status: delayAlert?.delayMinutes ? 'late' : 'running', lat: busLocation.lat, lng: busLocation.lng, speed: 30, students: 12 }] as any}
+                      buses={[{ id: busInfo?.id || 'bus', plateNumber: busInfo?.plateNumber || displayChildInfo.busNumber, route: busInfo?.route || `Trip ${selectedTripId}`, status: delayAlert?.delayMinutes ? 'late' : 'running', lat: busLocation.lat, lng: busLocation.lng, speed: 30, students: 12 }] as any}
                       stops={stops}
                       height="500px"
                       followFirstMarker
@@ -296,9 +350,9 @@ export default function ParentDashboard() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-foreground">Đón sáng</p>
-                      <p className="text-xs text-muted-foreground mt-1">{childInfo.pickupTime} - Điểm đón 3</p>
+                      <p className="text-xs text-muted-foreground mt-1">{displayChildInfo.pickupTime} - Điểm đón</p>
                       <Badge variant="outline" className="mt-2 text-xs">
-                        Xe buýt {childInfo.busNumber}
+                        Xe buýt {displayChildInfo.busNumber}
                       </Badge>
                     </div>
                   </div>
@@ -309,9 +363,9 @@ export default function ParentDashboard() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-foreground">Trả chiều</p>
-                      <p className="text-xs text-muted-foreground mt-1">{childInfo.dropoffTime} - Điểm trả 3</p>
+                      <p className="text-xs text-muted-foreground mt-1">{displayChildInfo.dropoffTime} - Điểm trả</p>
                       <Badge variant="outline" className="mt-2 text-xs">
-                        Xe buýt {childInfo.busNumber}
+                        Xe buýt {displayChildInfo.busNumber}
                       </Badge>
                     </div>
                   </div>
@@ -320,11 +374,22 @@ export default function ParentDashboard() {
                 <div className="pt-3 border-t border-border">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Tài xế</span>
-                    <span className="font-medium text-foreground">{childInfo.driverName}</span>
+                    <span className="font-medium text-foreground">{displayChildInfo.driverName}</span>
                   </div>
-                  <Button variant="outline" size="sm" className="w-full mt-3 gap-2 bg-transparent">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="w-full mt-3 gap-2 bg-transparent"
+                    onClick={() => {
+                      if (displayChildInfo.driverPhone && displayChildInfo.driverPhone !== "—") {
+                        window.location.href = `tel:${displayChildInfo.driverPhone}`
+                      } else {
+                        toast({ title: "Thông báo", description: "Chưa có số điện thoại tài xế" })
+                      }
+                    }}
+                  >
                     <Phone className="w-4 h-4" />
-                    {childInfo.driverPhone}
+                    {displayChildInfo.driverPhone}
                   </Button>
                 </div>
               </CardContent>

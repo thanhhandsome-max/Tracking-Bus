@@ -152,6 +152,60 @@ const ChuyenDiModel = {
     return rows;
   },
 
+  // Lấy lịch sử chuyến đi theo tài xế với filter (date range)
+  async getByDriverId(maTaiXe, filters = {}) {
+    let query = `
+      SELECT 
+        cd.*,
+        lt.loaiChuyen,
+        lt.gioKhoiHanh,
+        td.tenTuyen,
+        td.diemBatDau,
+        td.diemKetThuc,
+        xb.bienSoXe,
+        xb.dongXe,
+        COUNT(tth.maTrangThai) as soHocSinh,
+        SUM(CASE WHEN tth.trangThai = 'vang' THEN 1 ELSE 0 END) as soVang
+      FROM ChuyenDi cd
+      INNER JOIN LichTrinh lt ON cd.maLichTrinh = lt.maLichTrinh
+      INNER JOIN TuyenDuong td ON lt.maTuyen = td.maTuyen
+      INNER JOIN XeBuyt xb ON lt.maXe = xb.maXe
+      LEFT JOIN TrangThaiHocSinh tth ON cd.maChuyen = tth.maChuyen
+      WHERE lt.maTaiXe = ?
+    `;
+    const params = [maTaiXe];
+
+    if (filters.from) {
+      query += " AND cd.ngayChay >= ?";
+      params.push(filters.from);
+    }
+    if (filters.to) {
+      query += " AND cd.ngayChay <= ?";
+      params.push(filters.to);
+    }
+    if (filters.trangThai) {
+      query += " AND cd.trangThai = ?";
+      params.push(filters.trangThai);
+    }
+
+    query += `
+      GROUP BY cd.maChuyen
+      ORDER BY cd.ngayChay DESC, lt.gioKhoiHanh DESC
+    `;
+
+    if (filters.limit) {
+      query += " LIMIT ?";
+      params.push(Number(filters.limit));
+      if (filters.offset) {
+        query += " OFFSET ?";
+        params.push(Number(filters.offset));
+      }
+    }
+
+    const [rows] = await pool.query(query, params);
+    return rows;
+  },
+
   // Tạo chuyến đi mới
   async create(data) {
     const { maLichTrinh, ngayChay, trangThai, ghiChu } = data;

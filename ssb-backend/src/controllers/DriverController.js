@@ -518,6 +518,72 @@ class DriverController {
       });
     }
   }
+
+  // GET /api/v1/drivers/:id/history - Lịch sử chuyến đi
+  static async getHistory(req, res) {
+    try {
+      const { id } = req.params;
+      const userId = req.user?.userId;
+      const { from, to, trangThai, limit = 50, offset = 0 } = req.query;
+
+      // Nếu là driver, chỉ được xem lịch sử của chính mình
+      if (req.user?.role === "tai_xe" && Number(id) !== Number(userId)) {
+        return res.status(403).json({
+          success: false,
+          message: "Bạn chỉ có thể xem lịch sử chuyến đi của chính mình",
+        });
+      }
+
+      const ChuyenDiModel = (await import("../models/ChuyenDiModel.js")).default;
+      const trips = await ChuyenDiModel.getByDriverId(id, {
+        from,
+        to,
+        trangThai,
+        limit: Number(limit),
+        offset: Number(offset),
+      });
+
+      // Tính toán thống kê
+      const totalTrips = trips.length;
+      const completedTrips = trips.filter((t) => t.trangThai === "hoan_thanh").length;
+      const onTimeTrips = trips.filter((t) => {
+        if (t.trangThai !== "hoan_thanh" || !t.gioBatDauThucTe || !t.gioKhoiHanh) return false;
+        // So sánh thời gian bắt đầu thực tế với kế hoạch
+        const plannedTime = new Date(`${t.ngayChay} ${t.gioKhoiHanh}`);
+        const actualTime = new Date(t.gioBatDauThucTe);
+        return actualTime <= plannedTime; // Đúng giờ hoặc sớm hơn
+      }).length;
+      const delayedTrips = completedTrips - onTimeTrips;
+      const incidents = trips.filter((t) => t.trangThai === "huy" || t.soVang > 0).length;
+
+      res.status(200).json({
+        success: true,
+        data: trips,
+        stats: {
+          totalTrips,
+          completedTrips,
+          onTimeTrips,
+          delayedTrips,
+          incidents,
+          onTimeRate: totalTrips > 0 ? Math.round((onTimeTrips / totalTrips) * 100) : 0,
+        },
+        pagination: {
+          currentPage: Math.floor(Number(offset) / Number(limit)) + 1,
+          totalPages: Math.ceil(totalTrips / Number(limit)),
+          totalItems: totalTrips,
+          itemsPerPage: Number(limit),
+        },
+        message: "Lấy lịch sử chuyến đi thành công",
+      });
+    } catch (error) {
+      console.error("Error in DriverController.getHistory:", error);
+      res.status(500).json({
+        success: false,
+        message: "Lỗi server khi lấy lịch sử chuyến đi",
+        error: error.message,
+      });
+    }
+  }
 }
 
 export default DriverController;

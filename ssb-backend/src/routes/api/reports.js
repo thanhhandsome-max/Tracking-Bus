@@ -11,4 +11,11 @@ router.get(
   ReportsController.overview
 );
 
+router.get(
+  "/export",
+  AuthMiddleware.authenticate,
+  AuthMiddleware.authorize("quan_tri"),
+  ReportsController.export
+);
+
 export default router;

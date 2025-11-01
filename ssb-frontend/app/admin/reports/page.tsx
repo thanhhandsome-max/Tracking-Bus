@@ -179,7 +179,25 @@ export default function ReportsPage() {
                 <SelectItem value="custom">Tùy chỉnh</SelectItem>
               </SelectContent>
             </Select>
-            <Button className="gap-2">
+            <Button 
+              className="gap-2"
+              onClick={async () => {
+                try {
+                  const blob = await apiClient.exportReport({ format: "excel", type: reportType, from, to })
+                  const url = window.URL.createObjectURL(blob)
+                  const a = document.createElement("a")
+                  a.href = url
+                  a.download = `report_${reportType}_${from}_${to}.csv`
+                  document.body.appendChild(a)
+                  a.click()
+                  window.URL.revokeObjectURL(url)
+                  document.body.removeChild(a)
+                  toast({ title: "Thành công", description: "Đã xuất báo cáo thành công" })
+                } catch (e) {
+                  toast({ title: "Lỗi", description: "Không thể xuất báo cáo", variant: "destructive" })
+                }
+              }}
+            >
               <Download className="w-4 h-4" />
               Xuất báo cáo
             </Button>
@@ -667,7 +685,26 @@ export default function ReportsPage() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Button variant="outline" className="gap-2 h-auto py-4 flex-col bg-transparent">
+              <Button 
+                variant="outline" 
+                className="gap-2 h-auto py-4 flex-col bg-transparent"
+                onClick={async () => {
+                  try {
+                    const blob = await apiClient.exportReport({ format: "pdf", type: "overview", from, to })
+                    const url = window.URL.createObjectURL(blob)
+                    const a = document.createElement("a")
+                    a.href = url
+                    a.download = `report_overview_${from}_${to}.json`
+                    document.body.appendChild(a)
+                    a.click()
+                    window.URL.revokeObjectURL(url)
+                    document.body.removeChild(a)
+                    toast({ title: "Thành công", description: "Đã xuất báo cáo PDF" })
+                  } catch (e) {
+                    toast({ title: "Lỗi", description: "Không thể xuất PDF", variant: "destructive" })
+                  }
+                }}
+              >
                 <Download className="w-6 h-6 text-primary" />
                 <div className="text-center">
                   <p className="font-semibold">Báo cáo PDF</p>
@@ -675,7 +712,26 @@ export default function ReportsPage() {
                 </div>
               </Button>
 
-              <Button variant="outline" className="gap-2 h-auto py-4 flex-col bg-transparent">
+              <Button 
+                variant="outline" 
+                className="gap-2 h-auto py-4 flex-col bg-transparent"
+                onClick={async () => {
+                  try {
+                    const blob = await apiClient.exportReport({ format: "excel", type: "trips", from, to })
+                    const url = window.URL.createObjectURL(blob)
+                    const a = document.createElement("a")
+                    a.href = url
+                    a.download = `report_trips_${from}_${to}.csv`
+                    document.body.appendChild(a)
+                    a.click()
+                    window.URL.revokeObjectURL(url)
+                    document.body.removeChild(a)
+                    toast({ title: "Thành công", description: "Đã xuất báo cáo Excel" })
+                  } catch (e) {
+                    toast({ title: "Lỗi", description: "Không thể xuất Excel", variant: "destructive" })
+                  }
+                }}
+              >
                 <Download className="w-6 h-6 text-green-500" />
                 <div className="text-center">
                   <p className="font-semibold">Báo cáo Excel</p>
@@ -683,7 +739,14 @@ export default function ReportsPage() {
                 </div>
               </Button>
 
-              <Button variant="outline" className="gap-2 h-auto py-4 flex-col bg-transparent">
+              <Button 
+                variant="outline" 
+                className="gap-2 h-auto py-4 flex-col bg-transparent"
+                onClick={() => {
+                  // TODO: Mở dialog chọn khoảng thời gian
+                  toast({ title: "Thông báo", description: "Tính năng đang phát triển" })
+                }}
+              >
                 <Calendar className="w-6 h-6 text-orange-500" />
                 <div className="text-center">
                   <p className="font-semibold">Báo cáo tùy chỉnh</p>

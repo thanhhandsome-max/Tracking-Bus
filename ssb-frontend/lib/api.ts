@@ -584,6 +584,43 @@ class ApiClient {
     const q = queryParams.toString();
     return this.request(`/trips/history${q ? `?${q}` : ""}`);
   }
+
+  // Driver history
+  async getDriverHistory(driverId: string | number, params?: { from?: string; to?: string; trangThai?: string; limit?: number; offset?: number }) {
+    const queryParams = new URLSearchParams();
+    if (params?.from) queryParams.append("from", params.from);
+    if (params?.to) queryParams.append("to", params.to);
+    if (params?.trangThai) queryParams.append("trangThai", params.trangThai);
+    if (params?.limit) queryParams.append("limit", String(params.limit));
+    if (params?.offset) queryParams.append("offset", String(params.offset));
+    const q = queryParams.toString();
+    return this.request(`/drivers/${driverId}/history${q ? `?${q}` : ""}`);
+  }
+
+  // Export reports
+  async exportReport(params?: { format?: string; type?: string; from?: string; to?: string }) {
+    const queryParams = new URLSearchParams();
+    if (params?.format) queryParams.append("format", params.format);
+    if (params?.type) queryParams.append("type", params.type);
+    if (params?.from) queryParams.append("from", params.from);
+    if (params?.to) queryParams.append("to", params.to);
+    const q = queryParams.toString();
+    // Return blob for file download
+    const url = `${this.baseURL}/reports/export${q ? `?${q}` : ""}`;
+    const headers: HeadersInit = { "Content-Type": "application/json" };
+    if (this.token) {
+      (headers as Record<string, string>).Authorization = `Bearer ${this.token}`;
+    }
+    const response = await fetch(url, { headers });
+    if (!response.ok) throw new Error("Export failed");
+    const blob = await response.blob();
+    return blob;
+  }
+
+  // Get students by parent
+  async getStudentsByParent() {
+    return this.request("/students/by-parent");
+  }
 }
 
 // Create singleton instance
