@@ -1,14 +1,14 @@
-const pool = require("../config/db.config.js");
+import pool from "../config/db.js";
 
 class SuCoModel {
   // Tạo báo cáo sự cố mới
   async create(data) {
-    const { maChuyen, moTa, mucDo = "nhe" } = data;
+    const { maChuyen, moTa, mucDo = "nhe", trangThai = "moi" } = data;
 
     const [result] = await pool.query(
-      `INSERT INTO SuCo (maChuyen, moTa, thoiGianBao, mucDo)
-       VALUES (?, ?, NOW(), ?)`,
-      [maChuyen, moTa, mucDo]
+      `INSERT INTO SuCo (maChuyen, moTa, thoiGianBao, mucDo, trangThai)
+       VALUES (?, ?, NOW(), ?, ?)`,
+      [maChuyen, moTa, mucDo, trangThai]
     );
 
     return {
@@ -17,6 +17,7 @@ class SuCoModel {
       moTa,
       thoiGianBao: new Date(),
       mucDo,
+      trangThai,
     };
   }
 
@@ -25,6 +26,7 @@ class SuCoModel {
     const {
       mucDo,
       maChuyen,
+      trangThai,
       tuNgay,
       denNgay,
       limit = 50,
@@ -33,13 +35,15 @@ class SuCoModel {
 
     let query = `
       SELECT sc.*, 
-             cd.tenChuyen, cd.trangThai as trangThaiChuyen,
-             xb.bienSoXe, xb.tenXe,
-             tx.hoTen as tenTaiXe
+             cd.maLichTrinh,
+             lt.maXe, lt.maTaiXe, lt.loaiChuyen, lt.gioKhoiHanh,
+             xb.bienSoXe,
+             nd.hoTen as tenTaiXe
       FROM SuCo sc
       LEFT JOIN ChuyenDi cd ON sc.maChuyen = cd.maChuyen
-      LEFT JOIN XeBuyt xb ON cd.maXeBuyt = xb.maXeBuyt
-      LEFT JOIN TaiXe tx ON cd.maTaiXe = tx.maTaiXe
+      LEFT JOIN LichTrinh lt ON cd.maLichTrinh = lt.maLichTrinh
+      LEFT JOIN XeBuyt xb ON lt.maXe = xb.maXe
+      LEFT JOIN NguoiDung nd ON lt.maTaiXe = nd.maNguoiDung
       WHERE 1=1
     `;
     const params = [];
@@ -52,6 +56,11 @@ class SuCoModel {
     if (maChuyen) {
       query += ` AND sc.maChuyen = ?`;
       params.push(maChuyen);
+    }
+
+    if (trangThai) {
+      query += ` AND sc.trangThai = ?`;
+      params.push(trangThai);
     }
 
     if (tuNgay) {
@@ -75,15 +84,17 @@ class SuCoModel {
   async getById(maSuCo) {
     const [rows] = await pool.query(
       `SELECT sc.*, 
-             cd.tenChuyen, cd.trangThai as trangThaiChuyen, cd.gioBatDau,
-             xb.bienSoXe, xb.tenXe, xb.soCho,
-             tx.hoTen as tenTaiXe, tx.soDienThoai as sdtTaiXe,
+             cd.ngayChay,
+             lt.maXe, lt.maTaiXe, lt.loaiChuyen, lt.gioKhoiHanh,
+             xb.bienSoXe, xb.dongXe,
+             nd.hoTen as tenTaiXe, nd.soDienThoai as sdtTaiXe,
              td.tenTuyen
       FROM SuCo sc
       LEFT JOIN ChuyenDi cd ON sc.maChuyen = cd.maChuyen
-      LEFT JOIN XeBuyt xb ON cd.maXeBuyt = xb.maXeBuyt
-      LEFT JOIN TaiXe tx ON cd.maTaiXe = tx.maTaiXe
-      LEFT JOIN TuyenDuong td ON cd.maTuyen = td.maTuyen
+      LEFT JOIN LichTrinh lt ON cd.maLichTrinh = lt.maLichTrinh
+      LEFT JOIN XeBuyt xb ON lt.maXe = xb.maXe
+      LEFT JOIN NguoiDung nd ON lt.maTaiXe = nd.maNguoiDung
+      LEFT JOIN TuyenDuong td ON lt.maTuyen = td.maTuyen
       WHERE sc.maSuCo = ?`,
       [maSuCo]
     );
@@ -105,13 +116,15 @@ class SuCoModel {
   async getByLevel(mucDo, limit = 50) {
     const [rows] = await pool.query(
       `SELECT sc.*, 
-             cd.tenChuyen, cd.gioBatDau,
+             cd.ngayChay,
+             lt.gioKhoiHanh,
              xb.bienSoXe,
-             tx.hoTen as tenTaiXe
+             nd.hoTen as tenTaiXe
       FROM SuCo sc
       LEFT JOIN ChuyenDi cd ON sc.maChuyen = cd.maChuyen
-      LEFT JOIN XeBuyt xb ON cd.maXeBuyt = xb.maXeBuyt
-      LEFT JOIN TaiXe tx ON cd.maTaiXe = tx.maTaiXe
+      LEFT JOIN LichTrinh lt ON cd.maLichTrinh = lt.maLichTrinh
+      LEFT JOIN XeBuyt xb ON lt.maXe = xb.maXe
+      LEFT JOIN NguoiDung nd ON lt.maTaiXe = nd.maNguoiDung
       WHERE sc.mucDo = ?
       ORDER BY sc.thoiGianBao DESC
       LIMIT ?`,
@@ -134,7 +147,7 @@ class SuCoModel {
 
   // Cập nhật mô tả sự cố
   async update(maSuCo, data) {
-    const { moTa, mucDo } = data;
+    const { moTa, mucDo, trangThai } = data;
     const updates = [];
     const params = [];
 
@@ -146,6 +159,11 @@ class SuCoModel {
     if (mucDo !== undefined) {
       updates.push("mucDo = ?");
       params.push(mucDo);
+    }
+
+    if (trangThai !== undefined) {
+      updates.push("trangThai = ?");
+      params.push(trangThai);
     }
 
     if (updates.length === 0) {
@@ -205,13 +223,14 @@ class SuCoModel {
   async getRecent(limit = 10) {
     const [rows] = await pool.query(
       `SELECT sc.*, 
-             cd.tenChuyen,
+             cd.ngayChay,
              xb.bienSoXe,
-             tx.hoTen as tenTaiXe
+             nd.hoTen as tenTaiXe
       FROM SuCo sc
       LEFT JOIN ChuyenDi cd ON sc.maChuyen = cd.maChuyen
-      LEFT JOIN XeBuyt xb ON cd.maXeBuyt = xb.maXeBuyt
-      LEFT JOIN TaiXe tx ON cd.maTaiXe = tx.maTaiXe
+      LEFT JOIN LichTrinh lt ON cd.maLichTrinh = lt.maLichTrinh
+      LEFT JOIN XeBuyt xb ON lt.maXe = xb.maXe
+      LEFT JOIN NguoiDung nd ON lt.maTaiXe = nd.maNguoiDung
       ORDER BY sc.thoiGianBao DESC
       LIMIT ?`,
       [limit]
@@ -223,13 +242,14 @@ class SuCoModel {
   async getCriticalUnresolved() {
     const [rows] = await pool.query(
       `SELECT sc.*, 
-             cd.tenChuyen, cd.trangThai,
+             cd.trangThai,
              xb.bienSoXe,
-             tx.hoTen as tenTaiXe, tx.soDienThoai as sdtTaiXe
+             nd.hoTen as tenTaiXe, nd.soDienThoai as sdtTaiXe
       FROM SuCo sc
       LEFT JOIN ChuyenDi cd ON sc.maChuyen = cd.maChuyen
-      LEFT JOIN XeBuyt xb ON cd.maXeBuyt = xb.maXeBuyt
-      LEFT JOIN TaiXe tx ON cd.maTaiXe = tx.maTaiXe
+      LEFT JOIN LichTrinh lt ON cd.maLichTrinh = lt.maLichTrinh
+      LEFT JOIN XeBuyt xb ON lt.maXe = xb.maXe
+      LEFT JOIN NguoiDung nd ON lt.maTaiXe = nd.maNguoiDung
       WHERE sc.mucDo = 'nghiem_trong'
         AND sc.thoiGianBao >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
         AND (cd.trangThai != 'hoan_thanh' OR cd.trangThai IS NULL)
@@ -242,12 +262,14 @@ class SuCoModel {
   async getByBus(maXeBuyt, limit = 20) {
     const [rows] = await pool.query(
       `SELECT sc.*, 
-             cd.tenChuyen, cd.gioBatDau,
-             tx.hoTen as tenTaiXe
+             cd.ngayChay,
+             lt.gioKhoiHanh,
+             nd.hoTen as tenTaiXe
       FROM SuCo sc
       JOIN ChuyenDi cd ON sc.maChuyen = cd.maChuyen
-      LEFT JOIN TaiXe tx ON cd.maTaiXe = tx.maTaiXe
-      WHERE cd.maXeBuyt = ?
+      LEFT JOIN LichTrinh lt ON cd.maLichTrinh = lt.maLichTrinh
+      LEFT JOIN NguoiDung nd ON lt.maTaiXe = nd.maNguoiDung
+      WHERE lt.maXe = ?
       ORDER BY sc.thoiGianBao DESC
       LIMIT ?`,
       [maXeBuyt, limit]
@@ -259,12 +281,14 @@ class SuCoModel {
   async getByDriver(maTaiXe, limit = 20) {
     const [rows] = await pool.query(
       `SELECT sc.*, 
-             cd.tenChuyen, cd.gioBatDau,
+             cd.ngayChay,
+             lt.gioKhoiHanh,
              xb.bienSoXe
       FROM SuCo sc
       JOIN ChuyenDi cd ON sc.maChuyen = cd.maChuyen
-      LEFT JOIN XeBuyt xb ON cd.maXeBuyt = xb.maXeBuyt
-      WHERE cd.maTaiXe = ?
+      LEFT JOIN LichTrinh lt ON cd.maLichTrinh = lt.maLichTrinh
+      LEFT JOIN XeBuyt xb ON lt.maXe = xb.maXe
+      WHERE lt.maTaiXe = ?
       ORDER BY sc.thoiGianBao DESC
       LIMIT ?`,
       [maTaiXe, limit]
@@ -273,4 +297,5 @@ class SuCoModel {
   }
 }
 
-module.exports = new SuCoModel();
+const instance = new SuCoModel();
+export default instance;

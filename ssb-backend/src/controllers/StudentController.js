@@ -286,6 +286,72 @@ class StudentController {
     }
   }
 
+  // GET /api/v1/students/by-parent - Lấy học sinh của phụ huynh hiện tại
+  static async getByCurrentParent(req, res) {
+    try {
+      const userId = req.user?.userId;
+
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          message: "Chưa đăng nhập",
+        });
+      }
+
+      const students = await HocSinhModel.getByParent(userId);
+
+      // Lấy thêm thông tin tài xế và tuyến đường từ chuyến đi gần nhất
+      const ChuyenDiModel = (await import("../models/ChuyenDiModel.js")).default;
+      const LichTrinhModel = (await import("../models/LichTrinhModel.js")).default;
+
+      const studentsWithTripInfo = await Promise.all(
+        students.map(async (student) => {
+          // Lấy chuyến đi gần nhất của học sinh này (nếu có)
+          const today = new Date().toISOString().slice(0, 10);
+          const recentTrips = await ChuyenDiModel.getAll({
+            ngayChay: today,
+          });
+
+          // Tìm trip có học sinh này
+          let tripInfo = null;
+          for (const trip of recentTrips) {
+            const tripStudents = await ChuyenDiModel.getStudents(trip.maChuyen);
+            const hasStudent = tripStudents.some((ts) => ts.maHocSinh === student.maHocSinh);
+            if (hasStudent) {
+              const schedule = await LichTrinhModel.getById(trip.maLichTrinh);
+              tripInfo = {
+                maChuyen: trip.maChuyen,
+                tenTuyen: trip.tenTuyen,
+                bienSoXe: trip.bienSoXe,
+                trangThai: trip.trangThai,
+                gioKhoiHanh: schedule?.gioKhoiHanh || trip.gioKhoiHanh,
+              };
+              break;
+            }
+          }
+
+          return {
+            ...student,
+            tripInfo,
+          };
+        })
+      );
+
+      res.status(200).json({
+        success: true,
+        data: studentsWithTripInfo,
+        message: "Lấy danh sách học sinh thành công",
+      });
+    } catch (error) {
+      console.error("Error in StudentController.getByCurrentParent:", error);
+      res.status(500).json({
+        success: false,
+        message: "Lỗi server khi lấy danh sách học sinh",
+        error: error.message,
+      });
+    }
+  }
+
   // Lấy danh sách học sinh theo lớp
   static async getByClass(req, res) {
     try {

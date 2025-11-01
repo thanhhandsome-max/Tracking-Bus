@@ -34,6 +34,14 @@ router.get(
   StudentController.getByClass
 );
 
+// GET /api/v1/students/by-parent - Lấy học sinh của phụ huynh hiện tại
+router.get(
+  "/by-parent",
+  AuthMiddleware.authenticate,
+  AuthMiddleware.authorize("phu_huynh"),
+  StudentController.getByCurrentParent
+);
+
 // GET /api/v1/students/:id - Chi tiết học sinh
 router.get(
   "/:id",

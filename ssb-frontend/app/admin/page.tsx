@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useAuth } from "@/lib/auth-context"
 import { useRouter } from "next/navigation"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
@@ -14,10 +14,18 @@ import { ActivityFeed } from "@/components/admin/activity-feed"
 import { PerformanceChart } from "@/components/admin/performance-chart"
 import { BusStatusChart } from "@/components/admin/bus-status-chart"
 import { MapView } from "@/components/tracking/MapView"
+import { apiClient } from "@/lib/api"
 
 export default function AdminDashboard() {
   const { user } = useAuth()
   const router = useRouter()
+  const [busStats, setBusStats] = useState<any | null>(null)
+  const [tripStats, setTripStats] = useState<any | null>(null)
+  const todayRange = useMemo(() => {
+    const d = new Date();
+    const iso = d.toISOString().slice(0,10)
+    return { from: iso, to: iso }
+  }, [])
 
   useEffect(() => {
     if (user && user.role?.toLowerCase() !== "admin") {
@@ -27,6 +35,21 @@ export default function AdminDashboard() {
       }
     }
   }, [user, router])
+
+  useEffect(() => {
+    let mounted = true
+    async function loadStats() {
+      try {
+        const bs = await apiClient.getBusStats().catch(() => null as any)
+        const ts = await apiClient.getTripStats(todayRange).catch(() => null as any)
+        if (!mounted) return
+        setBusStats((bs as any)?.data || (bs as any))
+        setTripStats((ts as any)?.data || (ts as any))
+      } catch {}
+    }
+    loadStats()
+    return () => { mounted = false }
+  }, [todayRange])
 
   if (!user || user.role?.toLowerCase() !== "admin") {
     return null
@@ -57,32 +80,32 @@ export default function AdminDashboard() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <StatsCard
             title="Chuyến đang hoạt động"
-            value="12"
-            change="+2 so với hôm qua"
+            value={String(tripStats?.totalTrips ?? 0)}
+            change={`Hoàn thành: ${tripStats?.completedTrips ?? 0}`}
             trend="up"
             icon={Bus}
             iconColor="text-primary"
           />
           <StatsCard
             title="Xe đang trễ"
-            value="3"
-            change="Trung bình 5 phút"
+            value={String(tripStats?.delayedTrips ?? 0)}
+            change="Theo ngày hiện tại"
             trend="neutral"
             icon={Clock}
             iconColor="text-warning"
           />
           <StatsCard
             title="Sự cố trong ngày"
-            value="1"
-            change="Xe R05 - Kẹt xe"
+            value={String(0)}
+            change="—"
             trend="down"
             icon={AlertTriangle}
             iconColor="text-destructive"
           />
           <StatsCard
             title="Tỷ lệ đúng giờ"
-            value="94.5%"
-            change="+2.3% so với tuần trước"
+            value={`${tripStats?.onTimePercentage ?? 0}%`}
+            change={`Trung bình: ${Math.round((tripStats?.averageDuration ?? 0))} phút/chuyến`}
             trend="up"
             icon={TrendingUp}
             iconColor="text-success"
@@ -164,7 +187,7 @@ export default function AdminDashboard() {
                       <p className="text-xs text-muted-foreground">Đang hoạt động</p>
                     </div>
                   </div>
-                  <p className="text-2xl font-bold">24</p>
+                  <p className="text-2xl font-bold">{busStats?.totalBuses ?? '-'}</p>
                 </div>
 
                 <div className="flex items-center justify-between">
@@ -177,7 +200,7 @@ export default function AdminDashboard() {
                       <p className="text-xs text-muted-foreground">Đang trên xe</p>
                     </div>
                   </div>
-                  <p className="text-2xl font-bold">342</p>
+                  <p className="text-2xl font-bold">—</p>
                 </div>
 
                 <div className="flex items-center justify-between">
@@ -190,7 +213,7 @@ export default function AdminDashboard() {
                       <p className="text-xs text-muted-foreground">Đang hoạt động</p>
                     </div>
                   </div>
-                  <p className="text-2xl font-bold">8</p>
+                  <p className="text-2xl font-bold">—</p>
                 </div>
               </CardContent>
             </Card>

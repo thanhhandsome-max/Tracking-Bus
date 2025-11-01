@@ -11,6 +11,8 @@ import studentRoutes from "./routes/api/student.js";
 import routeRoutes from "./routes/api/route.js";
 import scheduleRoutes from "./routes/api/schedule.js";
 import authRouters from "./routes/api/auth.route.js";
+import reportsRoutes from "./routes/api/reports.js"; // Reports routes
+import notificationsRoutes from "./routes/api/notifications.js"; // Notifications routes
 // Use the comprehensive trip router that includes list/detail/start/end
 import tripRoutes from "./routes/api/trip.js"; // dòng này dùng để mount trip routes
 import telemetryRoutes from "./routes/api/telemetry.route.js"; // GPS & Telemetry routes
@@ -55,6 +57,8 @@ app.use("/api/v1/students", studentRoutes);
 app.use("/api/v1/routes", routeRoutes);
 app.use("/api/v1/schedules", scheduleRoutes);
 app.use("/api/v1/trips", tripRoutes);
+app.use("/api/v1/reports", reportsRoutes);
+app.use("/api/v1/notifications", notificationsRoutes);
 
 // 404 handler
 app.use((req, res, next) => {

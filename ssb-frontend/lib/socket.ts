@@ -179,6 +179,14 @@ class SocketService {
       );
     });
 
+    // Generic notification event
+    this.socket.on("notification:new", (data) => {
+      console.log("Notification new:", data);
+      window.dispatchEvent(
+        new CustomEvent("notificationNew", { detail: data })
+      );
+    });
+
     // Day 4: stop proximity and delay alerts
     this.socket.on("approach_stop", (data) => {
       console.log("Approach stop:", data);

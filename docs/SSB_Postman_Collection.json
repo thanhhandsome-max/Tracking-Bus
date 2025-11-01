@@ -5,16 +5,9 @@
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    {
-      "key": "base_url",
-      "value": "http://localhost:4000",
-      "type": "string"
-    },
-    {
-      "key": "api_version",
-      "value": "v1",
-      "type": "string"
-    }
+    { "key": "base_url", "value": "http://localhost:4000", "type": "string" },
+    { "key": "api_version", "value": "v1", "type": "string" },
+    { "key": "today", "value": "2024-01-01", "type": "string" }
   ],
   "item": [
     {
@@ -34,6 +27,10 @@
                   "    console.log(\"Token saved:\", jsonData.data.token);",
                   "} else {",
                   "    console.log(\"Login failed:\", jsonData.message);",
+                  "}",
+                  "if (jsonData.success && jsonData.data && jsonData.data.refreshToken) {",
+                  "    pm.environment.set(\"refreshToken\", jsonData.data.refreshToken);",
+                  "    console.log(\"Refresh token saved:\", jsonData.data.refreshToken);",
                   "}"
                 ],
                 "type": "text/javascript"
@@ -42,38 +39,46 @@
           ],
           "request": {
             "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"email\": \"quantri@schoolbus.vn\",\n  \"password\": \"password\"\n}"
             },
-            "url": {
-              "raw": "{{base_url}}/api/{{api_version}}/auth/login",
-              "host": ["{{base_url}}"],
-              "path": ["api", "{{api_version}}", "auth", "login"]
-            }
+            "url": { "raw": "{{base_url}}/api/{{api_version}}/auth/login", "host": ["{{base_url}}"], "path": ["api", "{{api_version}}", "auth", "login"] }
           }
         },
         {
           "name": "Get Profile",
           "request": {
             "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": { "raw": "{{base_url}}/api/{{api_version}}/auth/profile", "host": ["{{base_url}}"], "path": ["api", "{{api_version}}", "auth", "profile"] }
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const jsonData = pm.response.json();",
+                  "if (jsonData.success && jsonData.data && jsonData.data.token) {",
+                  "  pm.environment.set(\"token\", jsonData.data.token);",
+                  "  console.log(\"Access token refreshed\");",
+                  "} else {",
+                  "  console.log(\"Refresh failed:\", jsonData.message);",
+                  "}"
+                ],
+                "type": "text/javascript"
               }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/{{api_version}}/auth/profile",
-              "host": ["{{base_url}}"],
-              "path": ["api", "{{api_version}}", "auth", "profile"]
             }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}" },
+            "url": { "raw": "{{base_url}}/api/{{api_version}}/auth/refresh", "host": ["{{base_url}}"], "path": ["api", "{{api_version}}", "auth", "refresh"] }
           }
         }
       ]
@@ -85,171 +90,56 @@
           "name": "Get All Buses",
           "request": {
             "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              }
-            ],
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
             "url": {
               "raw": "{{base_url}}/api/{{api_version}}/buses?page=1&limit=10",
               "host": ["{{base_url}}"],
               "path": ["api", "{{api_version}}", "buses"],
               "query": [
-                {
-                  "key": "page",
-                  "value": "1"
-                },
-                {
-                  "key": "limit",
-                  "value": "10"
-                },
-                {
-                  "key": "search",
-                  "value": "",
-                  "disabled": true
-                },
-                {
-                  "key": "status",
-                  "value": "hoat_dong",
-                  "disabled": true
-                }
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "10" },
+                { "key": "search", "value": "", "disabled": true },
+                { "key": "status", "value": "hoat_dong", "disabled": true }
               ]
             }
           }
         },
-        {
-          "name": "Get Bus by ID",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/{{api_version}}/buses/1",
-              "host": ["{{base_url}}"],
-              "path": ["api", "{{api_version}}", "buses", "1"]
-            }
-          }
-        },
+        { "name": "Get Bus by ID", "request": { "method": "GET", "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ], "url": { "raw": "{{base_url}}/api/{{api_version}}/buses/1", "host": ["{{base_url}}"], "path": ["api", "{{api_version}}", "buses", "1"] } } },
         {
           "name": "Create Bus",
           "request": {
             "method": "POST",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"bienSoXe\": \"51B-99999\",\n  \"dongXe\": \"Hyundai Universe\",\n  \"sucChua\": 45,\n  \"trangThai\": \"hoat_dong\"\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/api/{{api_version}}/buses",
-              "host": ["{{base_url}}"],
-              "path": ["api", "{{api_version}}", "buses"]
-            }
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"bienSoXe\": \"51B-99999\",\n  \"dongXe\": \"Hyundai Universe\",\n  \"sucChua\": 45,\n  \"trangThai\": \"hoat_dong\"\n}" },
+            "url": { "raw": "{{base_url}}/api/{{api_version}}/buses", "host": ["{{base_url}}"], "path": ["api", "{{api_version}}", "buses"] }
           }
         },
         {
           "name": "Update Bus",
           "request": {
             "method": "PUT",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"dongXe\": \"Hyundai Universe - Updated\",\n  \"sucChua\": 50,\n  \"trangThai\": \"bao_tri\"\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/api/{{api_version}}/buses/1",
-              "host": ["{{base_url}}"],
-              "path": ["api", "{{api_version}}", "buses", "1"]
-            }
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"dongXe\": \"Hyundai Universe - Updated\",\n  \"sucChua\": 50,\n  \"trangThai\": \"bao_tri\"\n}" },
+            "url": { "raw": "{{base_url}}/api/{{api_version}}/buses/1", "host": ["{{base_url}}"], "path": ["api", "{{api_version}}", "buses", "1"] }
           }
         },
-        {
-          "name": "Delete Bus",
-          "request": {
-            "method": "DELETE",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/{{api_version}}/buses/1",
-              "host": ["{{base_url}}"],
-              "path": ["api", "{{api_version}}", "buses", "1"]
-            }
-          }
-        },
+        { "name": "Delete Bus", "request": { "method": "DELETE", "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ], "url": { "raw": "{{base_url}}/api/{{api_version}}/buses/1", "host": ["{{base_url}}"], "path": ["api", "{{api_version}}", "buses", "1"] } } },
         {
           "name": "Assign Driver",
           "request": {
             "method": "POST",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"driverId\": 1\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/api/{{api_version}}/buses/1/assign-driver",
-              "host": ["{{base_url}}"],
-              "path": ["api", "{{api_version}}", "buses", "1", "assign-driver"]
-            }
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"driverId\": 1\n}" },
+            "url": { "raw": "{{base_url}}/api/{{api_version}}/buses/1/assign-driver", "host": ["{{base_url}}"], "path": ["api", "{{api_version}}", "buses", "1", "assign-driver"] }
           }
         },
         {
           "name": "Update Position",
           "request": {
             "method": "POST",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"lat\": 21.0285,\n  \"lng\": 105.8542,\n  \"speed\": 45.5,\n  \"heading\": 90,\n  \"timestamp\": \"2025-10-27T10:30:00Z\"\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/api/{{api_version}}/buses/1/position",
-              "host": ["{{base_url}}"],
-              "path": ["api", "{{api_version}}", "buses", "1", "position"]
-            }
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"lat\": 21.0285,\n  \"lng\": 105.8542,\n  \"speed\": 45.5,\n  \"heading\": 90,\n  \"timestamp\": \"2025-10-27T10:30:00Z\"\n}" },
+            "url": { "raw": "{{base_url}}/api/{{api_version}}/buses/1/position", "host": ["{{base_url}}"], "path": ["api", "{{api_version}}", "buses", "1", "position"] }
           }
         }
       ]
@@ -257,146 +147,29 @@
     {
       "name": "Drivers",
       "item": [
-        {
-          "name": "Get All Drivers",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/{{api_version}}/drivers?page=1&limit=10",
-              "host": ["{{base_url}}"],
-              "path": ["api", "{{api_version}}", "drivers"],
-              "query": [
-                {
-                  "key": "page",
-                  "value": "1"
-                },
-                {
-                  "key": "limit",
-                  "value": "10"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "name": "Get Driver by ID",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/{{api_version}}/drivers/2",
-              "host": ["{{base_url}}"],
-              "path": ["api", "{{api_version}}", "drivers", "2"]
-            }
-          }
-        },
-        {
-          "name": "Get Driver Schedules",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/{{api_version}}/drivers/2/schedules",
-              "host": ["{{base_url}}"],
-              "path": ["api", "{{api_version}}", "drivers", "2", "schedules"]
-            }
-          }
-        }
+        { "name": "Get All Drivers", "request": { "method": "GET", "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ], "url": { "raw": "{{base_url}}/api/{{api_version}}/drivers?page=1&limit=10", "host": ["{{base_url}}"], "path": ["api", "{{api_version}}", "drivers"], "query": [ { "key": "page", "value": "1" }, { "key": "limit", "value": "10" } ] } } },
+        { "name": "Get Driver by ID", "request": { "method": "GET", "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ], "url": { "raw": "{{base_url}}/api/{{api_version}}/drivers/2", "host": ["{{base_url}}"], "path": ["api", "{{api_version}}", "drivers", "2"] } } },
+        { "name": "Get Driver Schedules", "request": { "method": "GET", "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ], "url": { "raw": "{{base_url}}/api/{{api_version}}/drivers/2/schedules", "host": ["{{base_url}}"], "path": ["api", "{{api_version}}", "drivers", "2", "schedules"] } } }
       ]
     },
     {
       "name": "Students",
       "item": [
-        {
-          "name": "Get All Students",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/{{api_version}}/students?page=1&limit=10",
-              "host": ["{{base_url}}"],
-              "path": ["api", "{{api_version}}", "students"],
-              "query": [
-                {
-                  "key": "page",
-                  "value": "1"
-                },
-                {
-                  "key": "limit",
-                  "value": "10"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "name": "Get Student by ID",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/{{api_version}}/students/1",
-              "host": ["{{base_url}}"],
-              "path": ["api", "{{api_version}}", "students", "1"]
-            }
-          }
-        },
-        {
-          "name": "Get Students Stats",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/{{api_version}}/students/stats",
-              "host": ["{{base_url}}"],
-              "path": ["api", "{{api_version}}", "students", "stats"]
-            }
-          }
-        }
+        { "name": "Get All Students", "request": { "method": "GET", "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ], "url": { "raw": "{{base_url}}/api/{{api_version}}/students?page=1&limit=10", "host": ["{{base_url}}"], "path": ["api", "{{api_version}}", "students"], "query": [ { "key": "page", "value": "1" }, { "key": "limit", "value": "10" } ] } } },
+        { "name": "Get Student by ID", "request": { "method": "GET", "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ], "url": { "raw": "{{base_url}}/api/{{api_version}}/students/1", "host": ["{{base_url}}"], "path": ["api", "{{api_version}}", "students", "1"] } } },
+        { "name": "Get Students Stats", "request": { "method": "GET", "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ], "url": { "raw": "{{base_url}}/api/{{api_version}}/students/stats", "host": ["{{base_url}}"], "path": ["api", "{{api_version}}", "students", "stats"] } } }
+      ]
+    },
+    {
+      "name": "Reports",
+      "item": [
+        { "name": "Bus Stats", "request": { "method": "GET", "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ], "url": { "raw": "{{base_url}}/api/{{api_version}}/reports/buses/stats", "host": ["{{base_url}}"], "path": ["api", "{{api_version}}", "reports", "buses", "stats"] } } },
+        { "name": "Trip Stats (range)", "request": { "method": "GET", "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ], "url": { "raw": "{{base_url}}/api/{{api_version}}/reports/trips/stats?from={{today}}&to={{today}}", "host": ["{{base_url}}"], "path": ["api", "{{api_version}}", "reports", "trips", "stats"], "query": [ { "key": "from", "value": "{{today}}" }, { "key": "to", "value": "{{today}}" } ] } } }
       ]
     },
     {
       "name": "Health Check",
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{base_url}}/health",
-          "host": ["{{base_url}}"],
-          "path": ["health"]
-        }
-      }
+      "request": { "method": "GET", "header": [], "url": { "raw": "{{base_url}}/health", "host": ["{{base_url}}"], "path": ["health"] } }
     }
   ]
 }

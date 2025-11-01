@@ -9,6 +9,14 @@ const router = express.Router();
 // CRUD Endpoints for Trips
 // =============================================================================
 
+// GET /api/v1/trips/history - Lịch sử chuyến đi cho phụ huynh
+router.get(
+  "/history",
+  AuthMiddleware.authenticate,
+  AuthMiddleware.authorize("quan_tri", "phu_huynh"),
+  TripController.getHistory
+);
+
 // GET /api/v1/trips - Lấy danh sách chuyến đi
 router.get(
   "/",
