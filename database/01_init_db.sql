@@ -122,17 +122,20 @@ CREATE TABLE LichTrinh (
     maTaiXe INT NOT NULL,
     loaiChuyen ENUM('don_sang', 'tra_chieu') NOT NULL,
     gioKhoiHanh TIME NOT NULL,
+    ngayChay DATE NOT NULL,
     dangApDung BOOLEAN DEFAULT TRUE,
     ngayTao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     ngayCapNhat TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (maTuyen) REFERENCES TuyenDuong(maTuyen),
     FOREIGN KEY (maXe) REFERENCES XeBuyt(maXe),
     FOREIGN KEY (maTaiXe) REFERENCES NguoiDung(maNguoiDung),
+    UNIQUE KEY unique_tuyen_xe_taixe_ngay_gio (maTuyen, maXe, maTaiXe, ngayChay, gioKhoiHanh, loaiChuyen),
     INDEX idx_maTuyen (maTuyen),
     INDEX idx_maXe (maXe),
     INDEX idx_maTaiXe (maTaiXe),
     INDEX idx_loaiChuyen (loaiChuyen),
     INDEX idx_gioKhoiHanh (gioKhoiHanh),
+    INDEX idx_ngayChay (ngayChay),
     INDEX idx_dangApDung (dangApDung)
 );
 

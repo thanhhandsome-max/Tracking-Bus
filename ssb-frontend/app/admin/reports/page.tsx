@@ -64,9 +64,15 @@ export default function ReportsPage() {
     else if (dateRange === "30days") start.setDate(start.getDate() - 29)
     else if (dateRange === "90days") start.setDate(start.getDate() - 89)
     else start.setDate(start.getDate() - 6) // default 7 days
-    const toISO = end.toISOString().slice(0, 10)
-    const fromISO = start.toISOString().slice(0, 10)
-    return { from: fromISO, to: toISO }
+    
+    const formatDate = (d: Date) => {
+      const yyyy = d.getFullYear()
+      const mm = `${d.getMonth() + 1}`.padStart(2, '0')
+      const dd = `${d.getDate()}`.padStart(2, '0')
+      return `${yyyy}-${mm}-${dd}`
+    }
+    
+    return { from: formatDate(start), to: formatDate(end) }
   }, [dateRange])
 
   useEffect(() => {

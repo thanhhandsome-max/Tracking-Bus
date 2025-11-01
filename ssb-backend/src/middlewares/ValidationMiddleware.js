@@ -164,6 +164,13 @@ class ValidationMiddleware {
           "string.pattern.base": "Giờ khởi hành không hợp lệ (VD: 06:30)",
           "any.required": "Giờ khởi hành là bắt buộc",
         }),
+      ngayChay: Joi.string()
+        .pattern(/^\d{4}-\d{2}-\d{2}$/)
+        .required()
+        .messages({
+          "string.pattern.base": "Ngày chạy không hợp lệ (VD: 2025-10-31)",
+          "any.required": "Ngày chạy là bắt buộc",
+        }),
       dangApDung: Joi.boolean().optional(),
     });
 

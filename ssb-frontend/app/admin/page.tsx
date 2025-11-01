@@ -23,7 +23,10 @@ export default function AdminDashboard() {
   const [tripStats, setTripStats] = useState<any | null>(null)
   const todayRange = useMemo(() => {
     const d = new Date();
-    const iso = d.toISOString().slice(0,10)
+    const yyyy = d.getFullYear()
+    const mm = `${d.getMonth() + 1}`.padStart(2, '0')
+    const dd = `${d.getDate()}`.padStart(2, '0')
+    const iso = `${yyyy}-${mm}-${dd}`
     return { from: iso, to: iso }
   }, [])
 

@@ -12,8 +12,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { CalendarIcon } from "lucide-react"
 import { format } from "date-fns"
 import { vi } from "date-fns/locale"
-import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
+import { useToast } from "@/hooks/use-toast"
 import { apiClient } from "@/lib/api"
 
 interface ScheduleFormProps {
@@ -25,6 +25,7 @@ export function ScheduleForm({ onClose }: ScheduleFormProps) {
   const [route, setRoute] = useState("")
   const [bus, setBus] = useState("")
   const [driver, setDriver] = useState("")
+  const [tripType, setTripType] = useState("")
   const [startTime, setStartTime] = useState("")
   const [routes, setRoutes] = useState<any[]>([])
   const [buses, setBuses] = useState<any[]>([])
@@ -59,7 +60,7 @@ export function ScheduleForm({ onClose }: ScheduleFormProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!date || !route || !bus || !driver || !startTime) {
+    if (!date || !route || !bus || !driver || !tripType || !startTime) {
       toast({
         title: "Lỗi",
         description: "Vui lòng nhập đầy đủ thông tin",
@@ -70,13 +71,20 @@ export function ScheduleForm({ onClose }: ScheduleFormProps) {
 
     try {
       setSubmitting(true)
+      // Format date correctly without timezone conversion
+      const yyyy = date.getFullYear()
+      const mm = `${date.getMonth() + 1}`.padStart(2, '0')
+      const dd = `${date.getDate()}`.padStart(2, '0')
+      const ngayChay = `${yyyy}-${mm}-${dd}`
+      
       const payload = {
-        ngayChay: date.toISOString().slice(0, 10),
+        maTuyen: parseInt(route),
+        maXe: parseInt(bus),
+        maTaiXe: parseInt(driver),
+        loaiChuyen: tripType,
         gioKhoiHanh: startTime,
-        maTuyen: route,
-        maXe: bus,
-        maTaiXe: driver,
-        trangThai: 'da_len_lich',
+        ngayChay: ngayChay,
+        dangApDung: true,
       }
       await apiClient.createSchedule(payload)
       toast({ title: "Thành công", description: "Đã tạo lịch trình mới" })
@@ -91,7 +99,7 @@ export function ScheduleForm({ onClose }: ScheduleFormProps) {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="space-y-2">
-        <Label>Ngày *</Label>
+        <Label>Ngày chạy *</Label>
         <Popover>
           <PopoverTrigger asChild>
             <Button
@@ -156,6 +164,19 @@ export function ScheduleForm({ onClose }: ScheduleFormProps) {
             </SelectContent>
           </Select>
         </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="tripType">Loại chuyến *</Label>
+        <Select value={tripType} onValueChange={setTripType}>
+          <SelectTrigger id="tripType">
+            <SelectValue placeholder="Chọn loại chuyến" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="don_sang">Đón sáng</SelectItem>
+            <SelectItem value="tra_chieu">Trả chiều</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="space-y-2">

@@ -5,7 +5,16 @@ const LichTrinhModel = {
   async getAll() {
     const [rows] = await pool.query(
       `SELECT 
-        lt.*,
+        lt.maLichTrinh,
+        lt.maTuyen,
+        lt.maXe,
+        lt.maTaiXe,
+        lt.loaiChuyen,
+        lt.gioKhoiHanh,
+        DATE_FORMAT(lt.ngayChay, '%Y-%m-%d') as ngayChay,
+        lt.dangApDung,
+        lt.ngayTao,
+        lt.ngayCapNhat,
         td.tenTuyen,
         xb.bienSoXe,
         xb.dongXe,
@@ -15,7 +24,7 @@ const LichTrinhModel = {
        INNER JOIN XeBuyt xb ON lt.maXe = xb.maXe
        INNER JOIN NguoiDung nd ON lt.maTaiXe = nd.maNguoiDung
        WHERE lt.dangApDung = TRUE
-       ORDER BY lt.gioKhoiHanh`
+       ORDER BY lt.ngayChay DESC, lt.gioKhoiHanh`
     );
     return rows;
   },
@@ -24,7 +33,16 @@ const LichTrinhModel = {
   async getById(id) {
     const [rows] = await pool.query(
       `SELECT 
-        lt.*,
+        lt.maLichTrinh,
+        lt.maTuyen,
+        lt.maXe,
+        lt.maTaiXe,
+        lt.loaiChuyen,
+        lt.gioKhoiHanh,
+        DATE_FORMAT(lt.ngayChay, '%Y-%m-%d') as ngayChay,
+        lt.dangApDung,
+        lt.ngayTao,
+        lt.ngayCapNhat,
         td.tenTuyen,
         td.diemBatDau,
         td.diemKetThuc,
@@ -98,12 +116,12 @@ const LichTrinhModel = {
 
   // Tạo lịch trình mới
   async create(data) {
-    const { maTuyen, maXe, maTaiXe, loaiChuyen, gioKhoiHanh, dangApDung } =
+    const { maTuyen, maXe, maTaiXe, loaiChuyen, gioKhoiHanh, ngayChay, dangApDung } =
       data;
     const [result] = await pool.query(
-      `INSERT INTO LichTrinh (maTuyen, maXe, maTaiXe, loaiChuyen, gioKhoiHanh, dangApDung)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [maTuyen, maXe, maTaiXe, loaiChuyen, gioKhoiHanh, dangApDung !== false]
+      `INSERT INTO LichTrinh (maTuyen, maXe, maTaiXe, loaiChuyen, gioKhoiHanh, ngayChay, dangApDung)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [maTuyen, maXe, maTaiXe, loaiChuyen, gioKhoiHanh, ngayChay, dangApDung !== false]
     );
     return result.insertId;
   },
@@ -132,6 +150,10 @@ const LichTrinhModel = {
     if (data.gioKhoiHanh !== undefined) {
       fields.push("gioKhoiHanh = ?");
       values.push(data.gioKhoiHanh);
+    }
+    if (data.ngayChay !== undefined) {
+      fields.push("ngayChay = ?");
+      values.push(data.ngayChay);
     }
     if (data.dangApDung !== undefined) {
       fields.push("dangApDung = ?");
@@ -175,6 +197,7 @@ const LichTrinhModel = {
     maTaiXe,
     gioKhoiHanh,
     loaiChuyen,
+    ngayChay,
     excludeId = null
   ) {
     let query = `
@@ -183,9 +206,10 @@ const LichTrinhModel = {
       WHERE (maXe = ? OR maTaiXe = ?)
       AND gioKhoiHanh = ?
       AND loaiChuyen = ?
+      AND ngayChay = ?
       AND dangApDung = TRUE
     `;
-    const params = [maXe, maTaiXe, gioKhoiHanh, loaiChuyen];
+    const params = [maXe, maTaiXe, gioKhoiHanh, loaiChuyen, ngayChay];
 
     if (excludeId) {
       query += " AND maLichTrinh != ?";
@@ -253,6 +277,7 @@ const LichTrinhModel = {
        INNER JOIN XeBuyt xb ON lt.maXe = xb.maXe
        INNER JOIN NguoiDung nd ON lt.maTaiXe = nd.maNguoiDung
        WHERE lt.dangApDung = TRUE
+         AND DATE(lt.ngayChay) = DATE(?)
        ORDER BY lt.gioKhoiHanh`,
       [date]
     );

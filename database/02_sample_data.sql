@@ -65,17 +65,17 @@ INSERT INTO DiemDung (maTuyen, tenDiem, kinhDo, viDo, thuTu) VALUES
 (5, 'Ngã tư Lê Văn Việt', 106.7100, 10.7500, 1),
 (5, 'Khu trung tâm Quận 3', 106.6900, 10.7800, 2);
 
-INSERT INTO LichTrinh (maTuyen, maXe, maTaiXe, loaiChuyen, gioKhoiHanh, dangApDung) VALUES
-(1, 1, 2, 'don_sang', '06:30:00', TRUE),
-(1, 1, 2, 'tra_chieu', '16:45:00', TRUE),
-(2, 2, 3, 'don_sang', '06:45:00', TRUE),
-(2, 2, 3, 'tra_chieu', '17:00:00', TRUE),
-(3, 3, 7, 'don_sang', '07:00:00', TRUE),
-(3, 3, 7, 'tra_chieu', '17:15:00', TRUE),
-(4, 5, 2, 'don_sang', '06:15:00', TRUE),
-(4, 5, 2, 'tra_chieu', '16:30:00', TRUE),
-(5, 6, 3, 'don_sang', '07:15:00', TRUE),
-(5, 6, 3, 'tra_chieu', '17:30:00', TRUE);
+INSERT INTO LichTrinh (maTuyen, maXe, maTaiXe, loaiChuyen, gioKhoiHanh, ngayChay, dangApDung) VALUES
+(1, 1, 2, 'don_sang', '06:30:00', '2025-10-20', TRUE),
+(1, 1, 2, 'tra_chieu', '16:45:00', '2025-10-20', TRUE),
+(2, 2, 3, 'don_sang', '06:45:00', '2025-10-20', TRUE),
+(2, 2, 3, 'tra_chieu', '17:00:00', '2025-10-20', TRUE),
+(3, 3, 7, 'don_sang', '07:00:00', '2025-10-20', TRUE),
+(3, 3, 7, 'tra_chieu', '17:15:00', '2025-10-20', TRUE),
+(4, 5, 2, 'don_sang', '06:15:00', '2025-10-20', TRUE),
+(4, 5, 2, 'tra_chieu', '16:30:00', '2025-10-20', TRUE),
+(5, 6, 3, 'don_sang', '07:15:00', '2025-10-20', TRUE),
+(5, 6, 3, 'tra_chieu', '17:30:00', '2025-10-20', TRUE);
 
 INSERT INTO ChuyenDi (maLichTrinh, ngayChay, trangThai, gioBatDauThucTe, gioKetThucThucTe, ghiChu) VALUES
 (1, '2025-10-20', 'hoan_thanh', '2025-10-20 06:30:00', '2025-10-20 07:15:00', 'Chuyến đi hoàn thành đúng giờ'),
@@ -334,8 +334,8 @@ INSERT INTO TuyenDuong (tenTuyen, diemBatDau, diemKetThuc, thoiGianUocTinh) VALU
 SET @tuyen_duphong_id := LAST_INSERT_ID();
 
 -- Lịch trình không áp dụng
-INSERT INTO LichTrinh (maTuyen, maXe, maTaiXe, loaiChuyen, gioKhoiHanh, dangApDung) VALUES
-(@tuyen_duphong_id, @xe_duphong_id, 2, 'don_sang', '08:00:00', FALSE);
+INSERT INTO LichTrinh (maTuyen, maXe, maTaiXe, loaiChuyen, gioKhoiHanh, ngayChay, dangApDung) VALUES
+(@tuyen_duphong_id, @xe_duphong_id, 2, 'don_sang', '08:00:00', '2025-10-20', FALSE);
 
 -- Cập nhật xe 4
 UPDATE XeBuyt SET trangThai = 'bao_tri' WHERE maXe = 4;

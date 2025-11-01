@@ -28,8 +28,8 @@ class ScheduleService {
   }
 
   static async create(payload) {
-    const { maTuyen, maXe, maTaiXe, loaiChuyen, gioKhoiHanh } = payload;
-    if (!maTuyen || !maXe || !maTaiXe || !loaiChuyen || !gioKhoiHanh)
+    const { maTuyen, maXe, maTaiXe, loaiChuyen, gioKhoiHanh, ngayChay } = payload;
+    if (!maTuyen || !maXe || !maTaiXe || !loaiChuyen || !gioKhoiHanh || !ngayChay)
       throw new Error("MISSING_REQUIRED_FIELDS");
     if (!VALID_LOAI_CHUYEN.includes(loaiChuyen))
       throw new Error("INVALID_TRIP_TYPE");
@@ -45,7 +45,8 @@ class ScheduleService {
       maXe,
       maTaiXe,
       gioKhoiHanh,
-      loaiChuyen
+      loaiChuyen,
+      ngayChay
     );
     if (conflict) throw new Error("SCHEDULE_CONFLICT");
 
@@ -55,6 +56,7 @@ class ScheduleService {
       maTaiXe,
       loaiChuyen,
       gioKhoiHanh,
+      ngayChay,
       dangApDung: true,
     });
     return await LichTrinhModel.getById(id);
@@ -84,11 +86,13 @@ class ScheduleService {
     const checkMaTaiXe = data.maTaiXe || existing.maTaiXe;
     const checkGio = data.gioKhoiHanh || existing.gioKhoiHanh;
     const checkLoai = data.loaiChuyen || existing.loaiChuyen;
+    const checkNgay = data.ngayChay || existing.ngayChay;
     const conflict = await LichTrinhModel.checkConflict(
       checkMaXe,
       checkMaTaiXe,
       checkGio,
       checkLoai,
+      checkNgay,
       id
     );
     if (conflict) throw new Error("SCHEDULE_CONFLICT");

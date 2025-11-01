@@ -142,15 +142,15 @@ class ScheduleController {
   // Tạo lịch trình mới
   static async create(req, res) {
     try {
-      const { maTuyen, maXe, maTaiXe, loaiChuyen, gioKhoiHanh, dangApDung } =
+      const { maTuyen, maXe, maTaiXe, loaiChuyen, gioKhoiHanh, ngayChay, dangApDung } =
         req.body;
 
       // Validation dữ liệu bắt buộc
-      if (!maTuyen || !maXe || !maTaiXe || !loaiChuyen || !gioKhoiHanh) {
+      if (!maTuyen || !maXe || !maTaiXe || !loaiChuyen || !gioKhoiHanh || !ngayChay) {
         return res.status(400).json({
           success: false,
           message:
-            "Mã tuyến, mã xe, mã tài xế, loại chuyến và giờ khởi hành là bắt buộc",
+            "Mã tuyến, mã xe, mã tài xế, loại chuyến, giờ khởi hành và ngày chạy là bắt buộc",
         });
       }
 
@@ -194,11 +194,11 @@ class ScheduleController {
       }
 
       // Validation loại chuyến
-      const validTripTypes = ["di", "ve"];
+      const validTripTypes = ["don_sang", "tra_chieu"];
       if (!validTripTypes.includes(loaiChuyen)) {
         return res.status(400).json({
           success: false,
-          message: "Loại chuyến phải là 'di' hoặc 've'",
+          message: "Loại chuyến phải là 'don_sang' hoặc 'tra_chieu'",
         });
       }
 
@@ -211,19 +211,29 @@ class ScheduleController {
         });
       }
 
-      // Kiểm tra xung đột lịch trình (TODO: implement checkConflicts in model)
-      // const conflicts = await LichTrinhModel.checkConflicts(
-      //   maXe,
-      //   maTaiXe,
-      //   gioKhoiHanh
-      // );
-      // if (conflicts.length > 0) {
-      //   return res.status(409).json({
-      //     success: false,
-      //     message: "Xung đột lịch trình với xe buýt hoặc tài xế",
-      //     conflicts,
-      //   });
-      // }
+      // Validation ngày chạy
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      if (!dateRegex.test(ngayChay)) {
+        return res.status(400).json({
+          success: false,
+          message: "Ngày chạy phải có định dạng YYYY-MM-DD",
+        });
+      }
+
+      // Kiểm tra xung đột lịch trình
+      const conflict = await LichTrinhModel.checkConflict(
+        maXe,
+        maTaiXe,
+        gioKhoiHanh,
+        loaiChuyen,
+        ngayChay
+      );
+      if (conflict) {
+        return res.status(409).json({
+          success: false,
+          message: "Xung đột lịch trình với xe buýt hoặc tài xế",
+        });
+      }
 
       const scheduleData = {
         maTuyen,
@@ -231,6 +241,7 @@ class ScheduleController {
         maTaiXe,
         loaiChuyen,
         gioKhoiHanh,
+        ngayChay,
         dangApDung: dangApDung !== undefined ? dangApDung : true,
       };
 
@@ -256,7 +267,7 @@ class ScheduleController {
   static async update(req, res) {
     try {
       const { id } = req.params;
-      const { maTuyen, maXe, maTaiXe, loaiChuyen, gioKhoiHanh, dangApDung } =
+      const { maTuyen, maXe, maTaiXe, loaiChuyen, gioKhoiHanh, ngayChay, dangApDung } =
         req.body;
 
       if (!id) {
@@ -319,11 +330,11 @@ class ScheduleController {
       }
 
       if (loaiChuyen) {
-        const validTripTypes = ["di", "ve"];
+        const validTripTypes = ["don_sang", "tra_chieu"];
         if (!validTripTypes.includes(loaiChuyen)) {
           return res.status(400).json({
             success: false,
-            message: "Loại chuyến phải là 'di' hoặc 've'",
+            message: "Loại chuyến phải là 'don_sang' hoặc 'tra_chieu'",
           });
         }
       }
@@ -338,26 +349,39 @@ class ScheduleController {
         }
       }
 
-      // Kiểm tra xung đột nếu có thay đổi về xe, tài xế hoặc giờ (TODO: implement checkConflicts)
-      // const checkXe = maXe || existingSchedule.maXe;
-      // const checkTaiXe = maTaiXe || existingSchedule.maTaiXe;
-      // const checkGio = gioKhoiHanh || existingSchedule.gioKhoiHanh;
-      //
-      // if (maXe || maTaiXe || gioKhoiHanh) {
-      //   const conflicts = await LichTrinhModel.checkConflicts(
-      //     checkXe,
-      //     checkTaiXe,
-      //     checkGio,
-      //     id
-      //   );
-      //   if (conflicts.length > 0) {
-      //     return res.status(409).json({
-      //       success: false,
-      //       message: "Xung đột lịch trình với xe buýt hoặc tài xế",
-      //       conflicts,
-      //     });
-      //   }
-      // }
+      if (ngayChay) {
+        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+        if (!dateRegex.test(ngayChay)) {
+          return res.status(400).json({
+            success: false,
+            message: "Ngày chạy phải có định dạng YYYY-MM-DD",
+          });
+        }
+      }
+
+      // Kiểm tra xung đột nếu có thay đổi về xe, tài xế, giờ hoặc ngày chạy
+      const checkXe = maXe || existingSchedule.maXe;
+      const checkTaiXe = maTaiXe || existingSchedule.maTaiXe;
+      const checkGio = gioKhoiHanh || existingSchedule.gioKhoiHanh;
+      const checkLoai = loaiChuyen || existingSchedule.loaiChuyen;
+      const checkNgay = ngayChay || existingSchedule.ngayChay;
+
+      if (maXe || maTaiXe || gioKhoiHanh || loaiChuyen || ngayChay) {
+        const conflict = await LichTrinhModel.checkConflict(
+          checkXe,
+          checkTaiXe,
+          checkGio,
+          checkLoai,
+          checkNgay,
+          id
+        );
+        if (conflict) {
+          return res.status(409).json({
+            success: false,
+            message: "Xung đột lịch trình với xe buýt hoặc tài xế",
+          });
+        }
+      }
 
       const updateData = {};
       if (maTuyen !== undefined) updateData.maTuyen = maTuyen;
@@ -365,6 +389,7 @@ class ScheduleController {
       if (maTaiXe !== undefined) updateData.maTaiXe = maTaiXe;
       if (loaiChuyen !== undefined) updateData.loaiChuyen = loaiChuyen;
       if (gioKhoiHanh !== undefined) updateData.gioKhoiHanh = gioKhoiHanh;
+      if (ngayChay !== undefined) updateData.ngayChay = ngayChay;
       if (dangApDung !== undefined) updateData.dangApDung = dangApDung;
 
       const isUpdated = await LichTrinhModel.update(id, updateData);
