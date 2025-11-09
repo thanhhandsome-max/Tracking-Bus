@@ -23,7 +23,7 @@ import { haversine, inGeofence } from "../utils/geo.js";
 import ChuyenDiModel from "../models/ChuyenDiModel.js";
 import LichTrinhModel from "../models/LichTrinhModel.js";
 import TuyenDuongModel from "../models/TuyenDuongModel.js";
-import DiemDungModel from "../models/DiemDungModel.js";
+import RouteStopModel from "../models/RouteStopModel.js"; // Updated: Use RouteStopModel instead of DiemDungModel
 import HocSinhModel from "../models/HocSinhModel.js";
 import NguoiDungModel from "../models/NguoiDungModel.js";
 import { syncBusLocation } from "./firebaseSync.service.js"; // 🔥 Day 5: Firebase sync
@@ -293,7 +293,8 @@ class TelemetryService {
       const route = await TuyenDuongModel.getById(schedule.maTuyen);
       if (!route) return false;
 
-      const stops = await DiemDungModel.getByRouteId(schedule.maTuyen);
+      // Get stops for route using RouteStopModel
+      const stops = await RouteStopModel.getByRouteId(schedule.maTuyen);
       if (!stops || stops.length === 0) return false;
 
       // Tìm điểm dừng tiếp theo (điểm gần nhất chưa qua)

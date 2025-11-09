@@ -9,7 +9,7 @@ const TuyenDuongModel = {
     return rows;
   },
 
-  // Lấy tuyến đường theo ID (bao gồm các điểm dừng)
+  // Lấy tuyến đường theo ID (không bao gồm stops - stops sẽ lấy riêng qua RouteStopModel)
   async getById(id) {
     const [tuyen] = await pool.query(
       `SELECT * FROM TuyenDuong WHERE maTuyen = ?`,
@@ -20,18 +20,7 @@ const TuyenDuongModel = {
       return null;
     }
 
-    // Lấy danh sách điểm dừng
-    const [diemDung] = await pool.query(
-      `SELECT * FROM DiemDung 
-       WHERE maTuyen = ? 
-       ORDER BY thuTu`,
-      [id]
-    );
-
-    return {
-      ...tuyen[0],
-      diemDung: diemDung || [],
-    };
+    return tuyen[0];
   },
 
   // Lấy tuyến đường theo tên
@@ -45,11 +34,33 @@ const TuyenDuongModel = {
 
   // Tạo tuyến đường mới
   async create(data) {
-    const { tenTuyen, diemBatDau, diemKetThuc, thoiGianUocTinh } = data;
+    const {
+      tenTuyen,
+      diemBatDau,
+      diemKetThuc,
+      thoiGianUocTinh,
+      origin_lat,
+      origin_lng,
+      dest_lat,
+      dest_lng,
+      polyline,
+    } = data;
     const [result] = await pool.query(
-      `INSERT INTO TuyenDuong (tenTuyen, diemBatDau, diemKetThuc, thoiGianUocTinh)
-       VALUES (?, ?, ?, ?)`,
-      [tenTuyen, diemBatDau, diemKetThuc, thoiGianUocTinh]
+      `INSERT INTO TuyenDuong 
+       (tenTuyen, diemBatDau, diemKetThuc, thoiGianUocTinh, 
+        origin_lat, origin_lng, dest_lat, dest_lng, polyline)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        tenTuyen,
+        diemBatDau,
+        diemKetThuc,
+        thoiGianUocTinh,
+        origin_lat || null,
+        origin_lng || null,
+        dest_lat || null,
+        dest_lng || null,
+        polyline || null,
+      ]
     );
     return result.insertId;
   },
@@ -74,6 +85,26 @@ const TuyenDuongModel = {
     if (data.thoiGianUocTinh !== undefined) {
       fields.push("thoiGianUocTinh = ?");
       values.push(data.thoiGianUocTinh);
+    }
+    if (data.origin_lat !== undefined) {
+      fields.push("origin_lat = ?");
+      values.push(data.origin_lat);
+    }
+    if (data.origin_lng !== undefined) {
+      fields.push("origin_lng = ?");
+      values.push(data.origin_lng);
+    }
+    if (data.dest_lat !== undefined) {
+      fields.push("dest_lat = ?");
+      values.push(data.dest_lat);
+    }
+    if (data.dest_lng !== undefined) {
+      fields.push("dest_lng = ?");
+      values.push(data.dest_lng);
+    }
+    if (data.polyline !== undefined) {
+      fields.push("polyline = ?");
+      values.push(data.polyline);
     }
     if (data.trangThai !== undefined) {
       fields.push("trangThai = ?");

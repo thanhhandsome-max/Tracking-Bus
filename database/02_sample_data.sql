@@ -1,5 +1,6 @@
--- SSB Sample Data Script (FIXED VERSION)
--- Chạy file init_db.sql TRƯỚC khi chạy file này.
+-- SSB Sample Data Script (REFACTORED FOR ver2 SCHEMA)
+-- Compatible with 01_init_db_ver2.sql (normalized stops + route_stops)
+-- Chạy file 01_init_db_ver2.sql TRƯỚC khi chạy file này.
 
 USE school_bus_system;
 
@@ -44,26 +45,151 @@ INSERT INTO HocSinh (hoTen, ngaySinh, lop, maPhuHuynh, diaChi) VALUES
 ('Trần Thị Mai', '2013-04-12', '7C', 4, '258 Nguyễn Thị Thập, Quận 7'),
 ('Nguyễn Văn Tùng', '2015-10-08', '5D', 5, '369 Lê Văn Việt, Quận 7');
 
-INSERT INTO TuyenDuong (tenTuyen, diemBatDau, diemKetThuc, thoiGianUocTinh) VALUES
-('Tuyến Quận 7 - Nhà Bè', 'Trường Tiểu học ABC', 'Khu dân cư Phú Xuân', 45),
-('Tuyến Quận 4 - Quận 7', 'Trường Tiểu học ABC', 'Khu Him Lam, Quận 7', 35),
-('Tuyến Quận 7 - Quận 1', 'Trường Tiểu học ABC', 'Khu trung tâm Quận 1', 60),
-('Tuyến Quận 7 - Quận 2', 'Trường Tiểu học ABC', 'Khu Thủ Thiêm, Quận 2', 50),
-('Tuyến Quận 7 - Quận 3', 'Trường Tiểu học ABC', 'Khu trung tâm Quận 3', 55);
+-- =================================================================
+-- BƯỚC B: INSERT TUYENDUONG (với cột mới, NULL ban đầu)
+-- =================================================================
 
-INSERT INTO DiemDung (maTuyen, tenDiem, kinhDo, viDo, thuTu) VALUES
-(1, 'Ngã tư Nguyễn Văn Linh', 106.7212, 10.7345, 1),
-(1, 'Chung cư Sunrise City', 106.7075, 10.7408, 2),
-(1, 'Khu dân cư Phú Xuân', 106.7041, 10.6972, 3),
-(2, 'Ngã tư Khánh Hội', 106.7049, 10.7575, 1),
-(2, 'Cầu Kênh Tẻ', 106.7083, 10.7450, 2),
-(2, 'Khu Him Lam', 106.7101, 10.7415, 3),
-(3, 'Ngã tư Nguyễn Văn Cừ', 106.6950, 10.7500, 1),
-(3, 'Khu trung tâm Quận 1', 106.7000, 10.7600, 2),
-(4, 'Ngã tư Nguyễn Thị Thập', 106.7200, 10.7300, 1),
-(4, 'Khu Thủ Thiêm', 106.7300, 10.7400, 2),
-(5, 'Ngã tư Lê Văn Việt', 106.7100, 10.7500, 1),
-(5, 'Khu trung tâm Quận 3', 106.6900, 10.7800, 2);
+INSERT INTO TuyenDuong (tenTuyen, diemBatDau, diemKetThuc, thoiGianUocTinh, origin_lat, origin_lng, dest_lat, dest_lng, polyline) VALUES
+('Tuyến Quận 7 - Nhà Bè', 'Trường Tiểu học ABC', 'Khu dân cư Phú Xuân', 45, NULL, NULL, NULL, NULL, NULL),
+('Tuyến Quận 4 - Quận 7', 'Trường Tiểu học ABC', 'Khu Him Lam, Quận 7', 35, NULL, NULL, NULL, NULL, NULL),
+('Tuyến Quận 7 - Quận 1', 'Trường Tiểu học ABC', 'Khu trung tâm Quận 1', 60, NULL, NULL, NULL, NULL, NULL),
+('Tuyến Quận 7 - Quận 2', 'Trường Tiểu học ABC', 'Khu Thủ Thiêm, Quận 2', 50, NULL, NULL, NULL, NULL, NULL),
+('Tuyến Quận 7 - Quận 3', 'Trường Tiểu học ABC', 'Khu trung tâm Quận 3', 55, NULL, NULL, NULL, NULL, NULL);
+
+-- =================================================================
+-- BƯỚC C: INSERT DIEMDUNG (không có maTuyen, thuTu)
+-- Lưu ý: viDo = LAT, kinhDo = LNG (giữ nguyên từ dữ liệu cũ)
+-- =================================================================
+
+INSERT INTO DiemDung (tenDiem, viDo, kinhDo, address, scheduled_time) VALUES
+-- Tuyến 1 stops
+('Ngã tư Nguyễn Văn Linh', 10.7345, 106.7212, NULL, NULL),
+('Chung cư Sunrise City', 10.7408, 106.7075, NULL, NULL),
+('Khu dân cư Phú Xuân', 10.6972, 106.7041, NULL, NULL),
+-- Tuyến 2 stops
+('Ngã tư Khánh Hội', 10.7575, 106.7049, NULL, NULL),
+('Cầu Kênh Tẻ', 10.7450, 106.7083, NULL, NULL),
+('Khu Him Lam', 10.7415, 106.7101, NULL, NULL),
+-- Tuyến 3 stops
+('Ngã tư Nguyễn Văn Cừ', 10.7500, 106.6950, NULL, NULL),
+('Khu trung tâm Quận 1', 10.7600, 106.7000, NULL, NULL),
+-- Tuyến 4 stops
+('Ngã tư Nguyễn Thị Thập', 10.7300, 106.7200, NULL, NULL),
+('Khu Thủ Thiêm', 10.7400, 106.7300, NULL, NULL),
+-- Tuyến 5 stops
+('Ngã tư Lê Văn Việt', 10.7500, 106.7100, NULL, NULL),
+('Khu trung tâm Quận 3', 10.7800, 106.6900, NULL, NULL);
+
+-- =================================================================
+-- BƯỚC D: INSERT ROUTE_STOPS (ánh xạ tuyến-stop với sequence)
+-- =================================================================
+
+-- Tuyến 1: Quận 7 - Nhà Bè (3 stops)
+INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+SELECT t.maTuyen, d.maDiem, 1, 30
+FROM TuyenDuong t
+JOIN DiemDung d ON d.tenDiem = 'Ngã tư Nguyễn Văn Linh' AND d.viDo = 10.7345 AND d.kinhDo = 106.7212
+WHERE t.tenTuyen = 'Tuyến Quận 7 - Nhà Bè';
+
+INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+SELECT t.maTuyen, d.maDiem, 2, 30
+FROM TuyenDuong t
+JOIN DiemDung d ON d.tenDiem = 'Chung cư Sunrise City' AND d.viDo = 10.7408 AND d.kinhDo = 106.7075
+WHERE t.tenTuyen = 'Tuyến Quận 7 - Nhà Bè';
+
+INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+SELECT t.maTuyen, d.maDiem, 3, 30
+FROM TuyenDuong t
+JOIN DiemDung d ON d.tenDiem = 'Khu dân cư Phú Xuân' AND d.viDo = 10.6972 AND d.kinhDo = 106.7041
+WHERE t.tenTuyen = 'Tuyến Quận 7 - Nhà Bè';
+
+-- Tuyến 2: Quận 4 - Quận 7 (3 stops)
+INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+SELECT t.maTuyen, d.maDiem, 1, 30
+FROM TuyenDuong t
+JOIN DiemDung d ON d.tenDiem = 'Ngã tư Khánh Hội' AND d.viDo = 10.7575 AND d.kinhDo = 106.7049
+WHERE t.tenTuyen = 'Tuyến Quận 4 - Quận 7';
+
+INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+SELECT t.maTuyen, d.maDiem, 2, 30
+FROM TuyenDuong t
+JOIN DiemDung d ON d.tenDiem = 'Cầu Kênh Tẻ' AND d.viDo = 10.7450 AND d.kinhDo = 106.7083
+WHERE t.tenTuyen = 'Tuyến Quận 4 - Quận 7';
+
+INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+SELECT t.maTuyen, d.maDiem, 3, 30
+FROM TuyenDuong t
+JOIN DiemDung d ON d.tenDiem = 'Khu Him Lam' AND d.viDo = 10.7415 AND d.kinhDo = 106.7101
+WHERE t.tenTuyen = 'Tuyến Quận 4 - Quận 7';
+
+-- Tuyến 3: Quận 7 - Quận 1 (2 stops)
+INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+SELECT t.maTuyen, d.maDiem, 1, 30
+FROM TuyenDuong t
+JOIN DiemDung d ON d.tenDiem = 'Ngã tư Nguyễn Văn Cừ' AND d.viDo = 10.7500 AND d.kinhDo = 106.6950
+WHERE t.tenTuyen = 'Tuyến Quận 7 - Quận 1';
+
+INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+SELECT t.maTuyen, d.maDiem, 2, 30
+FROM TuyenDuong t
+JOIN DiemDung d ON d.tenDiem = 'Khu trung tâm Quận 1' AND d.viDo = 10.7600 AND d.kinhDo = 106.7000
+WHERE t.tenTuyen = 'Tuyến Quận 7 - Quận 1';
+
+-- Tuyến 4: Quận 7 - Quận 2 (2 stops)
+INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+SELECT t.maTuyen, d.maDiem, 1, 30
+FROM TuyenDuong t
+JOIN DiemDung d ON d.tenDiem = 'Ngã tư Nguyễn Thị Thập' AND d.viDo = 10.7300 AND d.kinhDo = 106.7200
+WHERE t.tenTuyen = 'Tuyến Quận 7 - Quận 2';
+
+INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+SELECT t.maTuyen, d.maDiem, 2, 30
+FROM TuyenDuong t
+JOIN DiemDung d ON d.tenDiem = 'Khu Thủ Thiêm' AND d.viDo = 10.7400 AND d.kinhDo = 106.7300
+WHERE t.tenTuyen = 'Tuyến Quận 7 - Quận 2';
+
+-- Tuyến 5: Quận 7 - Quận 3 (2 stops)
+INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+SELECT t.maTuyen, d.maDiem, 1, 30
+FROM TuyenDuong t
+JOIN DiemDung d ON d.tenDiem = 'Ngã tư Lê Văn Việt' AND d.viDo = 10.7500 AND d.kinhDo = 106.7100
+WHERE t.tenTuyen = 'Tuyến Quận 7 - Quận 3';
+
+INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+SELECT t.maTuyen, d.maDiem, 2, 30
+FROM TuyenDuong t
+JOIN DiemDung d ON d.tenDiem = 'Khu trung tâm Quận 3' AND d.viDo = 10.7800 AND d.kinhDo = 106.6900
+WHERE t.tenTuyen = 'Tuyến Quận 7 - Quận 3';
+
+-- =================================================================
+-- BƯỚC E: BACKFILL origin_* / dest_* CHO TUYENDUONG
+-- =================================================================
+
+-- Update origin (stop có MIN(sequence))
+UPDATE TuyenDuong r
+JOIN route_stops rs_origin ON rs_origin.route_id = r.maTuyen
+JOIN (
+    SELECT route_id, MIN(sequence) AS min_sequence
+    FROM route_stops
+    GROUP BY route_id
+) min_seq ON min_seq.route_id = rs_origin.route_id AND min_seq.min_sequence = rs_origin.sequence
+JOIN DiemDung d_origin ON d_origin.maDiem = rs_origin.stop_id
+SET r.origin_lat = d_origin.viDo, r.origin_lng = d_origin.kinhDo;
+
+-- Update dest (stop có MAX(sequence))
+UPDATE TuyenDuong r
+JOIN route_stops rs_dest ON rs_dest.route_id = r.maTuyen
+JOIN (
+    SELECT route_id, MAX(sequence) AS max_sequence
+    FROM route_stops
+    GROUP BY route_id
+) max_seq ON max_seq.route_id = rs_dest.route_id AND max_seq.max_sequence = rs_dest.sequence
+JOIN DiemDung d_dest ON d_dest.maDiem = rs_dest.stop_id
+SET r.dest_lat = d_dest.viDo, r.dest_lng = d_dest.kinhDo;
+
+-- =================================================================
+-- BƯỚC F: GIỮ NGUYÊN CÁC INSERT KHÁC
+-- =================================================================
 
 INSERT INTO LichTrinh (maTuyen, maXe, maTaiXe, loaiChuyen, gioKhoiHanh, ngayChay, dangApDung) VALUES
 (1, 1, 2, 'don_sang', '06:30:00', '2025-10-20', TRUE),
@@ -329,8 +455,8 @@ INSERT INTO XeBuyt (bienSoXe, dongXe, sucChua, trangThai) VALUES
 SET @xe_duphong_id := LAST_INSERT_ID();
 
 -- Tuyến dự phòng
-INSERT INTO TuyenDuong (tenTuyen, diemBatDau, diemKetThuc, thoiGianUocTinh) VALUES
-('Tuyến dự phòng', 'Bãi xe', 'Bãi xe', 10);
+INSERT INTO TuyenDuong (tenTuyen, diemBatDau, diemKetThuc, thoiGianUocTinh, origin_lat, origin_lng, dest_lat, dest_lng, polyline) VALUES
+('Tuyến dự phòng', 'Bãi xe', 'Bãi xe', 10, NULL, NULL, NULL, NULL, NULL);
 SET @tuyen_duphong_id := LAST_INSERT_ID();
 
 -- Lịch trình không áp dụng
@@ -340,5 +466,35 @@ INSERT INTO LichTrinh (maTuyen, maXe, maTaiXe, loaiChuyen, gioKhoiHanh, ngayChay
 -- Cập nhật xe 4
 UPDATE XeBuyt SET trangThai = 'bao_tri' WHERE maXe = 4;
 
+-- =================================================================
+-- KIỂM THỬ SAU KHI REFACTOR
+-- =================================================================
+
+-- 1) DiemDung không còn cột maTuyen/thuTu
+-- SHOW COLUMNS FROM DiemDung;
+
+-- 2) Số stop và ánh xạ
+SELECT COUNT(*) AS totalStops FROM DiemDung;
+SELECT route_id, COUNT(*) AS soStop FROM route_stops GROUP BY route_id ORDER BY route_id;
+
+-- 3) Thứ tự stop của từng tuyến
+SELECT rs.route_id, t.tenTuyen, rs.sequence, d.tenDiem, d.viDo, d.kinhDo
+FROM route_stops rs 
+JOIN DiemDung d ON d.maDiem = rs.stop_id
+JOIN TuyenDuong t ON t.maTuyen = rs.route_id
+ORDER BY rs.route_id, rs.sequence;
+
+-- 4) Origin/Dest đã backfill
+SELECT maTuyen, tenTuyen, origin_lat, origin_lng, dest_lat, dest_lng
+FROM TuyenDuong
+ORDER BY maTuyen;
+
+-- 5) Lịch trình & chuyến đi vẫn hợp lệ
+SELECT COUNT(*) AS totalLichTrinh FROM LichTrinh;
+SELECT COUNT(*) AS totalChuyenDi FROM ChuyenDi;
+SELECT COUNT(*) AS totalTrangThaiHocSinh FROM TrangThaiHocSinh;
+SELECT COUNT(*) AS totalThongBao FROM ThongBao;
+SELECT COUNT(*) AS totalSuCo FROM SuCo;
+
 -- Kết thúc
-SELECT 'Sample data (FIXED SCRIPT V2) inserted successfully!' as message;
+SELECT 'Sample data (REFACTORED FOR ver2 SCHEMA) inserted successfully!' as message;

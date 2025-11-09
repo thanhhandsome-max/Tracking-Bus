@@ -1,11 +1,13 @@
 import TuyenDuongModel from "../models/TuyenDuongModel.js";
 import DiemDungModel from "../models/DiemDungModel.js";
+import RouteStopModel from "../models/RouteStopModel.js";
 
 class RouteService {
   static async list(options = {}) {
     const { page = 1, limit = 10 } = options;
     const data = await TuyenDuongModel.getAll(options);
-    const total = await TuyenDuongModel.count(options);
+    // TODO: Implement count method if needed
+    const total = data.length;
     return {
       data,
       pagination: {
@@ -17,10 +19,18 @@ class RouteService {
     };
   }
 
+  /**
+   * Lấy route với stops (qua route_stops)
+   */
   static async getById(id) {
     const route = await TuyenDuongModel.getById(id);
     if (!route) throw new Error("ROUTE_NOT_FOUND");
-    route.diemDung = await DiemDungModel.getByRoute(id);
+    
+    // Lấy stops qua route_stops
+    const stops = await RouteStopModel.getByRouteId(id);
+    route.stops = stops;
+    route.diemDung = stops; // Backward compatibility
+    
     return route;
   }
 
@@ -44,44 +54,150 @@ class RouteService {
     return true;
   }
 
+  /**
+   * Lấy stops của route (qua route_stops)
+   */
   static async getStops(routeId) {
-    await this.getById(routeId);
-    return await DiemDungModel.getByRoute(routeId);
-  }
-
-  static async createStop(payload) {
-    if (
-      !payload.maTuyen ||
-      !payload.tenDiem ||
-      payload.viDo === undefined ||
-      payload.kinhDo === undefined
-    )
-      throw new Error("MISSING_REQUIRED_FIELDS");
-    const route = await TuyenDuongModel.getById(payload.maTuyen);
+    const route = await TuyenDuongModel.getById(routeId);
     if (!route) throw new Error("ROUTE_NOT_FOUND");
-    const stopId = await DiemDungModel.create(payload);
-    return await DiemDungModel.getById(stopId);
+    return await RouteStopModel.getByRouteId(routeId);
   }
 
-  static async updateStop(id, data) {
-    const s = await DiemDungModel.getById(id);
-    if (!s) throw new Error("STOP_NOT_FOUND");
-    await DiemDungModel.update(id, data);
-    return await DiemDungModel.getById(id);
+  /**
+   * Thêm stop vào route (tạo stop mới nếu cần, rồi thêm vào route_stops)
+   */
+  static async addStopToRoute(routeId, stopData) {
+    const route = await TuyenDuongModel.getById(routeId);
+    if (!route) throw new Error("ROUTE_NOT_FOUND");
+
+    let stopId = stopData.stop_id;
+
+    // Nếu không có stop_id, tạo stop mới
+    if (!stopId) {
+      if (!stopData.tenDiem || stopData.viDo === undefined || stopData.kinhDo === undefined) {
+        throw new Error("MISSING_REQUIRED_FIELDS");
+      }
+      stopId = await DiemDungModel.create(stopData);
+    } else {
+      // Kiểm tra stop có tồn tại không
+      const stop = await DiemDungModel.getById(stopId);
+      if (!stop) throw new Error("STOP_NOT_FOUND");
+    }
+
+    // Thêm vào route_stops
+    const sequence = stopData.sequence || null;
+    const dwellSeconds = stopData.dwell_seconds || 30;
+    await RouteStopModel.addStop(routeId, stopId, sequence, dwellSeconds);
+
+    // Backfill origin/dest nếu cần
+    await this._updateRouteOriginDest(routeId);
+
+    return await RouteStopModel.getByRouteId(routeId);
   }
 
-  static async deleteStop(id) {
-    const s = await DiemDungModel.getById(id);
-    if (!s) throw new Error("STOP_NOT_FOUND");
-    await DiemDungModel.delete(id);
+  /**
+   * Xóa stop khỏi route (chỉ xóa khỏi route_stops, không xóa stop gốc)
+   */
+  static async removeStopFromRoute(routeId, stopId) {
+    const route = await TuyenDuongModel.getById(routeId);
+    if (!route) throw new Error("ROUTE_NOT_FOUND");
+
+    const removed = await RouteStopModel.removeStop(routeId, stopId);
+    if (!removed) throw new Error("STOP_NOT_IN_ROUTE");
+
+    // Backfill origin/dest nếu cần
+    await this._updateRouteOriginDest(routeId);
+
     return true;
   }
 
-  static async reorderStops(routeId, stopIds) {
+  /**
+   * Sắp xếp lại stops trong route
+   */
+  static async reorderStops(routeId, items) {
     const route = await TuyenDuongModel.getById(routeId);
     if (!route) throw new Error("ROUTE_NOT_FOUND");
-    await DiemDungModel.reorder(routeId, stopIds);
-    return await DiemDungModel.getByRoute(routeId);
+
+    await RouteStopModel.reorderStops(routeId, items);
+
+    // Backfill origin/dest nếu cần
+    await this._updateRouteOriginDest(routeId);
+
+    return await RouteStopModel.getByRouteId(routeId);
+  }
+
+  /**
+   * Cập nhật origin/dest của route dựa trên stops (MIN sequence = origin, MAX sequence = dest)
+   */
+  static async _updateRouteOriginDest(routeId) {
+    const stops = await RouteStopModel.getByRouteId(routeId);
+    if (stops.length === 0) {
+      // Nếu không còn stop, set origin/dest = null
+      await TuyenDuongModel.update(routeId, {
+        origin_lat: null,
+        origin_lng: null,
+        dest_lat: null,
+        dest_lng: null,
+      });
+      return;
+    }
+
+    // Origin = stop có MIN(sequence)
+    const originStop = stops[0]; // Đã ORDER BY sequence ASC
+    // Dest = stop có MAX(sequence)
+    const destStop = stops[stops.length - 1];
+
+    await TuyenDuongModel.update(routeId, {
+      origin_lat: originStop.viDo,
+      origin_lng: originStop.kinhDo,
+      dest_lat: destStop.viDo,
+      dest_lng: destStop.kinhDo,
+    });
+  }
+
+  /**
+   * Rebuild polyline cho route (dùng Maps API)
+   */
+  static async rebuildPolyline(routeId, mapsService) {
+    const route = await TuyenDuongModel.getById(routeId);
+    if (!route) throw new Error("ROUTE_NOT_FOUND");
+
+    const stops = await RouteStopModel.getByRouteId(routeId);
+    if (stops.length < 2) {
+      throw new Error("INSUFFICIENT_STOPS");
+    }
+
+    // Origin = stop đầu tiên
+    const origin = `${stops[0].viDo},${stops[0].kinhDo}`;
+    // Destination = stop cuối cùng
+    const destination = `${stops[stops.length - 1].viDo},${stops[stops.length - 1].kinhDo}`;
+    // Waypoints = các stop ở giữa
+    const waypoints = stops.slice(1, -1).map((stop) => ({
+      location: `${stop.viDo},${stop.kinhDo}`,
+    }));
+
+    // Gọi Maps API
+    const directionsResult = await mapsService.getDirections({
+      origin,
+      destination,
+      waypoints: waypoints.length > 0 ? waypoints : undefined,
+      mode: "driving",
+    });
+
+    if (!directionsResult.polyline) {
+      throw new Error("MAPS_API_ERROR");
+    }
+
+    // Cập nhật polyline vào DB
+    await TuyenDuongModel.update(routeId, {
+      polyline: directionsResult.polyline,
+    });
+
+    return {
+      polyline: directionsResult.polyline,
+      updated: true,
+      cached: directionsResult.cached || false,
+    };
   }
 }
 
