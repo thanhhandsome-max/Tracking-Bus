@@ -81,7 +81,7 @@ router.post(
   AuthMiddleware.authenticate,
   AuthMiddleware.authorize("quan_tri"),
   ValidationMiddleware.validateId,
-  ValidationMiddleware.validateStop,
+  ValidationMiddleware.validateRouteStop,
   RouteController.addStopToRoute
 );
 

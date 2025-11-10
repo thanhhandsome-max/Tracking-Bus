@@ -67,6 +67,19 @@ const busPositions = new Map();
 const lastUpdateTime = new Map();
 
 /**
+ * 🚏 EMITTED STOPS CACHE - Anti-spam cho approach_stop events
+ *
+ * Structure: Map<tripId, Set<stopId>>
+ * Ví dụ: Map { 16 => Set(3, 7, 12), 22 => Set(5) }
+ *
+ * Dùng để:
+ * - Chỉ emit approach_stop một lần cho mỗi stop trong mỗi trip
+ * - Tránh spam khi bus dừng tại stop (có thể ở trong geofence 30s+)
+ * - Clear khi trip hoàn thành hoặc hủy
+ */
+const emittedStops = new Map();
+
+/**
  * ⏱️ RATE LIMIT - Thời gian tối thiểu giữa 2 lần cập nhật
  * 2000ms = 2 giây
  */
@@ -138,6 +151,37 @@ async function getParentTokensForTrip(tripId) {
 }
 
 class TelemetryService {
+  /**
+   * 🧹 CLEAR TRIP DATA - Xóa cache khi trip kết thúc
+   *
+   * @param {number} tripId - ID chuyến đi
+   * @param {number} busId - ID xe bus
+   * 
+   * Gọi hàm này khi:
+   * - Trip completed (trangThai = 'hoan_thanh')
+   * - Trip cancelled (trangThai = 'huy')
+   */
+  static clearTripData(tripId, busId) {
+    // Clear bus position
+    if (busId) {
+      busPositions.delete(`bus-${busId}`);
+      lastUpdateTime.delete(`bus-${busId}`);
+      console.log(`🧹 Cleared position cache for bus-${busId}`);
+    }
+    
+    // Clear emitted stops for this trip
+    if (emittedStops.has(tripId)) {
+      emittedStops.delete(tripId);
+      console.log(`🧹 Cleared emitted stops cache for trip-${tripId}`);
+    }
+    
+    // Clear delay alert cache
+    if (delayAlertLastSent.has(tripId)) {
+      delayAlertLastSent.delete(tripId);
+      console.log(`🧹 Cleared delay alert cache for trip-${tripId}`);
+    }
+  }
+
   /**
    * 📥 CẬP NHẬT VỊ TRÍ XE BUS
    *
@@ -310,6 +354,17 @@ class TelemetryService {
 
         // Nếu trong vòng 60m → Emit event
         if (distance <= GEOFENCE_RADIUS) {
+          // 🚏 Anti-spam: Check if this stop has already been emitted for this trip
+          const tripEmittedStops = emittedStops.get(tripId) || new Set();
+          
+          if (tripEmittedStops.has(stop.maDiem)) {
+            // Already emitted for this stop, skip
+            console.log(
+              `⏭️  Skipping approach_stop for ${stop.tenDiem} (already emitted for trip ${tripId})`
+            );
+            continue; // Check next stop
+          }
+
           console.log(
             `📍 Xe gần điểm dừng ${stop.tenDiem} (${Math.round(distance)}m)`
           );
@@ -325,6 +380,10 @@ class TelemetryService {
           // Emit WebSocket event
           console.log(`📡 emit: approach_stop to trip-${tripId}`, eventData);
           io.to(`trip-${tripId}`).emit("approach_stop", eventData);
+          
+          // 🚏 Mark this stop as emitted for this trip
+          tripEmittedStops.add(stop.maDiem);
+          emittedStops.set(tripId, tripEmittedStops);
 
           // 🔥 Day 5: Send Push Notification to parents
           try {

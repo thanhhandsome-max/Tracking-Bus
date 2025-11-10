@@ -34,6 +34,8 @@ import driverRoutes from "./routes/api/driver.js";
 import incidentRoutes from "./routes/api/incidents.js";
 import notificationRoutes from "./routes/api/notifications.js";
 import reportsRoutes from "./routes/api/reports.js";
+import mapsRoutes from "./routes/api/maps.js"; // Maps API proxy routes
+import stopRoutes from "./routes/api/stop.js"; // Stops routes
 
 // Create Express app
 const app = express();
@@ -182,6 +184,8 @@ app.use(`${API_PREFIX}/students`, studentRoutes);
 app.use(`${API_PREFIX}/trips`, tripRoutes);
 app.use(`${API_PREFIX}/schedules`, scheduleRoutes);
 app.use(`${API_PREFIX}/routes`, routeRoutes);
+app.use(`${API_PREFIX}/stops`, stopRoutes); // Stops routes
+app.use(`${API_PREFIX}/maps`, mapsRoutes); // Maps API proxy routes
 app.use(`${API_PREFIX}/incidents`, incidentRoutes);
 app.use(`${API_PREFIX}/notifications`, notificationRoutes);
 app.use(`${API_PREFIX}/reports`, reportsRoutes);
@@ -218,6 +222,8 @@ app.get(`${API_PREFIX}`, (_req, res) => {
         students: `${API_PREFIX}/students`,
         trips: `${API_PREFIX}/trips`,
         routes: `${API_PREFIX}/routes`,
+        stops: `${API_PREFIX}/stops`,
+        maps: `${API_PREFIX}/maps`,
         schedules: `${API_PREFIX}/schedules`,
         reports: `${API_PREFIX}/reports`,
         health: `${API_PREFIX}/health`,

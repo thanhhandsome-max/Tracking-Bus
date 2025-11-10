@@ -277,7 +277,7 @@ class ValidationMiddleware {
     next();
   }
 
-  // Validate stop data
+  // Validate stop data (DiemDung - độc lập, không có thuTu/sequence)
   static validateStop(req, res, next) {
     const schema = Joi.object({
       tenDiem: Joi.string().min(2).max(255).required().messages({
@@ -285,7 +285,7 @@ class ValidationMiddleware {
         "string.max": "Tên điểm dừng không được quá 255 ký tự",
         "any.required": "Tên điểm dừng là bắt buộc",
       }),
-      diaChi: Joi.string().max(255).optional(),
+      address: Joi.string().max(255).optional(),
       viDo: Joi.number().min(-90).max(90).required().messages({
         "number.min": "Vĩ độ phải từ -90 đến 90",
         "number.max": "Vĩ độ phải từ -90 đến 90",
@@ -296,13 +296,12 @@ class ValidationMiddleware {
         "number.max": "Kinh độ phải từ -180 đến 180",
         "any.required": "Kinh độ là bắt buộc",
       }),
-      thuTu: Joi.number().integer().min(1).required().messages({
-        "number.min": "Thứ tự phải là số nguyên dương",
-        "any.required": "Thứ tự là bắt buộc",
-      }),
-      thoiGianDungChan: Joi.number().integer().min(0).optional().messages({
-        "number.min": "Thời gian dừng chân phải >= 0",
-      }),
+      scheduled_time: Joi.string()
+        .pattern(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/)
+        .optional()
+        .messages({
+          "string.pattern.base": "Giờ dự kiến không hợp lệ (VD: 06:30)",
+        }),
     });
 
     const { error } = schema.validate(req.body);
@@ -313,6 +312,69 @@ class ValidationMiddleware {
         errors: error.details.map((detail) => detail.message),
       });
     }
+    next();
+  }
+
+  // Validate route stop data (thêm stop vào route - route_stops)
+  // Schema: { stop_id?, sequence?, dwell_seconds?, tenDiem?, viDo?, kinhDo?, address?, scheduled_time? }
+  static validateRouteStop(req, res, next) {
+    const schema = Joi.object({
+      // Nếu có stop_id, dùng stop hiện có; nếu không, tạo stop mới (cần tenDiem, viDo, kinhDo)
+      stop_id: Joi.number().integer().positive().optional().messages({
+        "number.positive": "Mã điểm dừng phải là số nguyên dương",
+      }),
+      // Sequence trong route_stops (optional, auto-increment nếu không có)
+      sequence: Joi.number().integer().min(1).optional().messages({
+        "number.min": "Thứ tự phải là số nguyên dương",
+      }),
+      // Thời gian dừng tại stop (optional, default 30s)
+      dwell_seconds: Joi.number().integer().min(0).optional().messages({
+        "number.min": "Thời gian dừng phải >= 0",
+      }),
+      // Các field để tạo stop mới (nếu không có stop_id)
+      tenDiem: Joi.string().min(2).max(255).optional().messages({
+        "string.min": "Tên điểm dừng phải có ít nhất 2 ký tự",
+        "string.max": "Tên điểm dừng không được quá 255 ký tự",
+      }),
+      viDo: Joi.number().min(-90).max(90).optional().messages({
+        "number.min": "Vĩ độ phải từ -90 đến 90",
+        "number.max": "Vĩ độ phải từ -90 đến 90",
+      }),
+      kinhDo: Joi.number().min(-180).max(180).optional().messages({
+        "number.min": "Kinh độ phải từ -180 đến 180",
+        "number.max": "Kinh độ phải từ -180 đến 180",
+      }),
+      address: Joi.string().max(255).optional(),
+      scheduled_time: Joi.string()
+        .pattern(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/)
+        .optional()
+        .messages({
+          "string.pattern.base": "Giờ dự kiến không hợp lệ (VD: 06:30)",
+        }),
+    }).or("stop_id", "tenDiem").messages({
+      "object.missing": "stop_id hoặc (tenDiem, viDo, kinhDo) là bắt buộc",
+    });
+
+    const { error } = schema.validate(req.body);
+    if (error) {
+      return res.status(400).json({
+        success: false,
+        message: "Dữ liệu không hợp lệ",
+        errors: error.details.map((detail) => detail.message),
+      });
+    }
+
+    // Custom validation: Nếu không có stop_id, phải có tenDiem, viDo, kinhDo
+    if (!req.body.stop_id) {
+      if (!req.body.tenDiem || req.body.viDo === undefined || req.body.kinhDo === undefined) {
+        return res.status(400).json({
+          success: false,
+          message: "Dữ liệu không hợp lệ",
+          errors: ["stop_id hoặc (tenDiem, viDo, kinhDo) là bắt buộc"],
+        });
+      }
+    }
+
     next();
   }
 

@@ -52,7 +52,9 @@ import { apiClient } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import dynamic from "next/dynamic";
-const LeafletMap = dynamic(() => import("@/components/map/leaflet-map"), {
+import type { StopDTO, BusMarker } from "@/components/map/SSBMap";
+
+const SSBMap = dynamic(() => import("@/components/map/SSBMap"), {
   ssr: false,
 });
 // Input and ScrollArea removed (old admin chat UI deleted)
@@ -672,25 +674,30 @@ export default function TripDetailPage() {
               <CardContent className="space-y-4">
                 <Card className="border-border/50 bg-muted/30">
                   <CardContent className="p-4">
-                    {/* Leaflet map (replaces Google Maps) */}
+                    {/* Google Maps with SSBMap */}
                     <div className="h-[640px] w-full">
-                      <LeafletMap
+                      <SSBMap
                         height="640px"
-                        center={{ lat: busLocation.lat, lng: busLocation.lng }}
+                        center={busLocation}
                         zoom={13}
-                        followFirstMarker={true}
-                        autoFitOnUpdate={true}
-                        markers={[
+                        buses={[
                           {
-                            // Use bus id from event if present; fallback to '5' to match test script
-                            id: (busPosition?.busId ?? 5) + "",
+                            id: (busPosition?.busId ?? trip.vehicle?.plateNumber ?? 5) + "",
                             lat: busLocation.lat,
                             lng: busLocation.lng,
                             label: `${trip.vehicle.plateNumber} - ${trip.route}`,
-                            type: "bus" as const,
                             status: "running",
                           },
                         ]}
+                        stops={trip.stops.map((stop, idx) => ({
+                          maDiem: parseInt(stop.id) || idx + 1,
+                          tenDiem: stop.name,
+                          viDo: stop.address ? 0 : 21.0285, // TODO: Get actual coordinates
+                          kinhDo: stop.address ? 0 : 105.8542,
+                          sequence: idx + 1,
+                        }))}
+                        autoFitOnUpdate={true}
+                        followFirstMarker={true}
                       />
                     </div>
                     {/* Removed route hints to bring students list closer */}

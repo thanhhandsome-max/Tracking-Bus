@@ -419,12 +419,50 @@ class RouteController {
         });
       }
 
+      if (error.message === "MISSING_REQUIRED_FIELDS") {
+        return res.status(400).json({
+          success: false,
+          error: {
+            code: "MISSING_REQUIRED_FIELDS",
+            message: "Thiếu các trường bắt buộc: tenDiem, viDo, kinhDo",
+          },
+        });
+      }
+
+      if (error.message === "INVALID_LATITUDE" || error.message === "INVALID_LONGITUDE") {
+        return res.status(400).json({
+          success: false,
+          error: {
+            code: error.message,
+            message: error.message === "INVALID_LATITUDE" 
+              ? "Vĩ độ không hợp lệ (phải từ -90 đến 90)"
+              : "Kinh độ không hợp lệ (phải từ -180 đến 180)",
+          },
+        });
+      }
+
+      // Xử lý lỗi duplicate entry từ database
+      if (error.code === 'ER_DUP_ENTRY' || error.message?.includes('Duplicate entry')) {
+        return res.status(409).json({
+          success: false,
+          error: {
+            code: "DUPLICATE_STOP",
+            message: "Điểm dừng với cùng tên và tọa độ đã tồn tại trong hệ thống",
+          },
+        });
+      }
+
       console.error("Error in RouteController.addStopToRoute:", error);
+      console.error("Error stack:", error.stack);
+      console.error("Request body:", req.body);
+      console.error("Route ID:", req.params.id);
+      
       res.status(500).json({
         success: false,
         error: {
           code: "INTERNAL_ERROR",
-          message: "Lỗi server khi thêm điểm dừng vào tuyến đường",
+          message: error.message || "Lỗi server khi thêm điểm dừng vào tuyến đường",
+          details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
         },
       });
     }

@@ -6,6 +6,7 @@ import TaiXeModel from "../models/TaiXeModel.js";
 import TuyenDuongModel from "../models/TuyenDuongModel.js";
 import HocSinhModel from "../models/HocSinhModel.js";
 import tripService from "../services/tripService.js"; // kết nối tới service xử lý logic trip
+import TelemetryService from "../services/telemetryService.js"; // clear cache khi trip ends
 
 class TripController {
   // Lịch sử chuyến đi cho phụ huynh (các chuyến có con tham gia)
@@ -808,18 +809,23 @@ class TripController {
 
       // Phát sự kiện real-time
       const io = req.app.get("io");
+      let busId = null;
       if (io) {
         const schedule = await LichTrinhModel.getById(trip.maLichTrinh);
         if (schedule) {
-          io.to(`bus-${schedule.maXe}`).emit("trip_completed", {
+          busId = schedule.maXe;
+          io.to(`bus-${busId}`).emit("trip_completed", {
             tripId: id,
-            busId: schedule.maXe,
+            busId: busId,
             driverId: schedule.maTaiXe,
             endTime,
             timestamp: new Date().toISOString(),
           });
         }
       }
+
+      // 🧹 Clear telemetry cache (emitted stops, bus position, delay alerts)
+      TelemetryService.clearTripData(parseInt(id), busId);
 
       const updatedTrip = await ChuyenDiModel.getById(id);
 
@@ -883,18 +889,23 @@ class TripController {
 
       // Phát sự kiện real-time
       const io = req.app.get("io");
+      let busId = null;
       if (io) {
         const schedule = await LichTrinhModel.getById(trip.maLichTrinh);
         if (schedule) {
-          io.to(`bus-${schedule.maXe}`).emit("trip_cancelled", {
+          busId = schedule.maXe;
+          io.to(`bus-${busId}`).emit("trip_cancelled", {
             tripId: id,
-            busId: schedule.maXe,
+            busId: busId,
             driverId: schedule.maTaiXe,
             reason: lyDoHuy,
             timestamp: new Date().toISOString(),
           });
         }
       }
+
+      // 🧹 Clear telemetry cache (emitted stops, bus position, delay alerts)
+      TelemetryService.clearTripData(parseInt(id), busId);
 
       const updatedTrip = await ChuyenDiModel.getById(id);
 

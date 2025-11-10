@@ -1,11 +1,38 @@
 import pool from "../config/db.js";
 
 const TuyenDuongModel = {
-  // Lấy tất cả tuyến đường
-  async getAll() {
-    const [rows] = await pool.query(
-      `SELECT * FROM TuyenDuong WHERE trangThai = TRUE ORDER BY tenTuyen`
-    );
+  // Lấy tất cả tuyến đường (bao gồm số điểm dừng)
+  async getAll(options = {}) {
+    const { search, trangThai } = options;
+    let query = `
+      SELECT 
+        t.*,
+        COUNT(DISTINCT rs.stop_id) as soDiemDung
+      FROM TuyenDuong t
+      LEFT JOIN route_stops rs ON t.maTuyen = rs.route_id
+    `;
+    const conditions = [];
+    const params = [];
+
+    if (trangThai !== undefined) {
+      conditions.push('t.trangThai = ?');
+      params.push(trangThai === 'true' || trangThai === true || trangThai === '1' || trangThai === 1);
+    }
+    // Nếu không có filter trangThai, lấy tất cả (không filter theo trangThai)
+
+    if (search) {
+      conditions.push('(t.tenTuyen LIKE ? OR t.diemBatDau LIKE ? OR t.diemKetThuc LIKE ?)');
+      const searchPattern = `%${search}%`;
+      params.push(searchPattern, searchPattern, searchPattern);
+    }
+
+    if (conditions.length > 0) {
+      query += ` WHERE ${conditions.join(' AND ')}`;
+    }
+
+    query += ` GROUP BY t.maTuyen ORDER BY t.tenTuyen`;
+
+    const [rows] = await pool.query(query, params);
     return rows;
   },
 

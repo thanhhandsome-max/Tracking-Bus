@@ -72,12 +72,58 @@ class RouteService {
 
     let stopId = stopData.stop_id;
 
-    // Nếu không có stop_id, tạo stop mới
+    // Nếu không có stop_id, kiểm tra xem điểm dừng đã tồn tại chưa (theo unique constraint)
     if (!stopId) {
       if (!stopData.tenDiem || stopData.viDo === undefined || stopData.kinhDo === undefined) {
         throw new Error("MISSING_REQUIRED_FIELDS");
       }
-      stopId = await DiemDungModel.create(stopData);
+      
+      // Kiểm tra xem điểm dừng với cùng tên và tọa độ đã tồn tại chưa
+      const existingStops = await DiemDungModel.getByCoordinates(
+        stopData.viDo, 
+        stopData.kinhDo, 
+        0.0001 // tolerance: ~11m
+      );
+      
+      // Tìm điểm dừng có cùng tên và tọa độ gần nhau
+      const exactMatch = existingStops.find(
+        (s) => s.tenDiem === stopData.tenDiem &&
+               Math.abs(s.viDo - stopData.viDo) < 0.0001 &&
+               Math.abs(s.kinhDo - stopData.kinhDo) < 0.0001
+      );
+      
+      if (exactMatch) {
+        // Sử dụng điểm dừng đã tồn tại
+        stopId = exactMatch.maDiem;
+        console.log(`✅ Sử dụng điểm dừng đã tồn tại: ${exactMatch.maDiem} - ${exactMatch.tenDiem}`);
+      } else {
+        // Tạo điểm dừng mới
+        try {
+          stopId = await DiemDungModel.create(stopData);
+        } catch (createError) {
+          // Nếu lỗi duplicate key, thử tìm lại
+          if (createError.code === 'ER_DUP_ENTRY' || createError.message?.includes('Duplicate entry')) {
+            const retryStops = await DiemDungModel.getByCoordinates(
+              stopData.viDo, 
+              stopData.kinhDo, 
+              0.0001
+            );
+            const match = retryStops.find(
+              (s) => s.tenDiem === stopData.tenDiem &&
+                     Math.abs(s.viDo - stopData.viDo) < 0.0001 &&
+                     Math.abs(s.kinhDo - stopData.kinhDo) < 0.0001
+            );
+            if (match) {
+              stopId = match.maDiem;
+              console.log(`✅ Tìm thấy điểm dừng sau khi retry: ${match.maDiem} - ${match.tenDiem}`);
+            } else {
+              throw createError;
+            }
+          } else {
+            throw createError;
+          }
+        }
+      }
     } else {
       // Kiểm tra stop có tồn tại không
       const stop = await DiemDungModel.getById(stopId);
