@@ -3,6 +3,7 @@ import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { AuthProvider } from "@/lib/auth-context"
+import { QueryProvider } from "@/lib/providers/QueryProvider"
 import { Toaster } from "@/components/ui/toaster"
 import { Suspense } from "react"
 import "./globals.css"
@@ -29,11 +30,13 @@ export default function RootLayout({
     <html lang="vi">
       <body className={`font-sans ${inter.variable} antialiased`} suppressHydrationWarning>
         <Suspense fallback={null}>
-          <AuthProvider>
-            {children}
-            <Toaster />
-            <FloatingChat />
-          </AuthProvider>
+          <QueryProvider>
+            <AuthProvider>
+              {children}
+              <Toaster />
+              <FloatingChat />
+            </AuthProvider>
+          </QueryProvider>
         </Suspense>
         <Analytics />
       </body>

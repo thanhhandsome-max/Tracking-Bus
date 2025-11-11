@@ -6,6 +6,8 @@ import TaiXeModel from "../models/TaiXeModel.js";
 import TuyenDuongModel from "../models/TuyenDuongModel.js";
 import HocSinhModel from "../models/HocSinhModel.js";
 import tripService from "../services/tripService.js"; // kết nối tới service xử lý logic trip
+import TelemetryService from "../services/telemetryService.js"; // clear cache khi trip ends
+import * as response from "../utils/response.js"; // M4-M6: Response envelope
 
 class TripController {
   // Lịch sử chuyến đi cho phụ huynh (các chuyến có con tham gia)
@@ -65,225 +67,248 @@ class TripController {
       return res.status(500).json({ success: false, message: "Lỗi server" });
     }
   }
-  // Lấy danh sách tất cả chuyến đi
+  // Lấy danh sách tất cả chuyến đi (M4-M6: Chuẩn hóa pagination)
   static async getAll(req, res) {
     try {
       const {
         page = 1,
-        limit = 10,
+        pageSize = 10,
+        q, // search query
         ngayChay,
         trangThai,
         maTuyen,
         maXe,
         maTaiXe,
+        sortBy = "ngayChay",
+        sortOrder = "desc",
       } = req.query;
-      const offset = (page - 1) * limit;
 
-      // Dùng SQL-level filter để chính xác hơn (đặc biệt với ngày/thời gian)
+      // Normalize query params
+      const pageNum = Math.max(1, parseInt(page) || 1);
+      const limit = Math.max(1, Math.min(200, parseInt(pageSize) || parseInt(req.query.limit) || 10));
+      const search = q || req.query.search;
+      const sortDir = sortOrder.toLowerCase() === "asc" ? "ASC" : "DESC";
+
+      // Dùng SQL-level filter
       const filters = {
         ngayChay,
         trangThai,
         maTuyen,
         maXe,
         maTaiXe,
+        search, // Thêm search nếu cần
       };
 
-      let trips = await ChuyenDiModel.getAll(filters);
-      let totalCount = trips.length;
+      // Use service if available, otherwise fallback to model
+      let result;
+      if (tripService && tripService.list) {
+        result = await tripService.list({
+          page: pageNum,
+          limit,
+          ...filters,
+        });
+      } else {
+        // Fallback: Get all then filter
+        let trips = await ChuyenDiModel.getAll(filters);
+        let totalCount = trips.length;
 
-      // Phân trang (server-side slicing)
-      const paginatedTrips = trips.slice(offset, offset + parseInt(limit));
+        // Search filter (nếu có)
+        if (search) {
+          trips = trips.filter(
+            (t) =>
+              t.tenTuyen?.toLowerCase().includes(search.toLowerCase()) ||
+              t.bienSoXe?.toLowerCase().includes(search.toLowerCase()) ||
+              t.tenTaiXe?.toLowerCase().includes(search.toLowerCase())
+          );
+          totalCount = trips.length;
+        }
 
-      res.status(200).json({
-        success: true,
-        data: paginatedTrips,
-        pagination: {
-          currentPage: parseInt(page),
-          totalPages: Math.ceil(totalCount / limit),
-          totalItems: totalCount,
-          itemsPerPage: parseInt(limit),
-        },
-        message: "Lấy danh sách chuyến đi thành công",
+        // Sort (simple client-side sort)
+        trips.sort((a, b) => {
+          const aVal = a[sortBy] || "";
+          const bVal = b[sortBy] || "";
+          if (sortDir === "ASC") {
+            return aVal > bVal ? 1 : -1;
+          }
+          return aVal < bVal ? 1 : -1;
+        });
+
+        // Pagination
+        const offset = (pageNum - 1) * limit;
+        const paginatedTrips = trips.slice(offset, offset + limit);
+
+        result = {
+          data: paginatedTrips,
+          pagination: {
+            page: pageNum,
+            limit,
+            total: totalCount,
+            totalPages: Math.ceil(totalCount / limit),
+          },
+        };
+      }
+
+      return response.ok(res, result.data, {
+        page: pageNum,
+        pageSize: limit,
+        total: result.pagination.total,
+        totalPages: result.pagination.totalPages,
+        sortBy,
+        sortOrder: sortOrder.toLowerCase(),
+        q: search || null,
       });
     } catch (error) {
       console.error("Error in TripController.getAll:", error);
-      res.status(500).json({
-        success: false,
-        message: "Lỗi server khi lấy danh sách chuyến đi",
-        error: error.message,
-      });
+      return response.serverError(res, "Lỗi server khi lấy danh sách chuyến đi", error);
     }
   }
 
-  // Lấy thông tin chi tiết một chuyến đi
+  // Lấy thông tin chi tiết một chuyến đi (M4-M6: Response envelope)
   static async getById(req, res) {
     try {
       const { id } = req.params;
 
       if (!id) {
-        return res.status(400).json({
-          success: false,
-          message: "Mã chuyến đi là bắt buộc",
-        });
+        return response.validationError(res, "Mã chuyến đi là bắt buộc", [
+          { field: "id", message: "Mã chuyến đi không được để trống" }
+        ]);
       }
 
-      const trip = await ChuyenDiModel.getById(id);
+      const trip = await (tripService && tripService.getById
+        ? tripService.getById(id)
+        : ChuyenDiModel.getById(id));
 
       if (!trip) {
-        return res.status(404).json({
-          success: false,
-          message: "Không tìm thấy chuyến đi",
-        });
+        return response.notFound(res, "Không tìm thấy chuyến đi");
       }
 
       // Lấy thông tin chi tiết lịch trình
       const schedule = await LichTrinhModel.getById(trip.maLichTrinh);
 
       // Lấy thông tin xe buýt và tài xế
-      const busInfo = await XeBuytModel.getById(schedule.maXe);
-      const driverInfo = await TaiXeModel.getById(schedule.maTaiXe);
-      const routeInfo = await TuyenDuongModel.getById(schedule.maTuyen);
+      const busInfo = schedule ? await XeBuytModel.getById(schedule.maXe) : null;
+      const driverInfo = schedule ? await TaiXeModel.getById(schedule.maTaiXe) : null;
+      const routeInfo = schedule ? await TuyenDuongModel.getById(schedule.maTuyen) : null;
 
       // Lấy danh sách học sinh trong chuyến đi
       const students = await TrangThaiHocSinhModel.getByTripId(id);
 
-      res.status(200).json({
-        success: true,
-        data: {
-          ...trip,
-          schedule,
-          busInfo,
-          driverInfo,
-          routeInfo,
-          students,
-        },
-        message: "Lấy thông tin chuyến đi thành công",
+      return response.ok(res, {
+        ...trip,
+        schedule,
+        busInfo,
+        driverInfo,
+        routeInfo,
+        students,
       });
     } catch (error) {
+      if (error.message === "TRIP_NOT_FOUND") {
+        return response.notFound(res, "Không tìm thấy chuyến đi");
+      }
       console.error("Error in TripController.getById:", error);
-      res.status(500).json({
-        success: false,
-        message: "Lỗi server khi lấy thông tin chuyến đi",
-        error: error.message,
-      });
+      return response.serverError(res, "Lỗi server khi lấy thông tin chuyến đi", error);
     }
   }
 
-  // Tạo chuyến đi mới
+  // Tạo chuyến đi mới từ schedule (M4-M6: Response envelope + WS event)
   static async create(req, res) {
     try {
       const {
         maLichTrinh,
         ngayChay,
-        trangThai = "chua_khoi_hanh",
-        gioBatDauThucTe = null,
-        gioKetThucThucTe = null,
+        trangThai = "chua_khoi_hanh", // M4-M6: planned (map từ chua_khoi_hanh)
         ghiChu = null,
       } = req.body;
 
       // Validation dữ liệu bắt buộc
       if (!maLichTrinh || !ngayChay) {
-        return res.status(400).json({
-          success: false,
-          message: "Mã lịch trình và ngày chạy là bắt buộc",
-        });
+        return response.validationError(res, "Mã lịch trình và ngày chạy là bắt buộc", [
+          { field: "maLichTrinh", message: "Mã lịch trình không được để trống" },
+          { field: "ngayChay", message: "Ngày chạy không được để trống" }
+        ]);
       }
 
       // Validation ngày chạy
       const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
       if (!dateRegex.test(ngayChay)) {
-        return res.status(400).json({
-          success: false,
-          message: "Ngày chạy phải có định dạng YYYY-MM-DD",
-        });
+        return response.validationError(res, "Ngày chạy phải có định dạng YYYY-MM-DD", [
+          { field: "ngayChay", message: "Format: YYYY-MM-DD" }
+        ]);
       }
 
-      // Kiểm tra lịch trình có tồn tại không
-      const schedule = await LichTrinhModel.getById(maLichTrinh);
-      if (!schedule) {
-        return res.status(404).json({
-          success: false,
-          message: "Không tìm thấy lịch trình",
-        });
+      // Use service if available
+      let trip;
+      try {
+        if (tripService && tripService.create) {
+          trip = await tripService.create({ maLichTrinh, ngayChay, trangThai, ghiChu });
+        } else {
+          // Fallback to model
+          const schedule = await LichTrinhModel.getById(maLichTrinh);
+          if (!schedule) {
+            return response.notFound(res, "Không tìm thấy lịch trình");
+          }
+
+          if (!schedule.dangApDung) {
+            return response.validationError(res, "Lịch trình không đang được áp dụng", [
+              { field: "maLichTrinh", message: "Lịch trình phải đang được áp dụng" }
+            ]);
+          }
+
+          // Check if trip already exists for this schedule + date
+          const existing = await ChuyenDiModel.getByScheduleAndDate(maLichTrinh, ngayChay);
+          if (existing) {
+            return response.error(res, "TRIP_ALREADY_EXISTS", "Chuyến đi đã tồn tại cho lịch trình và ngày này", 409);
+          }
+
+          const tripId = await ChuyenDiModel.create({ maLichTrinh, ngayChay, trangThai, ghiChu });
+          trip = await ChuyenDiModel.getById(tripId);
+        }
+      } catch (serviceError) {
+        if (serviceError.message === "SCHEDULE_NOT_FOUND") {
+          return response.notFound(res, "Không tìm thấy lịch trình");
+        }
+        if (serviceError.message === "MISSING_REQUIRED_FIELDS") {
+          return response.validationError(res, "Thiếu trường bắt buộc", [
+            { field: "maLichTrinh", message: "Mã lịch trình là bắt buộc" },
+            { field: "ngayChay", message: "Ngày chạy là bắt buộc" }
+          ]);
+        }
+        throw serviceError;
       }
 
-      // Kiểm tra lịch trình có đang áp dụng không
-      if (!schedule.dangApDung) {
-        return res.status(400).json({
-          success: false,
-          message: "Lịch trình không đang được áp dụng",
-        });
+      // M4-M6: Emit WS event trip_created
+      const io = req.app.get("io");
+      if (io && trip) {
+        const schedule = await LichTrinhModel.getById(trip.maLichTrinh);
+        if (schedule) {
+          io.to(`trip-${trip.maChuyen}`).emit("trip_created", {
+            tripId: trip.maChuyen,
+            scheduleId: maLichTrinh,
+            busId: schedule.maXe,
+            driverId: schedule.maTaiXe,
+            routeId: schedule.maTuyen,
+            date: ngayChay,
+            status: trangThai,
+            timestamp: new Date().toISOString(),
+          });
+          // Also notify role-admin
+          io.to("role-quan_tri").emit("trip_created", {
+            tripId: trip.maChuyen,
+            scheduleId: maLichTrinh,
+            busId: schedule.maXe,
+            driverId: schedule.maTaiXe,
+            routeId: schedule.maTuyen,
+            date: ngayChay,
+            status: trangThai,
+            timestamp: new Date().toISOString(),
+          });
+        }
       }
 
-      // Kiểm tra xe buýt có đang hoạt động không
-      const bus = await XeBuytModel.getById(schedule.maXe);
-      if (!bus || bus.trangThai !== "hoat_dong") {
-        return res.status(400).json({
-          success: false,
-          message: "Xe buýt không đang hoạt động",
-        });
-      }
-
-      // Kiểm tra tài xế có đang hoạt động không
-      const driver = await TaiXeModel.getById(schedule.maTaiXe);
-      if (!driver || driver.trangThai !== "hoat_dong") {
-        return res.status(400).json({
-          success: false,
-          message: "Tài xế không đang hoạt động",
-        });
-      }
-
-      // Kiểm tra chuyến đi đã tồn tại chưa
-      const existingTrip = await ChuyenDiModel.getByScheduleAndDate(
-        maLichTrinh,
-        ngayChay
-      );
-      if (existingTrip) {
-        return res.status(409).json({
-          success: false,
-          message: "Chuyến đi đã tồn tại cho lịch trình này trong ngày",
-        });
-      }
-
-      // Validation trạng thái
-      const validStatuses = [
-        "chua_khoi_hanh",
-        "dang_chay",
-        "da_hoan_thanh",
-        "bi_huy",
-      ];
-      if (!validStatuses.includes(trangThai)) {
-        return res.status(400).json({
-          success: false,
-          message: "Trạng thái không hợp lệ",
-          validStatuses,
-        });
-      }
-
-      const tripData = {
-        maLichTrinh,
-        ngayChay,
-        trangThai,
-        gioBatDauThucTe,
-        gioKetThucThucTe,
-        ghiChu,
-      };
-
-      const newTripId = await ChuyenDiModel.create(tripData);
-      const newTrip = await ChuyenDiModel.getById(newTripId);
-
-      res.status(201).json({
-        success: true,
-        data: newTrip,
-        message: "Tạo chuyến đi mới thành công",
-      });
+      return response.created(res, trip);
     } catch (error) {
       console.error("Error in TripController.create:", error);
-      res.status(500).json({
-        success: false,
-        message: "Lỗi server khi tạo chuyến đi mới",
-        error: error.message,
-      });
+      return response.serverError(res, "Lỗi server khi tạo chuyến đi", error);
     }
   }
 
@@ -723,193 +748,166 @@ class TripController {
         message: "Bắt đầu chuyến đi thành công",
       });
     } catch (error) {
-      /**
-       * ❌ XỬ LÝ LỖI
-       *
-       * Giải thích:
-       * - try/catch: Bắt mọi error từ service
-       * - Service throw error → Catch block bắt
-       *
-       * Các loại error:
-       * 1. "Không tìm thấy chuyến đi" → 404
-       * 2. "Chỉ có thể bắt đầu chuyến đi chưa khởi hành" → 400
-       * 3. "Không thể bắt đầu chuyến đi" → 500
-       * 4. Database errors → 500
-       *
-       * console.error():
-       * - Log error ra console để debug
-       * - Production: Nên log vào file hoặc service (Winston, Sentry)
-       * - Format: "Error in TripController.startTrip: <message>"
-       *
-       * Response error:
-       * {
-       *   success: false,
-       *   message: "Lỗi server khi bắt đầu chuyến đi",
-       *   error: "Không tìm thấy chuyến đi"
-       * }
-       *
-       * Note: Có thể cải thiện bằng cách check error type
-       * và trả về status code phù hợp (404, 400, 500...)
-       */
       console.error("Error in TripController.startTrip:", error);
-      res.status(500).json({
-        success: false,
-        message: "Lỗi server khi bắt đầu chuyến đi",
-        error: error.message,
-      });
+      return response.serverError(res, "Lỗi server khi bắt đầu chuyến đi", error);
     }
   }
 
-  // Kết thúc chuyến đi
+  // Kết thúc chuyến đi (M4-M6: Response envelope + stats calculation + WS events)
   static async endTrip(req, res) {
     try {
-  const { id } = req.params;
-  const { gioKetThucThucTe, ghiChu } = req.body;
+      const { id } = req.params;
+      const { gioKetThucThucTe, ghiChu } = req.body;
 
       if (!id) {
-        return res.status(400).json({
-          success: false,
-          message: "Mã chuyến đi là bắt buộc",
-        });
+        return response.validationError(res, "Mã chuyến đi là bắt buộc", [
+          { field: "id", message: "Mã chuyến đi không được để trống" }
+        ]);
       }
 
-      // Kiểm tra chuyến đi có tồn tại không
+      // Get trip first
       const trip = await ChuyenDiModel.getById(id);
       if (!trip) {
-        return res.status(404).json({
-          success: false,
-          message: "Không tìm thấy chuyến đi",
-        });
+        return response.notFound(res, "Không tìm thấy chuyến đi");
       }
 
-      // Kiểm tra trạng thái hiện tại
-      if (trip.trangThai !== "dang_chay") {
-        return res.status(400).json({
-          success: false,
-          message: "Chỉ có thể kết thúc chuyến đi đang chạy",
-        });
+      // M4-M6: Only end trips that are started/enroute
+      if (trip.trangThai !== "dang_chay" && trip.trangThai !== "dang_thuc_hien") {
+        return response.error(res, "INVALID_TRIP_STATUS", "Chỉ có thể kết thúc chuyến đi đang chạy", 400);
       }
 
       const endTime = gioKetThucThucTe || new Date();
 
-      // Cập nhật trạng thái và giờ kết thúc
-      const isUpdated = await ChuyenDiModel.update(id, {
-        trangThai: "hoan_thanh",
-        gioKetThucThucTe: endTime,
-        ghiChu: ghiChu || trip.ghiChu,
-      });
+      // M4-M6: Use service if available (will calculate stats)
+      let updatedTrip;
+      try {
+        if (tripService && tripService.complete) {
+          updatedTrip = await tripService.complete(id, req.user?.userId);
+        } else {
+          // Fallback: Update status and end time
+          const isUpdated = await ChuyenDiModel.update(id, {
+            trangThai: "hoan_thanh", // M4-M6: completed
+            gioKetThucThucTe: endTime,
+            ghiChu: ghiChu || trip.ghiChu,
+          });
 
-      if (!isUpdated) {
-        return res.status(400).json({
-          success: false,
-          message: "Không thể kết thúc chuyến đi",
-        });
+          if (!isUpdated) {
+            return response.error(res, "TRIP_UPDATE_FAILED", "Không thể kết thúc chuyến đi", 400);
+          }
+
+          updatedTrip = await ChuyenDiModel.getById(id);
+        }
+      } catch (serviceError) {
+        if (serviceError.message === "TRIP_NOT_FOUND") {
+          return response.notFound(res, "Không tìm thấy chuyến đi");
+        }
+        throw serviceError;
       }
 
-      // Phát sự kiện real-time
+      // M4-M6: Emit WS events
       const io = req.app.get("io");
-      if (io) {
-        const schedule = await LichTrinhModel.getById(trip.maLichTrinh);
+      let busId = null;
+      if (io && updatedTrip) {
+        const schedule = await LichTrinhModel.getById(updatedTrip.maLichTrinh);
         if (schedule) {
-          io.to(`bus-${schedule.maXe}`).emit("trip_completed", {
-            tripId: id,
-            busId: schedule.maXe,
+          busId = schedule.maXe;
+          const eventData = {
+            tripId: parseInt(id),
+            busId: busId,
             driverId: schedule.maTaiXe,
-            endTime,
+            routeId: schedule.maTuyen,
+            endTime: updatedTrip.gioKetThucThucTe,
+            status: "completed",
             timestamp: new Date().toISOString(),
-          });
+          };
+
+          // Emit to multiple rooms
+          io.to(`trip-${id}`).emit("trip_completed", eventData);
+          io.to(`bus-${busId}`).emit("trip_completed", eventData);
+          io.to("role-quan_tri").emit("trip_completed", eventData);
         }
       }
 
-      const updatedTrip = await ChuyenDiModel.getById(id);
+      // M4-M6: Clear telemetry cache
+      if (busId) {
+        TelemetryService.clearTripData(parseInt(id), busId);
+      }
 
-      res.status(200).json({
-        success: true,
-        data: updatedTrip,
-        message: "Kết thúc chuyến đi thành công",
-      });
+      return response.ok(res, updatedTrip);
     } catch (error) {
       console.error("Error in TripController.endTrip:", error);
-      res.status(500).json({
-        success: false,
-        message: "Lỗi server khi kết thúc chuyến đi",
-        error: error.message,
-      });
+      return response.serverError(res, "Lỗi server khi kết thúc chuyến đi", error);
     }
   }
 
-  // Hủy chuyến đi
+  // Hủy chuyến đi (M4-M6: Response envelope + WS events)
   static async cancelTrip(req, res) {
     try {
       const { id } = req.params;
-      const { lyDoHuy } = req.body;
+      const { lyDoHuy, ghiChu } = req.body;
 
       if (!id) {
-        return res.status(400).json({
-          success: false,
-          message: "Mã chuyến đi là bắt buộc",
-        });
+        return response.validationError(res, "Mã chuyến đi là bắt buộc", [
+          { field: "id", message: "Mã chuyến đi không được để trống" }
+        ]);
       }
 
-      // Kiểm tra chuyến đi có tồn tại không
+      // Get trip
       const trip = await ChuyenDiModel.getById(id);
       if (!trip) {
-        return res.status(404).json({
-          success: false,
-          message: "Không tìm thấy chuyến đi",
-        });
+        return response.notFound(res, "Không tìm thấy chuyến đi");
       }
 
-      // Kiểm tra trạng thái hiện tại
-      if (trip.trangThai === "da_hoan_thanh") {
-        return res.status(400).json({
-          success: false,
-          message: "Không thể hủy chuyến đi đã hoàn thành",
-        });
+      // M4-M6: Cannot cancel completed trips
+      if (trip.trangThai === "hoan_thanh" || trip.trangThai === "da_hoan_thanh") {
+        return response.error(res, "INVALID_TRIP_STATUS", "Không thể hủy chuyến đi đã hoàn thành", 400);
       }
 
-      // Cập nhật trạng thái
+      // Update status
+      const cancelReason = lyDoHuy || ghiChu || trip.ghiChu || "Hủy bởi người dùng";
       const isUpdated = await ChuyenDiModel.update(id, {
-        trangThai: "bi_huy",
-        ghiChu: lyDoHuy || trip.ghiChu,
+        trangThai: "huy", // M4-M6: canceled (map từ huy/bi_huy)
+        ghiChu: cancelReason,
       });
 
       if (!isUpdated) {
-        return res.status(400).json({
-          success: false,
-          message: "Không thể hủy chuyến đi",
-        });
+        return response.error(res, "TRIP_UPDATE_FAILED", "Không thể hủy chuyến đi", 400);
       }
 
-      // Phát sự kiện real-time
+      // M4-M6: Emit WS events
       const io = req.app.get("io");
+      let busId = null;
       if (io) {
         const schedule = await LichTrinhModel.getById(trip.maLichTrinh);
         if (schedule) {
-          io.to(`bus-${schedule.maXe}`).emit("trip_cancelled", {
-            tripId: id,
-            busId: schedule.maXe,
+          busId = schedule.maXe;
+          const eventData = {
+            tripId: parseInt(id),
+            busId: busId,
             driverId: schedule.maTaiXe,
-            reason: lyDoHuy,
+            routeId: schedule.maTuyen,
+            reason: cancelReason,
+            status: "canceled",
             timestamp: new Date().toISOString(),
-          });
+          };
+
+          // Emit to multiple rooms
+          io.to(`trip-${id}`).emit("trip_cancelled", eventData);
+          io.to(`bus-${busId}`).emit("trip_cancelled", eventData);
+          io.to("role-quan_tri").emit("trip_cancelled", eventData);
         }
       }
 
-      const updatedTrip = await ChuyenDiModel.getById(id);
+      // M4-M6: Clear telemetry cache
+      if (busId) {
+        TelemetryService.clearTripData(parseInt(id), busId);
+      }
 
-      res.status(200).json({
-        success: true,
-        data: updatedTrip,
-        message: "Hủy chuyến đi thành công",
-      });
+      const updatedTrip = await ChuyenDiModel.getById(id);
+      return response.ok(res, updatedTrip);
     } catch (error) {
       console.error("Error in TripController.cancelTrip:", error);
-      res.status(500).json({
-        success: false,
-        message: "Lỗi server khi hủy chuyến đi",
-        error: error.message,
-      });
+      return response.serverError(res, "Lỗi server khi hủy chuyến đi", error);
     }
   }
 
@@ -994,24 +992,180 @@ class TripController {
     }
   }
 
-  // Cập nhật trạng thái học sinh trong chuyến đi
+  // M4-M6: Check-in học sinh (lên xe) - Attendance API
+  static async checkinStudent(req, res) {
+    try {
+      const { id, studentId } = req.params;
+      const { ghiChu } = req.body;
+
+      if (!id || !studentId) {
+        return response.validationError(res, "Mã chuyến đi và mã học sinh là bắt buộc", [
+          { field: "id", message: "Mã chuyến đi không được để trống" },
+          { field: "studentId", message: "Mã học sinh không được để trống" }
+        ]);
+      }
+
+      // Get trip
+      const trip = await ChuyenDiModel.getById(id);
+      if (!trip) {
+        return response.notFound(res, "Không tìm thấy chuyến đi");
+      }
+
+      // M4-M6: Only allow checkin for active trips
+      if (trip.trangThai !== "dang_chay" && trip.trangThai !== "dang_thuc_hien") {
+        return response.error(res, "INVALID_TRIP_STATUS", "Chỉ có thể điểm danh khi chuyến đi đang chạy", 400);
+      }
+
+      // Get student status
+      const studentStatus = await TrangThaiHocSinhModel.getById(id, studentId);
+      if (!studentStatus) {
+        return response.notFound(res, "Học sinh không có trong chuyến đi này");
+      }
+
+      // M4-M6: Update status to 'da_don' (onboard)
+      const isUpdated = await TrangThaiHocSinhModel.update(id, studentId, {
+        trangThai: "da_don", // M4-M6: onboard
+        thoiGianThucTe: new Date(),
+        ghiChu: ghiChu || studentStatus.ghiChu,
+      });
+
+      if (!isUpdated) {
+        return response.error(res, "UPDATE_FAILED", "Không thể cập nhật trạng thái học sinh", 400);
+      }
+
+      // Get updated status
+      const updatedStatus = await TrangThaiHocSinhModel.getById(id, studentId);
+      const student = await HocSinhModel.getById(studentId);
+
+      // M4-M6: Emit WS event pickup_status_update
+      const io = req.app.get("io");
+      if (io) {
+        const schedule = await LichTrinhModel.getById(trip.maLichTrinh);
+        const eventData = {
+          tripId: parseInt(id),
+          studentId: parseInt(studentId),
+          studentName: student?.hoTen || `Học sinh #${studentId}`,
+          status: "onboard", // M4-M6: Standardized status
+          tsServer: new Date().toISOString(),
+          timestamp: new Date().toISOString(),
+        };
+
+        // Emit to trip room (parents + admin)
+        io.to(`trip-${id}`).emit("pickup_status_update", eventData);
+        
+        // Emit to parent's user room
+        if (student?.maPhuHuynh) {
+          io.to(`user-${student.maPhuHuynh}`).emit("pickup_status_update", eventData);
+        }
+        
+        // Emit to role-admin
+        io.to("role-quan_tri").emit("pickup_status_update", eventData);
+      }
+
+      return response.ok(res, {
+        ...updatedStatus,
+        studentName: student?.hoTen,
+        status: "onboard", // M4-M6: Standardized
+      });
+    } catch (error) {
+      console.error("Error in TripController.checkinStudent:", error);
+      return response.serverError(res, "Lỗi server khi điểm danh học sinh", error);
+    }
+  }
+
+  // M4-M6: Check-out học sinh (xuống xe) - Attendance API
+  static async checkoutStudent(req, res) {
+    try {
+      const { id, studentId } = req.params;
+      const { ghiChu } = req.body;
+
+      if (!id || !studentId) {
+        return response.validationError(res, "Mã chuyến đi và mã học sinh là bắt buộc", [
+          { field: "id", message: "Mã chuyến đi không được để trống" },
+          { field: "studentId", message: "Mã học sinh không được để trống" }
+        ]);
+      }
+
+      // Get trip
+      const trip = await ChuyenDiModel.getById(id);
+      if (!trip) {
+        return response.notFound(res, "Không tìm thấy chuyến đi");
+      }
+
+      // Get student status
+      const studentStatus = await TrangThaiHocSinhModel.getById(id, studentId);
+      if (!studentStatus) {
+        return response.notFound(res, "Học sinh không có trong chuyến đi này");
+      }
+
+      // M4-M6: Update status to 'da_tra' (dropped)
+      const isUpdated = await TrangThaiHocSinhModel.update(id, studentId, {
+        trangThai: "da_tra", // M4-M6: dropped
+        thoiGianThucTe: new Date(),
+        ghiChu: ghiChu || studentStatus.ghiChu,
+      });
+
+      if (!isUpdated) {
+        return response.error(res, "UPDATE_FAILED", "Không thể cập nhật trạng thái học sinh", 400);
+      }
+
+      // Get updated status
+      const updatedStatus = await TrangThaiHocSinhModel.getById(id, studentId);
+      const student = await HocSinhModel.getById(studentId);
+
+      // M4-M6: Emit WS event pickup_status_update
+      const io = req.app.get("io");
+      if (io) {
+        const schedule = await LichTrinhModel.getById(trip.maLichTrinh);
+        const eventData = {
+          tripId: parseInt(id),
+          studentId: parseInt(studentId),
+          studentName: student?.hoTen || `Học sinh #${studentId}`,
+          status: "dropped", // M4-M6: Standardized status
+          tsServer: new Date().toISOString(),
+          timestamp: new Date().toISOString(),
+        };
+
+        // Emit to trip room (parents + admin)
+        io.to(`trip-${id}`).emit("pickup_status_update", eventData);
+        
+        // Emit to parent's user room
+        if (student?.maPhuHuynh) {
+          io.to(`user-${student.maPhuHuynh}`).emit("pickup_status_update", eventData);
+        }
+        
+        // Emit to role-admin
+        io.to("role-quan_tri").emit("pickup_status_update", eventData);
+      }
+
+      return response.ok(res, {
+        ...updatedStatus,
+        studentName: student?.hoTen,
+        status: "dropped", // M4-M6: Standardized
+      });
+    } catch (error) {
+      console.error("Error in TripController.checkoutStudent:", error);
+      return response.serverError(res, "Lỗi server khi điểm danh học sinh", error);
+    }
+  }
+
+  // Cập nhật trạng thái học sinh trong chuyến đi (Legacy - keep for backward compatibility)
   static async updateStudentStatus(req, res) {
     try {
       const { id, studentId } = req.params;
       const { trangThai, ghiChu } = req.body;
 
       if (!id || !studentId) {
-        return res.status(400).json({
-          success: false,
-          message: "Mã chuyến đi và mã học sinh là bắt buộc",
-        });
+        return response.validationError(res, "Mã chuyến đi và mã học sinh là bắt buộc", [
+          { field: "id", message: "Mã chuyến đi không được để trống" },
+          { field: "studentId", message: "Mã học sinh không được để trống" }
+        ]);
       }
 
       if (!trangThai) {
-        return res.status(400).json({
-          success: false,
-          message: "Trạng thái là bắt buộc",
-        });
+        return response.validationError(res, "Trạng thái là bắt buộc", [
+          { field: "trangThai", message: "Trạng thái không được để trống" }
+        ]);
       }
 
       // Validation trạng thái

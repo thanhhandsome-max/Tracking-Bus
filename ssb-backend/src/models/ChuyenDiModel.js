@@ -53,9 +53,8 @@ const ChuyenDiModel = {
     return rows;
   },
 
-  async getStats(ngayBatDau, ngayKetThuc) {
-    const [rows] = await pool.query(
-      `
+  async getStats(ngayBatDau, ngayKetThuc, filters = {}) {
+    let query = `
       SELECT
         COUNT(cd.maChuyen) AS totalTrips,
         
@@ -88,9 +87,24 @@ const ChuyenDiModel = {
       FROM ChuyenDi cd
       JOIN LichTrinh lt ON cd.maLichTrinh = lt.maLichTrinh
       WHERE cd.ngayChay BETWEEN ? AND ?
-      `,
-      [ngayBatDau, ngayKetThuc]
-    );
+    `;
+    const params = [ngayBatDau, ngayKetThuc];
+
+    // Apply filters
+    if (filters.maTuyen) {
+      query += " AND lt.maTuyen = ?";
+      params.push(filters.maTuyen);
+    }
+    if (filters.maTaiXe) {
+      query += " AND lt.maTaiXe = ?";
+      params.push(filters.maTaiXe);
+    }
+    if (filters.maXe) {
+      query += " AND lt.maXe = ?";
+      params.push(filters.maXe);
+    }
+
+    const [rows] = await pool.query(query, params);
 
     // Nếu không có chuyến nào trong khoảng ngày, query có thể trả về nulls
     // Xử lý để đảm bảo trả về object với giá trị 0

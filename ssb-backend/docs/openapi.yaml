@@ -1,0 +1,1430 @@
+openapi: 3.0.3
+info:
+  title: Smart School Bus Tracking System API
+  version: 1.1.0
+  description: |
+    API documentation for Smart School Bus Tracking System - Backend v1.1
+    Refactored with normalized stops and route_stops junction table.
+  contact:
+    name: SSB Development Team
+servers:
+  - url: http://localhost:4000/api/v1
+    description: Local development server
+  - url: https://api.schoolbus.vn/api/v1
+    description: Production server
+
+tags:
+  - name: Routes
+    description: Route management endpoints
+  - name: Stops
+    description: Stop management endpoints
+  - name: Maps
+    description: Google Maps API proxy endpoints
+
+paths:
+  /routes:
+    get:
+      tags:
+        - Routes
+      summary: Get list of routes
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: trangThai
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RouteListResponse'
+              example:
+                success: true
+                data:
+                  - maTuyen: 1
+                    tenTuyen: "Tuyến Quận 7 - Nhà Bè"
+                    diemBatDau: "Trường Tiểu học ABC"
+                    diemKetThuc: "Khu dân cư Phú Xuân"
+                    thoiGianUocTinh: 45
+                    origin_lat: 10.7345
+                    origin_lng: 106.7212
+                    dest_lat: 10.6972
+                    dest_lng: 106.7041
+                    polyline: null
+                    trangThai: true
+                pagination:
+                  page: 1
+                  limit: 10
+                  total: 5
+                  totalPages: 1
+                message: "Lấy danh sách tuyến đường thành công"
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      tags:
+        - Routes
+      summary: Create a new route
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRoutePayload'
+            example:
+              tenTuyen: "Tuyến Quận 7 - Quận 8"
+              diemBatDau: "Trường Tiểu học ABC"
+              diemKetThuc: "Khu dân cư Quận 8"
+              thoiGianUocTinh: 50
+      responses:
+        '201':
+          description: Route created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RouteDetailResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /routes/{id}:
+    get:
+      tags:
+        - Routes
+      summary: Get route by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RouteDetailResponse'
+              example:
+                success: true
+                data:
+                  maTuyen: 1
+                  tenTuyen: "Tuyến Quận 7 - Nhà Bè"
+                  diemBatDau: "Trường Tiểu học ABC"
+                  diemKetThuc: "Khu dân cư Phú Xuân"
+                  thoiGianUocTinh: 45
+                  origin_lat: 10.7345
+                  origin_lng: 106.7212
+                  dest_lat: 10.6972
+                  dest_lng: 106.7041
+                  polyline: null
+                  trangThai: true
+                  stops:
+                    - maDiem: 1
+                      tenDiem: "Ngã tư Nguyễn Văn Linh"
+                      viDo: 10.7345
+                      kinhDo: 106.7212
+                      address: null
+                      scheduled_time: null
+                      sequence: 1
+                      dwell_seconds: 30
+                    - maDiem: 2
+                      tenDiem: "Chung cư Sunrise City"
+                      viDo: 10.7408
+                      kinhDo: 106.7075
+                      address: null
+                      scheduled_time: null
+                      sequence: 2
+                      dwell_seconds: 30
+                  schedules: []
+                message: "Lấy thông tin tuyến đường thành công"
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    put:
+      tags:
+        - Routes
+      summary: Update route
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRoutePayload'
+      responses:
+        '200':
+          description: Route updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RouteDetailResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      tags:
+        - Routes
+      summary: Delete route
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Route deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /routes/{id}/stops:
+    get:
+      tags:
+        - Routes
+      summary: Get stops for a route
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RouteStopDetail'
+                  message:
+                    type: string
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      tags:
+        - Routes
+      summary: Add stop to route
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                stop_id:
+                  type: integer
+                  description: Existing stop ID (optional if creating new stop)
+                sequence:
+                  type: integer
+                  description: Sequence order (optional, auto-increment if not provided)
+                dwell_seconds:
+                  type: integer
+                  default: 30
+                tenDiem:
+                  type: string
+                  description: Required if stop_id not provided
+                viDo:
+                  type: number
+                  description: Required if stop_id not provided
+                kinhDo:
+                  type: number
+                  description: Required if stop_id not provided
+                address:
+                  type: string
+                scheduled_time:
+                  type: string
+                  format: time
+              required:
+                - stop_id
+            example:
+              stop_id: 1
+              sequence: 3
+              dwell_seconds: 30
+      responses:
+        '201':
+          description: Stop added successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RouteStopDetail'
+                  message:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /routes/{id}/stops/reorder:
+    patch:
+      tags:
+        - Routes
+      summary: Reorder stops in route
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReorderStopsPayload'
+            example:
+              items:
+                - stop_id: 1
+                  sequence: 2
+                - stop_id: 2
+                  sequence: 1
+      responses:
+        '200':
+          description: Stops reordered successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RouteStopDetail'
+                  message:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /routes/{id}/stops/{stopId}:
+    delete:
+      tags:
+        - Routes
+      summary: Remove stop from route
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: stopId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Stop removed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /routes/{id}/rebuild-polyline:
+    post:
+      tags:
+        - Routes
+      summary: Rebuild polyline for route
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Polyline rebuilt successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      polyline:
+                        type: string
+                      updated:
+                        type: boolean
+                      cached:
+                        type: boolean
+                  message:
+                    type: string
+              example:
+                success: true
+                data:
+                  polyline: "encoded_polyline_string"
+                  updated: true
+                  cached: false
+                message: "Rebuild polyline thành công"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /stops:
+    get:
+      tags:
+        - Stops
+      summary: Get list of stops
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: minLat
+          in: query
+          schema:
+            type: number
+        - name: maxLat
+          in: query
+          schema:
+            type: number
+        - name: minLng
+          in: query
+          schema:
+            type: number
+        - name: maxLng
+          in: query
+          schema:
+            type: number
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Stop'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+                  message:
+                    type: string
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      tags:
+        - Stops
+      summary: Create a new stop
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateStopPayload'
+      responses:
+        '201':
+          description: Stop created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Stop'
+                  message:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /stops/{id}:
+    get:
+      tags:
+        - Stops
+      summary: Get stop by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Stop'
+                  message:
+                    type: string
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    put:
+      tags:
+        - Stops
+      summary: Update stop
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateStopPayload'
+      responses:
+        '200':
+          description: Stop updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Stop'
+                  message:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      tags:
+        - Stops
+      summary: Delete stop
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Stop deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /maps/directions:
+    post:
+      tags:
+        - Maps
+      summary: Get directions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DirectionsRequest'
+            example:
+              origin: "10.7345,106.7212"
+              destination: "10.6972,106.7041"
+              waypoints:
+                - location: "10.7408,106.7075"
+              mode: "driving"
+              language: "vi"
+              units: "metric"
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/DirectionsResponse'
+                  message:
+                    type: string
+              example:
+                success: true
+                data:
+                  polyline: "encoded_polyline"
+                  legs:
+                    - distance: 5234
+                      duration: 900
+                      start_address: "Ngã tư Nguyễn Văn Linh"
+                      end_address: "Khu dân cư Phú Xuân"
+                  distance: 5234
+                  duration: 900
+                  cached: false
+                message: "Lấy directions thành công"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /maps/distance-matrix:
+    post:
+      tags:
+        - Maps
+      summary: Get distance matrix
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DistanceMatrixRequest'
+            example:
+              origins:
+                - "10.7345,106.7212"
+              destinations:
+                - "10.6972,106.7041"
+              mode: "driving"
+              language: "vi"
+              units: "metric"
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/DistanceMatrixResponse'
+                  message:
+                    type: string
+              example:
+                success: true
+                data:
+                  rows:
+                    - - distance: 5234
+                        duration: 900
+                        status: "OK"
+                  origin_addresses:
+                    - "Ngã tư Nguyễn Văn Linh, Quận 7"
+                  destination_addresses:
+                    - "Khu dân cư Phú Xuân, Nhà Bè"
+                  cached: true
+                message: "Lấy distance matrix thành công"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /maps/geocode:
+    post:
+      tags:
+        - Maps
+      summary: Geocode address to coordinates
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GeocodeRequest'
+            example:
+              address: "Ngã tư Nguyễn Văn Linh, Quận 7, TP.HCM"
+              language: "vi"
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/GeocodeResponse'
+                  message:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /maps/reverse-geocode:
+    post:
+      tags:
+        - Maps
+      summary: Reverse geocode coordinates to address
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - latlng
+              properties:
+                latlng:
+                  type: string
+                  example: "10.7345,106.7212"
+                language:
+                  type: string
+                  default: "vi"
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/GeocodeResponse'
+                  message:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /maps/roads/snap:
+    post:
+      tags:
+        - Maps
+      summary: Snap path to roads
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoadsSnapRequest'
+            example:
+              path:
+                - lat: 10.7345
+                  lng: 106.7212
+                - lat: 10.7408
+                  lng: 106.7075
+              interpolate: true
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/RoadsSnapResponse'
+                  message:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  schemas:
+    Route:
+      type: object
+      properties:
+        maTuyen:
+          type: integer
+        tenTuyen:
+          type: string
+        diemBatDau:
+          type: string
+        diemKetThuc:
+          type: string
+        thoiGianUocTinh:
+          type: integer
+        origin_lat:
+          type: number
+          format: float
+        origin_lng:
+          type: number
+          format: float
+        dest_lat:
+          type: number
+          format: float
+        dest_lng:
+          type: number
+          format: float
+        polyline:
+          type: string
+          nullable: true
+        trangThai:
+          type: boolean
+        ngayTao:
+          type: string
+          format: date-time
+        ngayCapNhat:
+          type: string
+          format: date-time
+
+    Stop:
+      type: object
+      properties:
+        maDiem:
+          type: integer
+        tenDiem:
+          type: string
+        viDo:
+          type: number
+          format: float
+        kinhDo:
+          type: number
+          format: float
+        address:
+          type: string
+          nullable: true
+        scheduled_time:
+          type: string
+          format: time
+          nullable: true
+        ngayTao:
+          type: string
+          format: date-time
+        ngayCapNhat:
+          type: string
+          format: date-time
+
+    RouteStop:
+      type: object
+      properties:
+        route_id:
+          type: integer
+        stop_id:
+          type: integer
+        sequence:
+          type: integer
+        dwell_seconds:
+          type: integer
+
+    RouteStopDetail:
+      allOf:
+        - $ref: '#/components/schemas/Stop'
+        - type: object
+          properties:
+            sequence:
+              type: integer
+            dwell_seconds:
+              type: integer
+
+    RouteDetail:
+      allOf:
+        - $ref: '#/components/schemas/Route'
+        - type: object
+          properties:
+            stops:
+              type: array
+              items:
+                $ref: '#/components/schemas/RouteStopDetail'
+            schedules:
+              type: array
+              items:
+                type: object
+
+    CreateRoutePayload:
+      type: object
+      required:
+        - tenTuyen
+        - diemBatDau
+        - diemKetThuc
+      properties:
+        tenTuyen:
+          type: string
+        diemBatDau:
+          type: string
+        diemKetThuc:
+          type: string
+        thoiGianUocTinh:
+          type: integer
+        origin_lat:
+          type: number
+          format: float
+        origin_lng:
+          type: number
+          format: float
+        dest_lat:
+          type: number
+          format: float
+        dest_lng:
+          type: number
+          format: float
+        polyline:
+          type: string
+        trangThai:
+          type: boolean
+          default: true
+
+    UpdateRoutePayload:
+      type: object
+      properties:
+        tenTuyen:
+          type: string
+        diemBatDau:
+          type: string
+        diemKetThuc:
+          type: string
+        thoiGianUocTinh:
+          type: integer
+        origin_lat:
+          type: number
+          format: float
+        origin_lng:
+          type: number
+          format: float
+        dest_lat:
+          type: number
+          format: float
+        dest_lng:
+          type: number
+          format: float
+        polyline:
+          type: string
+        trangThai:
+          type: boolean
+
+    CreateStopPayload:
+      type: object
+      required:
+        - tenDiem
+        - viDo
+        - kinhDo
+      properties:
+        tenDiem:
+          type: string
+        viDo:
+          type: number
+          format: float
+        kinhDo:
+          type: number
+          format: float
+        address:
+          type: string
+        scheduled_time:
+          type: string
+          format: time
+
+    UpdateStopPayload:
+      type: object
+      properties:
+        tenDiem:
+          type: string
+        viDo:
+          type: number
+          format: float
+        kinhDo:
+          type: number
+          format: float
+        address:
+          type: string
+        scheduled_time:
+          type: string
+          format: time
+
+    ReorderStopsPayload:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required:
+              - stop_id
+              - sequence
+            properties:
+              stop_id:
+                type: integer
+              sequence:
+                type: integer
+
+    DirectionsRequest:
+      type: object
+      required:
+        - origin
+        - destination
+      properties:
+        origin:
+          type: string
+        destination:
+          type: string
+        waypoints:
+          type: array
+          items:
+            type: object
+            properties:
+              location:
+                type: string
+        mode:
+          type: string
+          enum: [driving, walking, bicycling, transit]
+          default: driving
+        alternatives:
+          type: boolean
+          default: false
+        avoid:
+          type: array
+          items:
+            type: string
+          enum: [tolls, highways, ferries, indoor]
+        language:
+          type: string
+          default: vi
+        units:
+          type: string
+          enum: [metric, imperial]
+          default: metric
+
+    DirectionsResponse:
+      type: object
+      properties:
+        polyline:
+          type: string
+        legs:
+          type: array
+          items:
+            type: object
+            properties:
+              distance:
+                type: integer
+              duration:
+                type: integer
+              start_address:
+                type: string
+              end_address:
+                type: string
+              start_location:
+                type: object
+                properties:
+                  lat:
+                    type: number
+                  lng:
+                    type: number
+              end_location:
+                type: object
+                properties:
+                  lat:
+                    type: number
+                  lng:
+                    type: number
+        distance:
+          type: integer
+        duration:
+          type: integer
+        cached:
+          type: boolean
+
+    DistanceMatrixRequest:
+      type: object
+      required:
+        - origins
+        - destinations
+      properties:
+        origins:
+          type: array
+          items:
+            type: string
+        destinations:
+          type: array
+          items:
+            type: string
+        mode:
+          type: string
+          enum: [driving, walking, bicycling, transit]
+          default: driving
+        avoid:
+          type: array
+          items:
+            type: string
+        language:
+          type: string
+          default: vi
+        units:
+          type: string
+          enum: [metric, imperial]
+          default: metric
+        departure_time:
+          type: integer
+        traffic_model:
+          type: string
+          enum: [best_guess, pessimistic, optimistic]
+
+    DistanceMatrixResponse:
+      type: object
+      properties:
+        rows:
+          type: array
+          items:
+            type: array
+            items:
+              type: object
+              properties:
+                distance:
+                  type: integer
+                  nullable: true
+                duration:
+                  type: integer
+                  nullable: true
+                status:
+                  type: string
+        origin_addresses:
+          type: array
+          items:
+            type: string
+        destination_addresses:
+          type: array
+          items:
+            type: string
+        cached:
+          type: boolean
+
+    GeocodeRequest:
+      type: object
+      properties:
+        address:
+          type: string
+        latlng:
+          type: string
+        language:
+          type: string
+          default: vi
+
+    GeocodeResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              formatted_address:
+                type: string
+              geometry:
+                type: object
+                properties:
+                  location:
+                    type: object
+                    properties:
+                      lat:
+                        type: number
+                      lng:
+                        type: number
+                  location_type:
+                    type: string
+              place_id:
+                type: string
+              types:
+                type: array
+                items:
+                  type: string
+        cached:
+          type: boolean
+
+    RoadsSnapRequest:
+      type: object
+      required:
+        - path
+      properties:
+        path:
+          type: array
+          items:
+            type: object
+            required:
+              - lat
+              - lng
+            properties:
+              lat:
+                type: number
+              lng:
+                type: number
+        interpolate:
+          type: boolean
+          default: true
+
+    RoadsSnapResponse:
+      type: object
+      properties:
+        snappedPolyline:
+          type: array
+          items:
+            type: object
+            properties:
+              location:
+                type: object
+                properties:
+                  lat:
+                    type: number
+                  lng:
+                    type: number
+              originalIndex:
+                type: integer
+              placeId:
+                type: string
+        cached:
+          type: boolean
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        totalPages:
+          type: integer
+
+    RouteListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Route'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+        message:
+          type: string
+
+    RouteDetailResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/RouteDetail'
+        message:
+          type: string
+
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: "MISSING_REQUIRED_FIELDS"
+              message: "Missing required fields"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: "ROUTE_NOT_FOUND"
+              message: "Không tìm thấy tuyến đường"
+
+    Conflict:
+      description: Resource conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: "DUPLICATE_ROUTE_NAME"
+              message: "Tên tuyến đường đã tồn tại"
+
+    RateLimitExceeded:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: "RATE_LIMIT_EXCEEDED"
+              message: "Too many requests, please try again later"
+
+    ServiceUnavailable:
+      description: Service unavailable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: "MAPS_API_NOT_CONFIGURED"
+              message: "Maps API key chưa được cấu hình"
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: "INTERNAL_ERROR"
+              message: "Lỗi server"
+
+# TODO: Add security schemes when authentication is implemented
+# security:
+#   - bearerAuth: []
+

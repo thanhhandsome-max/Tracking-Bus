@@ -1,0 +1,215 @@
+{
+  "socketService": {
+    "file": "ssb-frontend/lib/socket.ts",
+    "serverURL": "process.env.NEXT_PUBLIC_SOCKET_URL || http://localhost:4000",
+    "events": {
+      "emit": {
+        "join_trip": {
+          "description": "Join trip room",
+          "payload": "tripId: number | string",
+          "usedIn": ["app/driver/trip/[id]/page.tsx"]
+        },
+        "leave_trip": {
+          "description": "Leave trip room",
+          "payload": "tripId: number | string",
+          "usedIn": ["app/driver/trip/[id]/page.tsx"]
+        },
+        "join_route": {
+          "description": "Join route room for route_updated events",
+          "payload": "routeId: number | string",
+          "usedIn": ["app/admin/routes/[id]/page.tsx"]
+        },
+        "leave_route": {
+          "description": "Leave route room",
+          "payload": "routeId: number | string",
+          "usedIn": ["app/admin/routes/[id]/page.tsx"]
+        },
+        "driver_gps": {
+          "description": "Send GPS position from driver",
+          "payload": "{ tripId, lat, lng, speed?, heading? }",
+          "usedIn": ["hooks/use-gps.ts", "app/driver/trip/[id]/page.tsx"]
+        },
+        "update_bus_location": {
+          "description": "Update bus location",
+          "payload": "{ busId, latitude, longitude, speed?, direction?, timestamp? }",
+          "usedIn": ["lib/socket.ts"]
+        },
+        "update_trip_status": {
+          "description": "Update trip status",
+          "payload": "{ tripId, status, note?, timestamp? }",
+          "usedIn": ["lib/socket.ts"]
+        },
+        "update_student_status": {
+          "description": "Update student status in trip",
+          "payload": "{ tripId, studentId, status, note?, timestamp? }",
+          "usedIn": ["lib/socket.ts"]
+        }
+      },
+      "listen": {
+        "connect": {
+          "description": "Socket connected",
+          "usedIn": ["lib/socket.ts", "app/driver/trip/[id]/page.tsx"]
+        },
+        "disconnect": {
+          "description": "Socket disconnected",
+          "usedIn": ["lib/socket.ts"]
+        },
+        "connect_error": {
+          "description": "Connection error",
+          "usedIn": ["lib/socket.ts"]
+        },
+        "bus_location_update": {
+          "description": "Bus position updated",
+          "usedIn": ["lib/socket.ts", "hooks/use-socket.ts"]
+        },
+        "bus_position_update": {
+          "description": "Alias for bus_location_update",
+          "usedIn": ["lib/socket.ts"]
+        },
+        "trip_started": {
+          "description": "Trip started",
+          "usedIn": ["lib/socket.ts", "app/driver/trip/[id]/page.tsx"]
+        },
+        "trip_completed": {
+          "description": "Trip completed",
+          "usedIn": ["lib/socket.ts", "app/driver/trip/[id]/page.tsx"]
+        },
+        "trip_status_update": {
+          "description": "Trip status changed",
+          "usedIn": ["lib/socket.ts"]
+        },
+        "approach_stop": {
+          "description": "Bus approaching stop (within 60m)",
+          "usedIn": ["lib/socket.ts", "hooks/use-socket.ts"]
+        },
+        "delay_alert": {
+          "description": "Trip delay alert (>5min late)",
+          "usedIn": ["lib/socket.ts", "hooks/use-socket.ts"]
+        },
+        "route_updated": {
+          "description": "Route updated (polyline rebuilt)",
+          "usedIn": ["lib/socket.ts", "app/admin/routes/[id]/page.tsx"]
+        },
+        "student_status_update": {
+          "description": "Student status changed",
+          "usedIn": ["lib/socket.ts"]
+        },
+        "location_update_success": {
+          "description": "Location update acknowledged",
+          "usedIn": ["lib/socket.ts"]
+        },
+        "gps_ack": {
+          "description": "GPS update acknowledged",
+          "usedIn": ["hooks/use-gps.ts"]
+        },
+        "admin_notification": {
+          "description": "Admin notification",
+          "usedIn": ["lib/socket.ts"]
+        },
+        "parent_notification": {
+          "description": "Parent notification",
+          "usedIn": ["lib/socket.ts"]
+        },
+        "notification:new": {
+          "description": "New notification",
+          "usedIn": ["lib/socket.ts"]
+        }
+      }
+    }
+  },
+  "backendSocket": {
+    "file": "ssb-backend/src/ws/index.js",
+    "events": {
+      "handle": {
+        "connection": {
+          "description": "Client connected",
+          "auth": "JWT token required"
+        },
+        "disconnect": {
+          "description": "Client disconnected"
+        },
+        "ping": {
+          "description": "Ping from client",
+          "response": "pong"
+        },
+        "join_trip": {
+          "description": "Join trip room",
+          "response": "trip_joined"
+        },
+        "leave_trip": {
+          "description": "Leave trip room",
+          "response": "trip_left"
+        },
+        "join_route": {
+          "description": "Join route room",
+          "response": "route_joined"
+        },
+        "leave_route": {
+          "description": "Leave route room",
+          "response": "route_left"
+        },
+        "driver_gps": {
+          "description": "GPS update from driver",
+          "handler": "TelemetryService.updatePosition()",
+          "response": "gps_ack"
+        },
+        "bus_position_update": {
+          "description": "Legacy bus position update",
+          "broadcast": "trip-{tripId} room"
+        }
+      },
+      "emit": {
+        "welcome": {
+          "description": "Welcome message on connection",
+          "room": "user-{userId}"
+        },
+        "trip_joined": {
+          "description": "Trip room joined confirmation"
+        },
+        "trip_left": {
+          "description": "Trip room left confirmation"
+        },
+        "route_joined": {
+          "description": "Route room joined confirmation"
+        },
+        "route_left": {
+          "description": "Route room left confirmation"
+        },
+        "bus_position_update": {
+          "description": "Broadcast bus position",
+          "room": "trip-{tripId}",
+          "source": "TelemetryService"
+        },
+        "approach_stop": {
+          "description": "Bus approaching stop",
+          "room": "trip-{tripId}",
+          "source": "TelemetryService.checkGeofence()",
+          "antiSpam": true
+        },
+        "delay_alert": {
+          "description": "Trip delay alert",
+          "room": "trip-{tripId}",
+          "source": "TelemetryService.checkDelay()",
+          "throttle": "3 minutes"
+        },
+        "gps_ack": {
+          "description": "GPS update acknowledgment",
+          "room": "user-{userId}"
+        }
+      }
+    }
+  },
+  "rooms": {
+    "user-{userId}": "User personal room",
+    "trip-{tripId}": "Trip tracking room",
+    "bus-{busId}": "Bus tracking room",
+    "route:{routeId}": "Route update room",
+    "driver-{driverId}": "Driver room",
+    "parent-{parentId}": "Parent room",
+    "admin": "Admin room",
+    "notifications-{userId}": "Notifications room"
+  },
+  "totalEvents": 30,
+  "totalRooms": 8
+}
+

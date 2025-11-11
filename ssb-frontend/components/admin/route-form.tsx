@@ -7,10 +7,14 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card } from "@/components/ui/card"
-import { Plus, Trash2, GripVertical, MapPin, Navigation, Clock } from "lucide-react"
+import { Plus, Trash2, GripVertical, MapPin, Clock, Eye, Map } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { apiClient } from "@/lib/api"
+import apiClient from "@/lib/api-client"
 import { Badge } from "@/components/ui/badge"
+import PlacePicker from "@/lib/maps/PlacePicker"
+import dynamic from "next/dynamic"
+
+const SSBMap = dynamic(() => import("@/components/map/SSBMap"), { ssr: false })
 
 type Route = { id?: string | number; name: string; stops?: any[] }
 
@@ -19,8 +23,6 @@ interface Stop {
   name: string
   address: string
   estimatedTime: string
-  latitude?: string
-  longitude?: string
 }
 
 interface RouteFormProps {
@@ -42,16 +44,18 @@ export function RouteForm({ onClose, onCreated, onUpdated, mode = "create", init
           name: s.tenDiem || s.tenDiemDung || s.name || "",
           address: s.diaChi || s.address || "",
           estimatedTime: s.thoiGianDung || s.estimatedTime || "",
-          latitude: String(s.viDo || s.latitude || ""),
-          longitude: String(s.kinhDo || s.longitude || ""),
         }))
-      : [{ id: "1", name: "", address: "", estimatedTime: "", latitude: "", longitude: "" }]
+      : [{ id: "1", name: "", address: "", estimatedTime: "" }]
   )
   const [submitting, setSubmitting] = useState(false)
+  const [showMapPreview, setShowMapPreview] = useState(false)
+  const [previewPolyline, setPreviewPolyline] = useState<string | null>(null)
+  const [previewStops, setPreviewStops] = useState<Array<{ maDiem: number; tenDiem: string; viDo: number; kinhDo: number; address?: string; sequence: number }>>([])
+  const [previewLoading, setPreviewLoading] = useState(false)
   const { toast } = useToast()
 
   const addStop = () => {
-    setStops([...stops, { id: Date.now().toString(), name: "", address: "", estimatedTime: "", latitude: "", longitude: "" }])
+    setStops([...stops, { id: Date.now().toString(), name: "", address: "", estimatedTime: "" }])
   }
 
   const removeStop = (id: string) => {
@@ -68,6 +72,93 @@ export function RouteForm({ onClose, onCreated, onUpdated, mode = "create", init
 
   const updateStop = (id: string, field: keyof Stop, value: string) => {
     setStops(stops.map((stop) => (stop.id === id ? { ...stop, [field]: value } : stop)))
+  }
+
+  const handlePreviewRoute = async () => {
+    const validStops = stops.filter((s) => s.name.trim() && s.address.trim())
+    if (validStops.length < 2) {
+      toast({
+        title: "Cần ít nhất 2 điểm dừng",
+        description: "Vui lòng thêm địa chỉ cho ít nhất 2 điểm dừng để xem trước lộ trình",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      setPreviewLoading(true)
+
+      // Geocode addresses to get coordinates
+      const geocodePromises = validStops.map((stop) => 
+        apiClient.geocode({ address: stop.address })
+      )
+      const geocodeResults = await Promise.all(geocodePromises)
+
+      const coordinates = geocodeResults.map((result, idx) => {
+        if (result.success && result.data) {
+          const location = (result.data as any)?.results?.[0]?.geometry?.location
+          if (location) {
+            return { lat: location.lat, lng: location.lng }
+          }
+        }
+        return null
+      })
+
+      if (coordinates.some(c => !c)) {
+        toast({
+          title: "Lỗi",
+          description: "Không thể lấy tọa độ từ một số địa chỉ",
+          variant: "destructive",
+        })
+        return
+      }
+
+      const origin = `${coordinates[0]!.lat},${coordinates[0]!.lng}`
+      const destination = `${coordinates[coordinates.length - 1]!.lat},${coordinates[coordinates.length - 1]!.lng}`
+      const waypoints =
+        coordinates.length > 2
+          ? coordinates.slice(1, -1).map((c) => ({
+              location: `${c!.lat},${c!.lng}`,
+            }))
+          : undefined
+
+      const response = await apiClient.getDirections({
+        origin,
+        destination,
+        waypoints,
+        mode: "driving",
+      })
+
+      if (response.success && (response.data as any)?.polyline) {
+        setPreviewPolyline((response.data as any).polyline)
+        // Set preview stops with coordinates
+        setPreviewStops(validStops.map((stop, idx) => {
+          const coord = coordinates[idx]
+          return {
+            maDiem: idx + 1,
+            tenDiem: stop.name || `Điểm ${idx + 1}`,
+            viDo: coord?.lat || 0,
+            kinhDo: coord?.lng || 0,
+            address: stop.address || undefined,
+            sequence: idx + 1,
+          }
+        }))
+        setShowMapPreview(true)
+        toast({
+          title: "Đã tạo xem trước lộ trình",
+          description: `Quãng đường: ${(response.data as any)?.distance || "N/A"}, Thời gian: ${(response.data as any)?.duration || "N/A"}`,
+        })
+      }
+    } catch (err: any) {
+      console.error("Preview route error:", err)
+      toast({
+        title: "Lỗi",
+        description: err?.message || "Không thể tạo xem trước lộ trình",
+        variant: "destructive",
+      })
+    } finally {
+      setPreviewLoading(false)
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -93,27 +184,15 @@ export function RouteForm({ onClose, onCreated, onUpdated, mode = "create", init
       return
     }
 
-    // Validate GPS coordinates if provided
+    // Validate addresses
     for (const stop of validStops) {
-      if (stop.latitude && stop.longitude) {
-        const lat = parseFloat(stop.latitude)
-        const lng = parseFloat(stop.longitude)
-        if (isNaN(lat) || lat < -90 || lat > 90) {
-          toast({
-            title: "Lỗi",
-            description: `Vĩ độ không hợp lệ tại điểm "${stop.name}"`,
-            variant: "destructive",
-          })
-          return
-        }
-        if (isNaN(lng) || lng < -180 || lng > 180) {
-          toast({
-            title: "Lỗi",
-            description: `Kinh độ không hợp lệ tại điểm "${stop.name}"`,
-            variant: "destructive",
-          })
-          return
-        }
+      if (!stop.address.trim()) {
+        toast({
+          title: "Lỗi",
+          description: `Vui lòng nhập địa chỉ cho điểm "${stop.name || 'chưa đặt tên'}"`,
+          variant: "destructive",
+        })
+        return
       }
     }
 
@@ -152,30 +231,56 @@ export function RouteForm({ onClose, onCreated, onUpdated, mode = "create", init
 
         if (newRouteId && validStops.length > 0) {
           // Create stops for the new route
-          const stopsPayload = validStops.map((stop, idx) => ({
-            tenDiem: stop.name.trim(),
-            diaChi: stop.address.trim() || undefined,
-            kinhDo: stop.longitude ? parseFloat(stop.longitude) : undefined,
-            viDo: stop.latitude ? parseFloat(stop.latitude) : undefined,
-            thuTu: idx + 1,
-            thoiGianDung: stop.estimatedTime || undefined,
-          }))
-
-          // Add stops one by one
-          for (const stopPayload of stopsPayload) {
-            if (stopPayload.tenDiem && stopPayload.kinhDo && stopPayload.viDo) {
-              try {
-                await apiClient.addRouteStop(newRouteId, stopPayload)
-              } catch (err) {
-                console.error("Lỗi khi thêm điểm dừng:", err)
+          // Geocode addresses if needed
+          for (const stop of validStops) {
+            try {
+              const stopPayload: any = {
+                tenDiem: stop.name.trim(),
+                diaChi: stop.address.trim() || undefined,
+                thuTu: validStops.indexOf(stop) + 1,
+                thoiGianDung: stop.estimatedTime || undefined,
               }
+
+              // Geocode address to get coordinates
+              if (stop.address.trim()) {
+                try {
+                  const geocodeResponse = await apiClient.geocode({ address: stop.address.trim() })
+                  if (geocodeResponse.success && geocodeResponse.data) {
+                    const location = (geocodeResponse.data as any)?.results?.[0]?.geometry?.location
+                    if (location) {
+                      stopPayload.viDo = location.lat
+                      stopPayload.kinhDo = location.lng
+                    }
+                  }
+                } catch (geocodeErr) {
+                  console.warn("Failed to geocode address:", geocodeErr)
+                  // Continue without coordinates - backend may handle it
+                }
+              }
+
+              await apiClient.addRouteStop(newRouteId, stopPayload)
+            } catch (err) {
+              console.error("Lỗi khi thêm điểm dừng:", err)
+            }
+          }
+
+          // 🆕 Tự động rebuild polyline sau khi thêm stops (giống Google Maps)
+          if (validStops.length >= 2) {
+            try {
+              await apiClient.rebuildPolyline(newRouteId)
+              console.log("✅ Auto-rebuilt polyline for new route")
+            } catch (err) {
+              console.error("Không thể tạo polyline tự động:", err)
+              // Non-fatal, route vẫn được tạo
             }
           }
         }
 
         toast({
           title: "Thành công",
-          description: "Đã thêm tuyến đường mới",
+          description: validStops.length >= 2 
+            ? "Đã thêm tuyến đường mới với lộ trình Google Maps"
+            : "Đã thêm tuyến đường mới",
         })
         onCreated?.()
         onClose()
@@ -240,10 +345,22 @@ export function RouteForm({ onClose, onCreated, onUpdated, mode = "create", init
               {stops.filter((s) => s.name.trim()).length} điểm
             </Badge>
           </div>
-          <Button type="button" variant="outline" size="sm" onClick={addStop}>
-            <Plus className="w-4 h-4 mr-2" />
-            Thêm điểm dừng
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handlePreviewRoute}
+              disabled={previewLoading || stops.filter((s) => s.name.trim() && s.address.trim()).length < 2}
+            >
+              <Eye className="w-4 h-4 mr-2" />
+              {previewLoading ? "Đang tải..." : "Xem trước lộ trình"}
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={addStop}>
+              <Plus className="w-4 h-4 mr-2" />
+              Thêm điểm dừng
+            </Button>
+          </div>
         </div>
 
         <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
@@ -259,49 +376,32 @@ export function RouteForm({ onClose, onCreated, onUpdated, mode = "create", init
                     <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary border-2 border-primary/20">
                       {index + 1}
                     </div>
-                    <Input
-                      placeholder="Tên điểm dừng *"
-                      value={stop.name}
-                      onChange={(e) => updateStop(stop.id, "name", e.target.value)}
-                      className="font-medium"
-                    />
+                    <div className="flex-1">
+                      <PlacePicker
+                        onPlaceSelected={(place) => {
+                          updateStop(stop.id, "name", place.name || "")
+                          updateStop(stop.id, "address", place.address || "")
+                        }}
+                        placeholder={`Tìm kiếm: Đại học Sài Gòn, Quận 7...`}
+                      />
+                    </div>
                   </div>
 
                   <Input
-                    placeholder="Địa chỉ chi tiết"
+                    placeholder="Hoặc nhập tên thủ công"
+                    value={stop.name}
+                    onChange={(e) => updateStop(stop.id, "name", e.target.value)}
+                    className="text-sm"
+                  />
+
+                  <Input
+                    placeholder="Địa chỉ chi tiết *"
                     value={stop.address}
                     onChange={(e) => updateStop(stop.id, "address", e.target.value)}
                   />
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Navigation className="w-3 h-3" />
-                        Vĩ độ
-                      </Label>
-                      <Input
-                        type="number"
-                        step="any"
-                        placeholder="10.762622"
-                        value={stop.latitude}
-                        onChange={(e) => updateStop(stop.id, "latitude", e.target.value)}
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Navigation className="w-3 h-3" />
-                        Kinh độ
-                      </Label>
-                      <Input
-                        type="number"
-                        step="any"
-                        placeholder="106.660172"
-                        value={stop.longitude}
-                        onChange={(e) => updateStop(stop.id, "longitude", e.target.value)}
-                      />
-                    </div>
-                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Tọa độ sẽ được tự động lấy từ địa chỉ
+                  </p>
 
                   <div className="flex items-center gap-2">
                     <Clock className="w-4 h-4 text-muted-foreground" />
@@ -340,6 +440,42 @@ export function RouteForm({ onClose, onCreated, onUpdated, mode = "create", init
           </div>
         )}
       </div>
+
+      {/* Map Preview Section */}
+      {showMapPreview && previewPolyline && (
+        <Card className="p-4 border-primary/30 bg-primary/5">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Map className="w-5 h-5 text-primary" />
+                <Label className="text-base font-semibold">Xem trước lộ trình</Label>
+                <Badge variant="outline" className="bg-success/10 text-success border-success/30">
+                  Giống Google Maps
+                </Badge>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowMapPreview(false)}
+              >
+                Ẩn bản đồ
+              </Button>
+            </div>
+            <div className="h-[400px] rounded-lg overflow-hidden border">
+              <SSBMap
+                height="400px"
+                polyline={previewPolyline}
+                stops={previewStops}
+                autoFitOnUpdate
+              />
+            </div>
+            <p className="text-xs text-muted-foreground text-center">
+              💡 Lộ trình sẽ được lưu vào database khi bạn nhấn &quot;{mode === "edit" ? "Cập nhật tuyến" : "Thêm tuyến đường"}&quot;
+            </p>
+          </div>
+        </Card>
+      )}
 
       {/* Action Buttons */}
       <div className="flex justify-end gap-3 pt-4 border-t">

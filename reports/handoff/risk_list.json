@@ -1,0 +1,215 @@
+{
+  "risks": [
+    {
+      "priority": "P0",
+      "category": "Critical",
+      "title": "Trip start/end state validation",
+      "description": "TripController must validate status before allowing start/end",
+      "file": "ssb-backend/src/controllers/TripController.js",
+      "line": "~200",
+      "status": "Fixed",
+      "mitigation": "Status checks implemented"
+    },
+    {
+      "priority": "P0",
+      "category": "Critical",
+      "title": "Proximity alert spam",
+      "description": "approach_stop event emits continuously when bus within 60m geofence",
+      "file": "ssb-backend/src/services/telemetryService.js",
+      "line": "334-387",
+      "status": "Fixed",
+      "mitigation": "Anti-spam Map<tripId, Set<stopId>> implemented"
+    },
+    {
+      "priority": "P0",
+      "category": "Critical",
+      "title": "GPS rate limiting",
+      "description": "No rate limit on driver_gps events - can spam server",
+      "file": "ssb-backend/src/services/telemetryService.js",
+      "line": "86",
+      "status": "Fixed",
+      "mitigation": "2s minimum interval enforced"
+    },
+    {
+      "priority": "P1",
+      "category": "High",
+      "title": "Maps API quota exceeded",
+      "description": "No monitoring for Google Maps API usage",
+      "file": "ssb-backend/src/services/MapsService.js",
+      "line": "7",
+      "status": "Mitigated",
+      "mitigation": "Caching + rate limiting implemented, but needs monitoring"
+    },
+    {
+      "priority": "P1",
+      "category": "High",
+      "title": "Socket.IO authentication bypass",
+      "description": "JWT validation in ws/index.js must be strict",
+      "file": "ssb-backend/src/ws/index.js",
+      "line": "49-66",
+      "status": "Fixed",
+      "mitigation": "JWT verification middleware implemented"
+    },
+    {
+      "priority": "P1",
+      "category": "High",
+      "title": "Delay alert spam",
+      "description": "delay_alert can emit too frequently",
+      "file": "ssb-backend/src/services/telemetryService.js",
+      "line": "102",
+      "status": "Fixed",
+      "mitigation": "3-minute throttle implemented"
+    },
+    {
+      "priority": "P1",
+      "category": "High",
+      "title": "Memory leak in telemetry cache",
+      "description": "busPositions Map and emittedStops Map never cleared",
+      "file": "ssb-backend/src/services/telemetryService.js",
+      "line": "154-183",
+      "status": "Fixed",
+      "mitigation": "clearTripData() called on trip end/cancel"
+    },
+    {
+      "priority": "P1",
+      "category": "High",
+      "title": "Direct Google Maps API calls from FE",
+      "description": "Some components may call Maps API directly (except Places)",
+      "file": "ssb-frontend/lib/hooks/useMaps.ts",
+      "line": "6-118",
+      "status": "Verified",
+      "mitigation": "All APIs go through backend proxy (verified)"
+    },
+    {
+      "priority": "P2",
+      "category": "Medium",
+      "title": "No error handling for Maps API failures",
+      "description": "MapsService doesn't handle API errors gracefully",
+      "file": "ssb-backend/src/services/MapsService.js",
+      "line": "~50",
+      "status": "Partial",
+      "mitigation": "Basic error handling exists, needs improvement"
+    },
+    {
+      "priority": "P2",
+      "category": "Medium",
+      "title": "Redis dependency",
+      "description": "Cache provider requires Redis but falls back to memory",
+      "file": "ssb-backend/src/core/cacheProvider.js",
+      "line": "7-8",
+      "status": "Mitigated",
+      "mitigation": "Memory fallback implemented"
+    },
+    {
+      "priority": "P2",
+      "category": "Medium",
+      "title": "No retry logic for failed API calls",
+      "description": "Frontend API calls don't retry on failure",
+      "file": "ssb-frontend/lib/api.ts",
+      "line": "61-138",
+      "status": "Partial",
+      "mitigation": "Token refresh retry exists, needs general retry"
+    },
+    {
+      "priority": "P2",
+      "category": "Medium",
+      "title": "Socket reconnection not handled",
+      "description": "Frontend doesn't handle socket reconnection gracefully",
+      "file": "ssb-frontend/lib/socket.ts",
+      "line": "66-83",
+      "status": "Partial",
+      "mitigation": "Basic reconnection exists, needs improvement"
+    },
+    {
+      "priority": "P2",
+      "category": "Medium",
+      "title": "No validation for GPS coordinates",
+      "description": "driver_gps event doesn't validate lat/lng range",
+      "file": "ssb-backend/src/ws/index.js",
+      "line": "140-168",
+      "status": "Partial",
+      "mitigation": "TelemetryService validates, but should be earlier"
+    },
+    {
+      "priority": "P2",
+      "category": "Medium",
+      "title": "Missing TypeScript types",
+      "description": "Some API responses lack TypeScript types",
+      "file": "ssb-frontend/lib/api.ts",
+      "line": "13-25",
+      "status": "Partial",
+      "mitigation": "Basic types exist, needs comprehensive types"
+    },
+    {
+      "priority": "P2",
+      "category": "Medium",
+      "title": "No rate limiting on trip start/end",
+      "description": "Driver could spam start/end trip endpoints",
+      "file": "ssb-backend/src/controllers/TripController.js",
+      "line": "~200",
+      "status": "Mitigated",
+      "mitigation": "Status validation prevents, but needs explicit rate limit"
+    },
+    {
+      "priority": "P2",
+      "category": "Low",
+      "title": "Legacy Leaflet code",
+      "description": "Leaflet map components still in codebase",
+      "file": "ssb-frontend/components/map/",
+      "line": "N/A",
+      "status": "Fixed",
+      "mitigation": "Removed in PR_MVD_REALTIME_TRIP_P0_FIXES"
+    },
+    {
+      "priority": "P2",
+      "category": "Low",
+      "title": "Console.log in production",
+      "description": "Debug logs left in production code",
+      "file": "Multiple files",
+      "line": "Various",
+      "status": "Partial",
+      "mitigation": "Should use proper logging service"
+    },
+    {
+      "priority": "P2",
+      "category": "Low",
+      "title": "No unit tests for services",
+      "description": "TelemetryService and MapsService lack unit tests",
+      "file": "ssb-backend/src/services/",
+      "line": "N/A",
+      "status": "Open",
+      "mitigation": "Add Jest tests"
+    },
+    {
+      "priority": "P2",
+      "category": "Low",
+      "title": "Hardcoded values",
+      "description": "Some magic numbers (60m geofence, 5min delay) should be configurable",
+      "file": "ssb-backend/src/services/telemetryService.js",
+      "line": "92,108",
+      "status": "Partial",
+      "mitigation": "Should use env variables"
+    },
+    {
+      "priority": "P2",
+      "category": "Low",
+      "title": "No API versioning strategy",
+      "description": "API endpoints don't have versioning",
+      "file": "ssb-backend/src/routes/",
+      "line": "N/A",
+      "status": "Mitigated",
+      "mitigation": "Currently /api/v1, but needs migration plan"
+    }
+  ],
+  "summary": {
+    "total": 20,
+    "p0": 3,
+    "p1": 5,
+    "p2": 12,
+    "fixed": 6,
+    "mitigated": 5,
+    "partial": 6,
+    "open": 3
+  }
+}
+

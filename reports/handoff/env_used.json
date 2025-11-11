@@ -1,0 +1,183 @@
+{
+  "frontend": {
+    "file": "ssb-frontend/env.example",
+    "variables": [
+      {
+        "name": "NEXT_PUBLIC_API_BASE",
+        "usedIn": [
+          "lib/api-client.ts:3",
+          "lib/api.ts:6"
+        ],
+        "default": "http://localhost:4000/api/v1",
+        "description": "Backend API base URL"
+      },
+      {
+        "name": "NEXT_PUBLIC_API_URL",
+        "usedIn": [
+          "lib/api.ts:6",
+          "lib/services/trip.service.ts:7",
+          "lib/api-client.ts:3"
+        ],
+        "default": "http://localhost:4000/api/v1",
+        "description": "Alternative API URL (fallback)"
+      },
+      {
+        "name": "NEXT_PUBLIC_GMAPS_API_KEY",
+        "usedIn": [
+          "lib/maps/googleLoader.ts:17",
+          "components/map/SSBMap.tsx:123"
+        ],
+        "required": true,
+        "description": "Google Maps JavaScript API key"
+      },
+      {
+        "name": "NEXT_PUBLIC_SOCKET_URL",
+        "usedIn": [
+          "lib/socket.ts:4"
+        ],
+        "default": "http://localhost:4000",
+        "description": "Socket.IO server URL"
+      },
+      {
+        "name": "NEXT_PUBLIC_TEST_TRIP_ID",
+        "usedIn": [
+          "app/driver/trip/[id]/page.tsx:209"
+        ],
+        "optional": true,
+        "description": "Test trip ID for development"
+      },
+      {
+        "name": "NEXT_PUBLIC_API_ORIGIN",
+        "usedIn": [
+          "hooks/use-gps.ts:6"
+        ],
+        "default": "http://localhost:4000",
+        "description": "API origin for GPS service"
+      },
+      {
+        "name": "NODE_ENV",
+        "usedIn": [
+          "lib/providers/QueryProvider.tsx:27"
+        ],
+        "description": "Environment mode (development/production)"
+      }
+    ]
+  },
+  "backend": {
+    "file": "env.example (root)",
+    "variables": [
+      {
+        "name": "PORT",
+        "usedIn": [
+          "ssb-backend/src/server.ts:288"
+        ],
+        "default": "4000",
+        "description": "Server port"
+      },
+      {
+        "name": "NODE_ENV",
+        "usedIn": [
+          "ssb-backend/src/ws/index.js:55"
+        ],
+        "default": "development",
+        "description": "Environment mode"
+      },
+      {
+        "name": "HOST",
+        "usedIn": [
+          "ssb-backend/src/server.ts:288"
+        ],
+        "default": "0.0.0.0",
+        "description": "Server host"
+      },
+      {
+        "name": "MAPS_API_KEY",
+        "usedIn": [
+          "ssb-backend/src/services/MapsService.js:7"
+        ],
+        "required": true,
+        "description": "Google Maps API key for backend proxy"
+      },
+      {
+        "name": "CACHE_TTL_DIRECTIONS",
+        "usedIn": [
+          "ssb-backend/src/services/MapsService.js:12"
+        ],
+        "default": "21600",
+        "description": "Directions cache TTL (seconds)"
+      },
+      {
+        "name": "CACHE_TTL_DISTANCE_MATRIX",
+        "usedIn": [
+          "ssb-backend/src/services/MapsService.js:13"
+        ],
+        "default": "120",
+        "description": "Distance Matrix cache TTL (seconds)"
+      },
+      {
+        "name": "CACHE_TTL_GEOCODE",
+        "usedIn": [
+          "ssb-backend/src/services/MapsService.js:14"
+        ],
+        "default": "86400",
+        "description": "Geocode cache TTL (seconds)"
+      },
+      {
+        "name": "CACHE_TTL_ROADS",
+        "usedIn": [
+          "ssb-backend/src/services/MapsService.js:15"
+        ],
+        "default": "900",
+        "description": "Roads Snap cache TTL (seconds)"
+      },
+      {
+        "name": "CACHE_DRIVER",
+        "usedIn": [
+          "ssb-backend/src/core/cacheProvider.js:7"
+        ],
+        "default": "memory",
+        "description": "Cache driver (memory/redis)"
+      },
+      {
+        "name": "REDIS_URL",
+        "usedIn": [
+          "ssb-backend/src/core/cacheProvider.js:8"
+        ],
+        "default": "redis://localhost:6379",
+        "description": "Redis connection URL"
+      },
+      {
+        "name": "RL_WINDOW",
+        "usedIn": [
+          "ssb-backend/src/middlewares/mapsLimiter.js:22,50,78,106"
+        ],
+        "default": "60",
+        "description": "Rate limit window (seconds)"
+      },
+      {
+        "name": "RL_MAX_MATRIX",
+        "usedIn": [
+          "ssb-backend/src/middlewares/mapsLimiter.js:23,79"
+        ],
+        "default": "60",
+        "description": "Max requests per window for Distance Matrix"
+      },
+      {
+        "name": "RL_MAX_DIRECTIONS",
+        "usedIn": [
+          "ssb-backend/src/middlewares/mapsLimiter.js:51,107"
+        ],
+        "default": "30",
+        "description": "Max requests per window for Directions"
+      }
+    ]
+  },
+  "summary": {
+    "frontendVariables": 7,
+    "backendVariables": 13,
+    "totalVariables": 20,
+    "requiredVariables": 2,
+    "note": "Values not included for security - see env.example files"
+  }
+}
+

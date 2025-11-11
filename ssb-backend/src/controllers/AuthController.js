@@ -3,6 +3,8 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import NguoiDungModel from "../models/NguoiDungModel.js";
 import TaiXeModel from "../models/TaiXeModel.js";
+import * as response from "../utils/response.js";
+import config from "../config/env.js";
 
 class AuthController {
   // Đăng ký tài khoản mới
@@ -198,46 +200,34 @@ class AuthController {
 
       // Validation dữ liệu bắt buộc
       if (!email || !pass) {
-        return res.status(400).json({
-          success: false,
-          message: "Email và mật khẩu là bắt buộc",
-        });
+        return response.validationError(res, "Email và mật khẩu là bắt buộc", [
+          { field: email ? "password" : "email", message: "Trường này là bắt buộc" }
+        ]);
       }
 
       // Validation email
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(email)) {
-        return res.status(400).json({
-          success: false,
-          message: "Email không hợp lệ",
-        });
+        return response.validationError(res, "Email không hợp lệ", [
+          { field: "email", message: "Email không đúng định dạng" }
+        ]);
       }
 
       // Tìm người dùng theo email
       const user = await NguoiDungModel.getByEmail(email);
       if (!user) {
-        return res.status(401).json({
-          success: false,
-          message: "Email hoặc mật khẩu không đúng",
-        });
+        return response.unauthorized(res, "Email hoặc mật khẩu không đúng");
       }
 
       // Kiểm tra trạng thái tài khoản
       if (!user.trangThai) {
-        return res.status(403).json({
-          success: false,
-          message: "Tài khoản đã bị khóa",
-        });
+        return response.forbidden(res, "Tài khoản đã bị khóa");
       }
 
       // Kiểm tra mật khẩu
       const isPasswordValid = await bcrypt.compare(pass, user.matKhau);
       if (!isPasswordValid) {
-        return res.status(401).json({
-          success: false,
-          code: "AUTH_INVALID_CREDENTIALS",
-          message: "Email hoặc mật khẩu không đúng",
-        });
+        return response.error(res, "AUTH_INVALID_CREDENTIALS", "Email hoặc mật khẩu không đúng", 401);
       }
 
       // (1) Tạo Access Token (Ngắn hạn)
@@ -248,7 +238,7 @@ class AuthController {
           vaiTro: user.vaiTro,
         },
         process.env.JWT_SECRET,
-        { expiresIn: "15m" }
+        { expiresIn: config.jwt.expiresIn || "15m" }
       );
 
       // (2) Tạo Refresh Token (Dài hạn)
@@ -267,32 +257,25 @@ class AuthController {
         driverInfo = await TaiXeModel.getById(user.maNguoiDung);
       }
 
-      res.status(200).json({
-        success: true,
-        data: {
-          token: accessToken,
-          refreshToken,
-          user: {
-            maNguoiDung: user.maNguoiDung,
-            hoTen: user.hoTen,
-            email: user.email,
-            soDienThoai: user.soDienThoai,
-            anhDaiDien: user.anhDaiDien,
-            vaiTro: user.vaiTro,
-            trangThai: user.trangThai,
-            ngayTao: user.ngayTao,
-            ngayCapNhat: user.ngayCapNhat,
-          },
+      return response.ok(res, {
+        token: accessToken,
+        refreshToken,
+        user: {
+          maNguoiDung: user.maNguoiDung,
+          hoTen: user.hoTen,
+          email: user.email,
+          soDienThoai: user.soDienThoai,
+          anhDaiDien: user.anhDaiDien,
+          vaiTro: user.vaiTro,
+          trangThai: user.trangThai,
+          ngayTao: user.ngayTao,
+          ngayCapNhat: user.ngayCapNhat,
         },
-        message: "Đăng nhập thành công",
-      });
+        driverInfo,
+      }, null);
     } catch (error) {
       console.error("Error in AuthController.login:", error);
-      res.status(500).json({
-        success: false,
-        message: "Lỗi server khi đăng nhập",
-        error: error.message,
-      });
+      return response.serverError(res, "Lỗi server khi đăng nhập", error);
     }
   }
 
@@ -334,24 +317,16 @@ class AuthController {
         driverInfo = await TaiXeModel.getById(userId);
       }
 
-      res.status(200).json({
-        success: true,
-        data: {
-          user: {
-            ...user,
-            matKhau: undefined, // Không trả về mật khẩu
-          },
-          driverInfo,
+      return response.ok(res, {
+        user: {
+          ...user,
+          matKhau: undefined, // Không trả về mật khẩu
         },
-        message: "Lấy thông tin profile thành công",
+        driverInfo,
       });
     } catch (error) {
       console.error("Error in AuthController.getProfile:", error);
-      res.status(500).json({
-        success: false,
-        message: "Lỗi server khi lấy thông tin profile",
-        error: error.message,
-      });
+      return response.serverError(res, "Lỗi server khi lấy thông tin profile", error);
     }
   }
 
@@ -649,39 +624,23 @@ class AuthController {
       // 1. Lấy Refresh Token từ header
       const authHeader = req.headers.authorization;
       if (!authHeader || !authHeader.startsWith("Bearer ")) {
-        return res.status(401).json({
-          success: false,
-          code: "AUTH_REFRESH_401",
-          message: "Refresh token không được cung cấp",
-        });
+        return response.unauthorized(res, "Refresh token không được cung cấp");
       }
 
       const refreshToken = authHeader.substring(7);
-      console.log("--- DEBUG REFRESH ---");
-      console.log("Token received:", refreshToken);
-      console.log("Secret being used:", process.env.JWT_REFRESH_SECRET);
-      console.log("--- END DEBUG ---");
 
       // 2. Xác thực Refresh Token bằng REFRESH_SECRET
       let decoded;
       try {
         decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
       } catch (error) {
-        return res.status(401).json({
-          success: false,
-          code: "AUTH_REFRESH_401",
-          message: "Refresh token không hợp lệ hoặc đã hết hạn",
-        });
+        return response.unauthorized(res, "Refresh token không hợp lệ hoặc đã hết hạn");
       }
 
       const userId = decoded.userId;
       const user = await NguoiDungModel.getById(userId);
       if (!user || !user.trangThai) {
-        return res.status(401).json({
-          success: false,
-          code: "AUTH_REFRESH_401",
-          message: "Người dùng không tồn tại hoặc tài khoản bị khóa",
-        });
+        return response.unauthorized(res, "Người dùng không tồn tại hoặc tài khoản bị khóa");
       }
 
       const newAccessToken = jwt.sign(
@@ -691,24 +650,15 @@ class AuthController {
           vaiTro: user.vaiTro,
         },
         process.env.JWT_SECRET,
-        { expiresIn: "15m" }
+        { expiresIn: config.jwt.expiresIn || "15m" }
       );
 
-      res.status(200).json({
-        success: true,
-        data: {
-          token: newAccessToken,
-        },
-        message: "Làm mới token thành công",
+      return response.ok(res, {
+        token: newAccessToken,
       });
     } catch (error) {
       console.error("Error in AuthController.refreshToken:", error);
-      res.status(500).json({
-        success: false,
-        code: "INTERNAL_500",
-        message: "Lỗi server khi làm mới token",
-        error: error.message,
-      });
+      return response.serverError(res, "Lỗi server khi làm mới token", error);
     }
   }
 }

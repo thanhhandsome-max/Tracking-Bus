@@ -1,9 +1,11 @@
 // ScheduleController - Controller chuyên nghiệp cho quản lý lịch trình với real-time features
+import ScheduleService from "../services/ScheduleService.js";
 import LichTrinhModel from "../models/LichTrinhModel.js";
 import XeBuytModel from "../models/XeBuytModel.js";
 import TaiXeModel from "../models/TaiXeModel.js";
 import TuyenDuongModel from "../models/TuyenDuongModel.js";
 import ChuyenDiModel from "../models/ChuyenDiModel.js";
+import * as response from "../utils/response.js";
 
 class ScheduleController {
   // Lấy danh sách tất cả lịch trình
@@ -220,46 +222,57 @@ class ScheduleController {
         });
       }
 
-      // Kiểm tra xung đột lịch trình
-      const conflict = await LichTrinhModel.checkConflict(
-        maXe,
-        maTaiXe,
-        gioKhoiHanh,
-        loaiChuyen,
-        ngayChay
-      );
-      if (conflict) {
-        return res.status(409).json({
-          success: false,
-          message: "Xung đột lịch trình với xe buýt hoặc tài xế",
+      // M1-M3: Dùng ScheduleService để có conflict details
+      try {
+        const newSchedule = await ScheduleService.create({
+          maTuyen,
+          maXe,
+          maTaiXe,
+          loaiChuyen,
+          gioKhoiHanh,
+          ngayChay,
+          dangApDung: dangApDung !== false,
         });
+        return response.created(res, newSchedule);
+      } catch (serviceError) {
+        // Handle conflict with details
+        if (serviceError.message === "SCHEDULE_CONFLICT" && serviceError.conflicts) {
+          return response.error(res, "SCHEDULE_CONFLICT", "Xung đột lịch trình với xe buýt hoặc tài xế", 409, {
+            conflicts: serviceError.conflicts.map(c => ({
+              scheduleId: c.maLichTrinh,
+              conflictType: c.conflictType,
+              bus: c.bienSoXe,
+              driver: c.tenTaiXe,
+              time: c.gioKhoiHanh,
+              date: c.ngayChay,
+            }))
+          });
+        }
+        // Handle other service errors
+        if (serviceError.message === "MISSING_REQUIRED_FIELDS") {
+          return response.validationError(res, "Thiếu trường bắt buộc", [
+            { field: "maTuyen|maXe|maTaiXe|loaiChuyen|gioKhoiHanh|ngayChay", message: "Tất cả các trường này là bắt buộc" }
+          ]);
+        }
+        if (serviceError.message === "ROUTE_NOT_FOUND") {
+          return response.notFound(res, "Không tìm thấy tuyến đường");
+        }
+        if (serviceError.message === "BUS_NOT_FOUND") {
+          return response.notFound(res, "Không tìm thấy xe buýt");
+        }
+        if (serviceError.message === "DRIVER_NOT_FOUND") {
+          return response.notFound(res, "Không tìm thấy tài xế");
+        }
+        if (serviceError.message === "INVALID_TRIP_TYPE") {
+          return response.validationError(res, "Loại chuyến không hợp lệ", [
+            { field: "loaiChuyen", message: "Phải là 'don_sang' hoặc 'tra_chieu'" }
+          ]);
+        }
+        throw serviceError;
       }
-
-      const scheduleData = {
-        maTuyen,
-        maXe,
-        maTaiXe,
-        loaiChuyen,
-        gioKhoiHanh,
-        ngayChay,
-        dangApDung: dangApDung !== undefined ? dangApDung : true,
-      };
-
-      const newScheduleId = await LichTrinhModel.create(scheduleData);
-      const newSchedule = await LichTrinhModel.getById(newScheduleId);
-
-      res.status(201).json({
-        success: true,
-        data: newSchedule,
-        message: "Tạo lịch trình mới thành công",
-      });
-    } catch (error) {
-      console.error("Error in ScheduleController.create:", error);
-      res.status(500).json({
-        success: false,
-        message: "Lỗi server khi tạo lịch trình mới",
-        error: error.message,
-      });
+    } catch (err) {
+      console.error("Error in ScheduleController.create:", err);
+      return response.serverError(res, "Lỗi server khi tạo lịch trình", err);
     }
   }
 
@@ -271,118 +284,12 @@ class ScheduleController {
         req.body;
 
       if (!id) {
-        return res.status(400).json({
-          success: false,
-          message: "Mã lịch trình là bắt buộc",
-        });
+        return response.validationError(res, "Mã lịch trình là bắt buộc", [
+          { field: "id", message: "Mã lịch trình không được để trống" }
+        ]);
       }
 
-      // Kiểm tra lịch trình có tồn tại không
-      const existingSchedule = await LichTrinhModel.getById(id);
-      if (!existingSchedule) {
-        return res.status(404).json({
-          success: false,
-          message: "Không tìm thấy lịch trình",
-        });
-      }
-
-      // Validation các trường nếu có thay đổi
-      if (maTuyen) {
-        const route = await TuyenDuongModel.getById(maTuyen);
-        if (!route) {
-          return res.status(404).json({
-            success: false,
-            message: "Không tìm thấy tuyến đường",
-          });
-        }
-      }
-
-      if (maXe) {
-        const bus = await XeBuytModel.getById(maXe);
-        if (!bus) {
-          return res.status(404).json({
-            success: false,
-            message: "Không tìm thấy xe buýt",
-          });
-        }
-        if (bus.trangThai !== "hoat_dong") {
-          return res.status(400).json({
-            success: false,
-            message: "Xe buýt không đang hoạt động",
-          });
-        }
-      }
-
-      if (maTaiXe) {
-        const driver = await TaiXeModel.getById(maTaiXe);
-        if (!driver) {
-          return res.status(404).json({
-            success: false,
-            message: "Không tìm thấy tài xế",
-          });
-        }
-        if (driver.trangThai !== "hoat_dong") {
-          return res.status(400).json({
-            success: false,
-            message: "Tài xế không đang hoạt động",
-          });
-        }
-      }
-
-      if (loaiChuyen) {
-        const validTripTypes = ["don_sang", "tra_chieu"];
-        if (!validTripTypes.includes(loaiChuyen)) {
-          return res.status(400).json({
-            success: false,
-            message: "Loại chuyến phải là 'don_sang' hoặc 'tra_chieu'",
-          });
-        }
-      }
-
-      if (gioKhoiHanh) {
-        const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
-        if (!timeRegex.test(gioKhoiHanh)) {
-          return res.status(400).json({
-            success: false,
-            message: "Giờ khởi hành phải có định dạng HH:MM",
-          });
-        }
-      }
-
-      if (ngayChay) {
-        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-        if (!dateRegex.test(ngayChay)) {
-          return res.status(400).json({
-            success: false,
-            message: "Ngày chạy phải có định dạng YYYY-MM-DD",
-          });
-        }
-      }
-
-      // Kiểm tra xung đột nếu có thay đổi về xe, tài xế, giờ hoặc ngày chạy
-      const checkXe = maXe || existingSchedule.maXe;
-      const checkTaiXe = maTaiXe || existingSchedule.maTaiXe;
-      const checkGio = gioKhoiHanh || existingSchedule.gioKhoiHanh;
-      const checkLoai = loaiChuyen || existingSchedule.loaiChuyen;
-      const checkNgay = ngayChay || existingSchedule.ngayChay;
-
-      if (maXe || maTaiXe || gioKhoiHanh || loaiChuyen || ngayChay) {
-        const conflict = await LichTrinhModel.checkConflict(
-          checkXe,
-          checkTaiXe,
-          checkGio,
-          checkLoai,
-          checkNgay,
-          id
-        );
-        if (conflict) {
-          return res.status(409).json({
-            success: false,
-            message: "Xung đột lịch trình với xe buýt hoặc tài xế",
-          });
-        }
-      }
-
+      // M1-M3: Dùng ScheduleService để có conflict details
       const updateData = {};
       if (maTuyen !== undefined) updateData.maTuyen = maTuyen;
       if (maXe !== undefined) updateData.maXe = maXe;
@@ -392,29 +299,46 @@ class ScheduleController {
       if (ngayChay !== undefined) updateData.ngayChay = ngayChay;
       if (dangApDung !== undefined) updateData.dangApDung = dangApDung;
 
-      const isUpdated = await LichTrinhModel.update(id, updateData);
-
-      if (!isUpdated) {
-        return res.status(400).json({
-          success: false,
-          message: "Không thể cập nhật lịch trình",
-        });
+      try {
+        const updatedSchedule = await ScheduleService.update(id, updateData);
+        return response.ok(res, updatedSchedule);
+      } catch (serviceError) {
+        // Handle conflict with details
+        if (serviceError.message === "SCHEDULE_CONFLICT" && serviceError.conflicts) {
+          return response.error(res, "SCHEDULE_CONFLICT", "Xung đột lịch trình với xe buýt hoặc tài xế", 409, {
+            conflicts: serviceError.conflicts.map(c => ({
+              scheduleId: c.maLichTrinh,
+              conflictType: c.conflictType,
+              bus: c.bienSoXe,
+              driver: c.tenTaiXe,
+              time: c.gioKhoiHanh,
+              date: c.ngayChay,
+            }))
+          });
+        }
+        // Handle other service errors
+        if (serviceError.message === "SCHEDULE_NOT_FOUND") {
+          return response.notFound(res, "Không tìm thấy lịch trình");
+        }
+        if (serviceError.message === "ROUTE_NOT_FOUND") {
+          return response.notFound(res, "Không tìm thấy tuyến đường");
+        }
+        if (serviceError.message === "BUS_NOT_FOUND") {
+          return response.notFound(res, "Không tìm thấy xe buýt");
+        }
+        if (serviceError.message === "DRIVER_NOT_FOUND") {
+          return response.notFound(res, "Không tìm thấy tài xế");
+        }
+        if (serviceError.message === "INVALID_TRIP_TYPE") {
+          return response.validationError(res, "Loại chuyến không hợp lệ", [
+            { field: "loaiChuyen", message: "Phải là 'don_sang' hoặc 'tra_chieu'" }
+          ]);
+        }
+        throw serviceError;
       }
-
-      const updatedSchedule = await LichTrinhModel.getById(id);
-
-      res.status(200).json({
-        success: true,
-        data: updatedSchedule,
-        message: "Cập nhật lịch trình thành công",
-      });
-    } catch (error) {
-      console.error("Error in ScheduleController.update:", error);
-      res.status(500).json({
-        success: false,
-        message: "Lỗi server khi cập nhật lịch trình",
-        error: error.message,
-      });
+    } catch (err) {
+      console.error("Error in ScheduleController.update:", err);
+      return response.serverError(res, "Lỗi server khi cập nhật lịch trình", err);
     }
   }
 

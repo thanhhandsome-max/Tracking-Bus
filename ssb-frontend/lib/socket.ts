@@ -20,20 +20,34 @@ class SocketService {
       auth: {
         token: token,
       },
-      transports: ["websocket"],
+      transports: ["websocket", "polling"], // Fallback to polling if websocket fails
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionAttempts: 5,
+      timeout: 10000,
     });
 
     this.setupEventListeners();
 
     return new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error(`Không thể kết nối WebSocket đến ${SOCKET_URL}. Vui lòng kiểm tra server có đang chạy không.`));
+      }, 10000);
+
       this.socket!.on("connect", () => {
         console.log("Connected to Socket.IO server");
+        clearTimeout(timeout);
         resolve();
       });
 
       this.socket!.on("connect_error", (error) => {
         console.error("Socket.IO connection error:", error);
-        reject(error);
+        clearTimeout(timeout);
+        // Don't reject immediately, let reconnection attempts happen
+        // Only reject if it's a critical error
+        if (error.message?.includes('authentication') || error.message?.includes('unauthorized')) {
+          reject(new Error(`Lỗi xác thực WebSocket: ${error.message}`));
+        }
       });
     });
   }
@@ -43,6 +57,7 @@ class SocketService {
       this.socket.disconnect();
       this.socket = null;
     }
+    this.token = null;
   }
 
   // Convenience helpers for rooms and telemetry
@@ -51,6 +66,13 @@ class SocketService {
   }
   leaveTrip(tripId: number | string) {
     this.socket?.emit('leave_trip', tripId)
+  }
+  // P2 Fix: Join/Leave route room for route_updated events
+  joinRoute(routeId: number | string) {
+    this.socket?.emit('join_route', routeId)
+  }
+  leaveRoute(routeId: number | string) {
+    this.socket?.emit('leave_route', routeId)
   }
   sendDriverGPS(data: { tripId: number | string; lat: number; lng: number; speed?: number; heading?: number }) {
     this.socket?.emit('driver_gps', data)
@@ -72,12 +94,29 @@ class SocketService {
 
     this.socket.on("connect_error", (error) => {
       console.error("Socket.IO connection error:", error);
-      try { window.dispatchEvent(new CustomEvent("socketConnectError", { detail: error })); } catch {}
+      // Don't crash the app, just log and notify
+      try { 
+        window.dispatchEvent(new CustomEvent("socketConnectError", { 
+          detail: {
+            error,
+            message: `Lỗi kết nối WebSocket: ${error.message || 'Không thể kết nối đến server'}`,
+            url: SOCKET_URL
+          }
+        })); 
+      } catch {}
     });
 
-    // Authentication events
+    // Handle WebSocket errors gracefully
     this.socket.on("error", (error) => {
       console.error("Socket.IO error:", error);
+      try {
+        window.dispatchEvent(new CustomEvent("socketError", { 
+          detail: {
+            error,
+            message: `Lỗi WebSocket: ${error.message || 'Unknown error'}`
+          }
+        }));
+      } catch {}
     });
 
     // Bus tracking events
@@ -201,6 +240,14 @@ class SocketService {
         new CustomEvent("delayAlert", { detail: data })
       );
     });
+
+    // P2 Fix: Route updated event (for rebuild polyline)
+    this.socket.on("route_updated", (data) => {
+      console.log("Route updated:", data);
+      window.dispatchEvent(
+        new CustomEvent("routeUpdated", { detail: data })
+      );
+    });
   }
 
   // Bus tracking methods
@@ -266,6 +313,15 @@ class SocketService {
 
   getSocket(): Socket | null {
     return this.socket;
+  }
+
+  reconnect(newToken?: string) {
+    const token = newToken || this.token;
+    if (!token) {
+      console.warn("Cannot reconnect: no token available");
+      return Promise.resolve();
+    }
+    return this.connect(token);
   }
 }
 

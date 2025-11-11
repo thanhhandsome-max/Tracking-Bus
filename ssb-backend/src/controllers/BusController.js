@@ -1,4 +1,5 @@
 import BusService from "../services/BusService.js";
+import * as response from "../utils/response.js";
 
 class BusController {
   // GET /api/v1/buses
@@ -6,32 +7,40 @@ class BusController {
     try {
       const {
         page = 1,
-        limit = 10,
-        search,
+        pageSize = 10,
+        q, // search query
         status,
-        sortBy,
-        sortDir,
+        sortBy = "maXe",
+        sortOrder = "desc", // asc | desc
       } = req.query;
 
+      // Normalize query params
+      const pageNum = Math.max(1, parseInt(page) || 1);
+      const limit = Math.max(1, Math.min(200, parseInt(pageSize) || 10));
+      const search = q || req.query.search; // Support both 'q' and 'search'
+      const sortDir = sortOrder.toLowerCase() === "asc" ? "ASC" : "DESC";
+
       const result = await BusService.list({
-        page: Number(page),
-        limit: Number(limit),
+        page: pageNum,
+        limit,
         search,
         status,
         sortBy,
         sortDir,
       });
 
-      return res.status(200).json({
-        success: true,
-        data: result,
+      return response.ok(res, result.data, {
+        page: pageNum,
+        pageSize: limit,
+        total: result.pagination.total,
+        totalPages: result.pagination.totalPages,
+        sortBy,
+        sortOrder: sortOrder.toLowerCase(),
+        q: search || null,
       });
     } catch (err) {
-      console.error(err);
-      return res.status(500).json({
-        success: false,
-        message: "Lỗi server",
-      });
+      console.error("Error in BusController.list:", err);
+      return response.serverError(res, "Lỗi server khi lấy danh sách xe buýt", err);
     }
   }
 
@@ -42,22 +51,13 @@ class BusController {
       const bus = await BusService.getById(id);
 
       if (!bus) {
-        return res.status(404).json({
-          success: false,
-          message: "Không tìm thấy xe buýt",
-        });
+        return response.notFound(res, "Không tìm thấy xe buýt");
       }
 
-      return res.status(200).json({
-        success: true,
-        data: bus,
-      });
+      return response.ok(res, bus);
     } catch (err) {
-      console.error(err);
-      return res.status(500).json({
-        success: false,
-        message: "Lỗi server",
-      });
+      console.error("Error in BusController.get:", err);
+      return response.serverError(res, "Lỗi server khi lấy thông tin xe buýt", err);
     }
   }
 
@@ -128,32 +128,28 @@ class BusController {
         trangThai,
       });
 
-      return res.status(201).json({
-        success: true,
-        data: newBus,
-        message: "Tạo xe buýt thành công",
-      });
+      return response.created(res, newBus);
     } catch (err) {
-      console.error(err);
+      console.error("Error in BusController.create:", err);
 
       if (err.message === "PLATE_EXISTS") {
-        return res.status(409).json({
-          success: false,
-          message: "Biển số xe đã tồn tại",
-        });
+        return response.error(res, "PLATE_EXISTS", "Biển số xe đã tồn tại", 409);
       }
 
       if (err.message.startsWith("SEAT_COUNT_MIN_")) {
-        return res.status(400).json({
-          success: false,
-          message: `Số ghế phải >= ${err.message.split("_").pop()}`,
-        });
+        const minSeats = err.message.split("_").pop();
+        return response.validationError(res, `Số ghế phải >= ${minSeats}`, [
+          { field: "sucChua", message: `Số ghế tối thiểu là ${minSeats}` }
+        ]);
       }
 
-      return res.status(500).json({
-        success: false,
-        message: "Lỗi server",
-      });
+      if (err.message === "INVALID_STATUS") {
+        return response.validationError(res, "Trạng thái không hợp lệ", [
+          { field: "trangThai", message: "Trạng thái phải là: hoat_dong, bao_tri, hoặc ngung_hoat_dong" }
+        ]);
+      }
+
+      return response.serverError(res, "Lỗi server khi tạo xe buýt", err);
     }
   }
 
@@ -166,31 +162,31 @@ class BusController {
       const updatedBus = await BusService.update(id, payload);
 
       if (!updatedBus) {
-        return res.status(404).json({
-          success: false,
-          message: "Không tìm thấy xe buýt",
-        });
+        return response.notFound(res, "Không tìm thấy xe buýt");
       }
 
-      return res.status(200).json({
-        success: true,
-        data: updatedBus,
-        message: "Cập nhật xe buýt thành công",
-      });
+      return response.ok(res, updatedBus);
     } catch (err) {
-      console.error(err);
+      console.error("Error in BusController.update:", err);
 
       if (err.message === "PLATE_EXISTS") {
-        return res.status(409).json({
-          success: false,
-          message: "Biển số xe đã tồn tại",
-        });
+        return response.error(res, "PLATE_EXISTS", "Biển số xe đã tồn tại", 409);
       }
 
-      return res.status(500).json({
-        success: false,
-        message: "Lỗi server",
-      });
+      if (err.message.startsWith("SEAT_COUNT_MIN_")) {
+        const minSeats = err.message.split("_").pop();
+        return response.validationError(res, `Số ghế phải >= ${minSeats}`, [
+          { field: "sucChua", message: `Số ghế tối thiểu là ${minSeats}` }
+        ]);
+      }
+
+      if (err.message === "INVALID_STATUS") {
+        return response.validationError(res, "Trạng thái không hợp lệ", [
+          { field: "trangThai", message: "Trạng thái phải là: hoat_dong, bao_tri, hoặc ngung_hoat_dong" }
+        ]);
+      }
+
+      return response.serverError(res, "Lỗi server khi cập nhật xe buýt", err);
     }
   }
 
@@ -201,22 +197,13 @@ class BusController {
       const success = await BusService.remove(id);
 
       if (!success) {
-        return res.status(404).json({
-          success: false,
-          message: "Không tìm thấy xe buýt",
-        });
+        return response.notFound(res, "Không tìm thấy xe buýt");
       }
 
-      return res.status(200).json({
-        success: true,
-        message: "Xóa xe buýt thành công",
-      });
+      return response.ok(res, { id: parseInt(id), deleted: true });
     } catch (err) {
-      console.error(err);
-      return res.status(500).json({
-        success: false,
-        message: "Lỗi server",
-      });
+      console.error("Error in BusController.delete:", err);
+      return response.serverError(res, "Lỗi server khi xóa xe buýt", err);
     }
   }
 
