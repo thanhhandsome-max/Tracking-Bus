@@ -121,13 +121,24 @@ class ValidationMiddleware {
         "string.max": "Tên tuyến không được quá 255 ký tự",
         "any.required": "Tên tuyến là bắt buộc",
       }),
-      diemBatDau: Joi.string().max(255).optional(),
-      diemKetThuc: Joi.string().max(255).optional(),
-      thoiGianUocTinh: Joi.number().integer().min(1).optional(),
-      trangThai: Joi.string().valid("hoat_dong", "ngung_hoat_dong").optional(),
+      diemBatDau: Joi.string().max(255).optional().allow(null, ""),
+      diemKetThuc: Joi.string().max(255).optional().allow(null, ""),
+      thoiGianUocTinh: Joi.number().integer().min(1).optional().allow(null),
+      origin_lat: Joi.number().min(-90).max(90).optional().allow(null),
+      origin_lng: Joi.number().min(-180).max(180).optional().allow(null),
+      dest_lat: Joi.number().min(-90).max(90).optional().allow(null),
+      dest_lng: Joi.number().min(-180).max(180).optional().allow(null),
+      polyline: Joi.string().optional().allow(null, ""),
+      // trangThai: boolean (true = hoạt động, false = tạm ngừng)
+      // Chấp nhận boolean hoặc string "true"/"false", mặc định là true nếu không có
+      trangThai: Joi.alternatives().try(
+        Joi.boolean(),
+        Joi.string().valid("true", "false", "1", "0"),
+        Joi.number().valid(1, 0)
+      ).optional(),
     });
 
-    const { error } = schema.validate(req.body);
+    const { error, value } = schema.validate(req.body, { abortEarly: false });
     if (error) {
       return res.status(400).json({
         success: false,
@@ -135,6 +146,17 @@ class ValidationMiddleware {
         errors: error.details.map((detail) => detail.message),
       });
     }
+    
+    // Normalize trangThai: convert string/number to boolean
+    if (value.trangThai !== undefined) {
+      if (typeof value.trangThai === 'string') {
+        value.trangThai = value.trangThai === 'true' || value.trangThai === '1';
+      } else if (typeof value.trangThai === 'number') {
+        value.trangThai = value.trangThai === 1;
+      }
+      req.body.trangThai = value.trangThai;
+    }
+    
     next();
   }
 

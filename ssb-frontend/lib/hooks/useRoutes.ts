@@ -33,10 +33,29 @@ export function useRouteDetail(routeId: string | number | null, enabled = true) 
     queryKey: routeKeys.detail(routeId!),
     queryFn: async ({ signal }) => {
       if (!routeId) throw new Error('Route ID is required');
+      
       const response = await apiClient.getRouteById(routeId, signal);
-      if (!response.success) {
-        throw new Error(response.error?.message || 'Failed to fetch route');
+      
+      // Check if response indicates error
+      if (!response || response.success === false) {
+        const errorMsg = response?.error?.message || 'Failed to fetch route';
+        const errorCode = response?.error?.code || 'UNKNOWN_ERROR';
+        
+        // Log error for debugging (use warn to avoid Next.js error interception)
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('[useRouteDetail] API returned error:', {
+            routeId,
+            errorCode,
+            errorMessage: errorMsg,
+          });
+        }
+        
+        // Throw error so React Query can handle it
+        const error = new Error(errorMsg) as any;
+        error.code = errorCode;
+        throw error;
       }
+      
       // Ensure stops are sorted by sequence
       const data = response.data as any;
       if (data?.stops) {
@@ -46,6 +65,16 @@ export function useRouteDetail(routeId: string | number | null, enabled = true) 
     },
     enabled: enabled && !!routeId,
     staleTime: 30000,
+    retry: (failureCount, error: any) => {
+      // Don't retry on connection errors
+      if (error?.message?.includes('Không thể kết nối') || 
+          error?.code === 'ERR_NETWORK' || 
+          error?.code === 'ERR_CONNECTION_REFUSED') {
+        return false;
+      }
+      // Retry up to 2 times for other errors
+      return failureCount < 2;
+    },
   });
 }
 
@@ -75,8 +104,22 @@ export function useReorderStops() {
   return useMutation({
     mutationFn: async ({ routeId, items }: { routeId: string | number; items: Array<{ stop_id: number; sequence: number }> }) => {
       const response = await apiClient.reorderStops(routeId, items);
-      if (!response.success) {
-        throw new Error(response.error?.message || 'Failed to reorder stops');
+      if (!response || response.success === false) {
+        const errorMsg = response?.error?.message || 'Failed to reorder stops';
+        const errorCode = response?.error?.code || 'UNKNOWN_ERROR';
+        
+        // Log error for debugging (use warn and log properties individually to avoid Next.js error interception)
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('[useReorderStops] API returned error:');
+          console.warn('  RouteId:', routeId);
+          console.warn('  ErrorCode:', errorCode);
+          console.warn('  ErrorMessage:', errorMsg);
+        }
+        
+        // Throw error so React Query can handle it
+        const error = new Error(errorMsg) as any;
+        error.code = errorCode;
+        throw error;
       }
       return response;
     },
@@ -87,7 +130,8 @@ export function useReorderStops() {
       toast.success('Đã sắp xếp lại thứ tự điểm dừng');
     },
     onError: (error: Error) => {
-      toast.error(error.message || 'Lỗi khi sắp xếp lại điểm dừng');
+      const errorMessage = error instanceof Error ? error.message : 'Lỗi khi sắp xếp lại điểm dừng';
+      toast.error(errorMessage);
     },
   });
 }

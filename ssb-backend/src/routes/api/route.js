@@ -85,6 +85,15 @@ router.post(
   RouteController.addStopToRoute
 );
 
+// PUT /api/v1/routes/:id/stops/:stopId - Cập nhật điểm dừng trong tuyến đường
+router.put(
+  "/:id/stops/:stopId",
+  AuthMiddleware.authenticate,
+  AuthMiddleware.authorize("quan_tri"),
+  ValidationMiddleware.validateId,
+  RouteController.updateStopInRoute
+);
+
 // DELETE /api/v1/routes/:id/stops/:stopId - Xóa điểm dừng khỏi tuyến đường
 router.delete(
   "/:id/stops/:stopId",

@@ -9,20 +9,22 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { CalendarIcon } from "lucide-react"
+import { CalendarIcon, AlertTriangle } from "lucide-react"
 import { format } from "date-fns"
 import { vi } from "date-fns/locale"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { apiClient } from "@/lib/api"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
 interface ScheduleFormProps {
   onClose: () => void
+  onSaved?: (schedule: any) => void
   mode?: "create" | "edit"
   initialSchedule?: any
 }
 
-export function ScheduleForm({ onClose, mode = "create", initialSchedule }: ScheduleFormProps) {
+export function ScheduleForm({ onClose, onSaved, mode = "create", initialSchedule }: ScheduleFormProps) {
   const [date, setDate] = useState<Date>()
   const [route, setRoute] = useState("")
   const [bus, setBus] = useState("")
@@ -33,6 +35,17 @@ export function ScheduleForm({ onClose, mode = "create", initialSchedule }: Sche
   const [buses, setBuses] = useState<any[]>([])
   const [drivers, setDrivers] = useState<any[]>([])
   const [submitting, setSubmitting] = useState(false)
+  const [conflictError, setConflictError] = useState<{
+    message: string
+    conflicts: Array<{
+      scheduleId: number
+      conflictType: 'bus' | 'driver' | 'both'
+      bus: string
+      driver: string
+      time: string
+      date: string
+    }>
+  } | null>(null)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -59,18 +72,21 @@ export function ScheduleForm({ onClose, mode = "create", initialSchedule }: Sche
     return () => { mounted = false }
   }, [])
 
-  // Populate form when editing
+  // Populate form when editing or when routeId is provided (wizard mode)
   useEffect(() => {
     if (mode === "edit" && initialSchedule) {
       if (initialSchedule.raw?.ngayChay) {
         const [year, month, day] = initialSchedule.raw.ngayChay.split('-')
         setDate(new Date(parseInt(year), parseInt(month) - 1, parseInt(day)))
       }
-      setRoute(String(initialSchedule.routeId || initialSchedule.raw?.maTuyen || ''))
+      setRoute(String(initialSchedule.routeId || initialSchedule.raw?.maTuyen || initialSchedule.maTuyen || ''))
       setBus(String(initialSchedule.busId || initialSchedule.raw?.maXe || ''))
       setDriver(String(initialSchedule.driverId || initialSchedule.raw?.maTaiXe || ''))
       setTripType(initialSchedule.tripType || initialSchedule.raw?.loaiChuyen || '')
       setStartTime(initialSchedule.startTime || initialSchedule.raw?.gioKhoiHanh || '')
+    } else if (mode === "create" && initialSchedule?.routeId) {
+      // Pre-fill routeId in wizard mode
+      setRoute(String(initialSchedule.routeId || initialSchedule.maTuyen || ''))
     }
   }, [mode, initialSchedule])
 
@@ -88,6 +104,8 @@ export function ScheduleForm({ onClose, mode = "create", initialSchedule }: Sche
 
     try {
       setSubmitting(true)
+      setConflictError(null) // Clear previous conflicts
+      
       // Format date correctly without timezone conversion
       const yyyy = date.getFullYear()
       const mm = `${date.getMonth() + 1}`.padStart(2, '0')
@@ -105,19 +123,54 @@ export function ScheduleForm({ onClose, mode = "create", initialSchedule }: Sche
       }
       
       if (mode === "edit" && initialSchedule?.id) {
-        await apiClient.updateSchedule(initialSchedule.id, payload)
+        const response = await apiClient.updateSchedule(initialSchedule.id, payload)
         toast({ title: "Thành công", description: "Đã cập nhật lịch trình" })
+        if (onSaved && response.data) {
+          onSaved(response.data)
+        }
+        onClose()
       } else {
-        await apiClient.createSchedule(payload)
-        toast({ title: "Thành công", description: "Đã tạo lịch trình mới" })
+        try {
+          const response = await apiClient.createSchedule(payload)
+          toast({ title: "Thành công", description: "Đã tạo lịch trình mới" })
+          if (onSaved && response.data) {
+            onSaved(response.data)
+          }
+          onClose()
+        } catch (createErr: any) {
+          // Re-throw conflict errors để wizard có thể handle
+          if (createErr?.status === 409 || createErr?.response?.status === 409 || createErr?.conflict) {
+            throw createErr
+          }
+          throw createErr
+        }
       }
-      onClose()
     } catch (err: any) {
-      toast({ 
-        title: "Không thành công", 
-        description: err?.message || (mode === "edit" ? "Cập nhật lịch thất bại" : "Tạo lịch thất bại"), 
-        variant: "destructive" 
-      })
+      // M1-M3: Handle 409 conflict with details
+      if (err?.status === 409 || err?.response?.status === 409 || err?.conflict) {
+        const conflictData = err?.response?.data || err?.data || err
+        const conflicts = conflictData.details?.conflicts || conflictData.conflicts || []
+        
+        setConflictError({
+          message: conflictData.message || "Xung đột lịch trình",
+          conflicts: conflicts,
+        })
+        
+        toast({
+          title: "Xung đột lịch trình",
+          description: "Xe buýt hoặc tài xế đã có lịch trình trùng thời gian",
+          variant: "destructive",
+        })
+        
+        // Nếu có onSaved callback, không gọi nó khi có conflict
+        // Wizard sẽ handle conflict error riêng
+      } else {
+        toast({ 
+          title: "Không thành công", 
+          description: err?.message || (mode === "edit" ? "Cập nhật lịch thất bại" : "Tạo lịch thất bại"), 
+          variant: "destructive" 
+        })
+      }
     } finally {
       setSubmitting(false)
     }
@@ -125,6 +178,32 @@ export function ScheduleForm({ onClose, mode = "create", initialSchedule }: Sche
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {/* M1-M3: Conflict Error Banner */}
+      {conflictError && conflictError.conflicts.length > 0 && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Xung đột lịch trình</AlertTitle>
+          <AlertDescription className="mt-2">
+            <p className="mb-2">{conflictError.message}</p>
+            <ul className="list-disc list-inside space-y-1 text-sm">
+              {conflictError.conflicts.map((conflict, idx) => (
+                <li key={idx}>
+                  {conflict.conflictType === 'bus' && (
+                    <>Xe <strong>{conflict.bus}</strong> đã có lịch trình vào {conflict.time} ngày {conflict.date}</>
+                  )}
+                  {conflict.conflictType === 'driver' && (
+                    <>Tài xế <strong>{conflict.driver}</strong> đã có lịch trình vào {conflict.time} ngày {conflict.date}</>
+                  )}
+                  {conflict.conflictType === 'both' && (
+                    <>Xe <strong>{conflict.bus}</strong> và tài xế <strong>{conflict.driver}</strong> đã có lịch trình vào {conflict.time} ngày {conflict.date}</>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
+      )}
+
       <div className="space-y-2">
         <Label>Ngày chạy *</Label>
         <Popover>

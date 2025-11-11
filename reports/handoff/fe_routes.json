@@ -1,0 +1,169 @@
+{
+  "routes": [
+    {
+      "pathname": "/",
+      "file": "app/page.tsx",
+      "type": "page",
+      "description": "Root redirect to /login"
+    },
+    {
+      "pathname": "/login",
+      "file": "app/login/page.tsx",
+      "type": "page",
+      "description": "Login page"
+    },
+    {
+      "pathname": "/admin",
+      "file": "app/admin/page.tsx",
+      "type": "page",
+      "description": "Admin dashboard"
+    },
+    {
+      "pathname": "/admin/routes",
+      "file": "app/admin/routes/page.tsx",
+      "type": "page",
+      "description": "Routes list page",
+      "usesMap": true
+    },
+    {
+      "pathname": "/admin/routes/[id]",
+      "file": "app/admin/routes/[id]/page.tsx",
+      "type": "dynamic",
+      "description": "Route detail page with map",
+      "usesMap": true
+    },
+    {
+      "pathname": "/admin/buses",
+      "file": "app/admin/buses/page.tsx",
+      "type": "page"
+    },
+    {
+      "pathname": "/admin/drivers",
+      "file": "app/admin/drivers/page.tsx",
+      "type": "page"
+    },
+    {
+      "pathname": "/admin/students",
+      "file": "app/admin/students/page.tsx",
+      "type": "page"
+    },
+    {
+      "pathname": "/admin/schedule",
+      "file": "app/admin/schedule/page.tsx",
+      "type": "page"
+    },
+    {
+      "pathname": "/admin/tracking",
+      "file": "app/admin/tracking/page.tsx",
+      "type": "page",
+      "usesMap": true
+    },
+    {
+      "pathname": "/admin/reports",
+      "file": "app/admin/reports/page.tsx",
+      "type": "page"
+    },
+    {
+      "pathname": "/admin/notifications",
+      "file": "app/admin/notifications/page.tsx",
+      "type": "page"
+    },
+    {
+      "pathname": "/admin/profile",
+      "file": "app/admin/profile/page.tsx",
+      "type": "page"
+    },
+    {
+      "pathname": "/admin/settings",
+      "file": "app/admin/settings/page.tsx",
+      "type": "page"
+    },
+    {
+      "pathname": "/driver",
+      "file": "app/driver/page.tsx",
+      "type": "page",
+      "description": "Driver dashboard",
+      "usesMap": true
+    },
+    {
+      "pathname": "/driver/trip/[id]",
+      "file": "app/driver/trip/[id]/page.tsx",
+      "type": "dynamic",
+      "description": "Trip detail page with realtime tracking",
+      "usesMap": true
+    },
+    {
+      "pathname": "/driver/history",
+      "file": "app/driver/history/page.tsx",
+      "type": "page"
+    },
+    {
+      "pathname": "/driver/incidents",
+      "file": "app/driver/incidents/page.tsx",
+      "type": "page"
+    },
+    {
+      "pathname": "/driver/profile",
+      "file": "app/driver/profile/page.tsx",
+      "type": "page"
+    },
+    {
+      "pathname": "/driver/settings",
+      "file": "app/driver/settings/page.tsx",
+      "type": "page"
+    },
+    {
+      "pathname": "/parent",
+      "file": "app/parent/page.tsx",
+      "type": "page",
+      "description": "Parent dashboard",
+      "usesMap": true
+    },
+    {
+      "pathname": "/parent/history",
+      "file": "app/parent/history/page.tsx",
+      "type": "page"
+    },
+    {
+      "pathname": "/parent/notifications",
+      "file": "app/parent/notifications/page.tsx",
+      "type": "page"
+    },
+    {
+      "pathname": "/parent/profile",
+      "file": "app/parent/profile/page.tsx",
+      "type": "page"
+    },
+    {
+      "pathname": "/parent/settings",
+      "file": "app/parent/settings/page.tsx",
+      "type": "page"
+    }
+  ],
+  "mapUsage": {
+    "components": [
+      {
+        "name": "SSBMap",
+        "file": "components/map/SSBMap.tsx",
+        "description": "Main Google Maps component"
+      },
+      {
+        "name": "MapView",
+        "file": "components/tracking/MapView.tsx",
+        "description": "Legacy map view component"
+      }
+    ],
+    "pagesWithMaps": [
+      "/admin/routes",
+      "/admin/routes/[id]",
+      "/admin/tracking",
+      "/driver",
+      "/driver/trip/[id]",
+      "/parent"
+    ]
+  },
+  "totalRoutes": 25,
+  "dynamicRoutes": 2,
+  "pagesWithMaps": 6
+}
+

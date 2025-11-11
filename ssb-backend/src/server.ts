@@ -23,6 +23,7 @@ import {
   notFoundHandler,
   successResponse,
 } from "./middlewares/error.js";
+import { requestIdMiddleware, structuredLogger } from "./middlewares/logger.js";
 import { API_PREFIX } from "./constants/http.js";
 import authRoutes from "./routes/api/auth.js";
 import busRoutes from "./routes/api/bus.js";
@@ -36,6 +37,8 @@ import notificationRoutes from "./routes/api/notifications.js";
 import reportsRoutes from "./routes/api/reports.js";
 import mapsRoutes from "./routes/api/maps.js"; // Maps API proxy routes
 import stopRoutes from "./routes/api/stop.js"; // Stops routes
+import statsRoutes from "./routes/api/stats.route.js"; // M7: Stats routes
+import settingsRoutes from "./routes/api/settings.route.js"; // M8: Settings routes
 
 // Create Express app
 const app = express();
@@ -49,6 +52,9 @@ if (config.nodeEnv === "development") {
 } else {
   app.use(morgan("combined"));
 }
+
+// M8: Structured logging
+app.use(structuredLogger);
 
 // Security middleware
 app.use(
@@ -189,6 +195,8 @@ app.use(`${API_PREFIX}/maps`, mapsRoutes); // Maps API proxy routes
 app.use(`${API_PREFIX}/incidents`, incidentRoutes);
 app.use(`${API_PREFIX}/notifications`, notificationRoutes);
 app.use(`${API_PREFIX}/reports`, reportsRoutes);
+app.use(`${API_PREFIX}/stats`, statsRoutes); // M7: Stats routes
+app.use(`${API_PREFIX}/settings`, settingsRoutes); // M8: Settings routes
 
 // app.use(`${API_PREFIX}/reports`, (_req, res) => {
 //   res.json({
@@ -262,10 +270,15 @@ const server = createServer(app);
 
 // Initialize Socket.IO with new implementation (Day 3)
 import { initSocketIO } from "./ws/index.js";
-const io = initSocketIO(server);
-
-// Store Socket.IO instance in app for use in routes
-app.set("io", io);
+let io = null;
+if (config.websocket?.enabled !== false) {
+  io = initSocketIO(server);
+  // Store Socket.IO instance in app for use in routes
+  app.set("io", io);
+} else {
+  console.log("⚠️  WebSocket disabled (WS_ENABLED=false)");
+  app.set("io", null);
+}
 
 // 🔥 Day 5: Test Firebase connection
 import { testFirebaseConnection } from "./config/firebase.js";

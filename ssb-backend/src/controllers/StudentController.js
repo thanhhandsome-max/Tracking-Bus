@@ -1,57 +1,86 @@
 // StudentController - Controller chuyên nghiệp cho quản lý học sinh
+import StudentService from "../services/StudentService.js";
 import HocSinhModel from "../models/HocSinhModel.js";
 import NguoiDungModel from "../models/NguoiDungModel.js";
+import * as response from "../utils/response.js";
 
 class StudentController {
   // Lấy danh sách tất cả học sinh
   static async getAll(req, res) {
     try {
-      const { page = 1, limit = 10, search, lop } = req.query;
-      const offset = (page - 1) * limit;
+      const {
+        page = 1,
+        pageSize,
+        limit,
+        q, // search query
+        lop,
+        sortBy = "maHocSinh",
+        sortOrder = "desc",
+      } = req.query;
 
-      let students = await HocSinhModel.getWithParentInfo();
-      let totalCount = students.length;
+      // Normalize query params - accept both pageSize and limit
+      const pageNum = Math.max(1, parseInt(page) || 1);
+      const pageSizeValue = pageSize || limit || 10;
+      const limitValue = Math.max(1, Math.min(200, parseInt(pageSizeValue) || 10));
+      const search = q || req.query.search;
+      const sortDir = sortOrder.toLowerCase() === "asc" ? "ASC" : "DESC";
 
-      // Tìm kiếm theo tên hoặc mã học sinh
-      if (search) {
-        students = students.filter(
-          (student) =>
-            student.hoTen.toLowerCase().includes(search.toLowerCase()) ||
-            student.maHocSinh.toString().includes(search.toLowerCase())
-        );
-        totalCount = students.length;
+      // Use service if available
+      let result;
+      if (StudentService && StudentService.list) {
+        result = await StudentService.list({
+          page: pageNum,
+          limit: limitValue,
+          search,
+          lop,
+          sortBy,
+          sortDir,
+        });
+      } else {
+        // Fallback to direct model access
+        let students = await HocSinhModel.getWithParentInfo();
+        let totalCount = students.length;
+
+        if (search) {
+          students = students.filter(
+            (s) =>
+              s.hoTen?.toLowerCase().includes(search.toLowerCase()) ||
+              s.maHocSinh?.toString().includes(search.toLowerCase())
+          );
+          totalCount = students.length;
+        }
+
+        if (lop) {
+          students = students.filter((s) => s.lop === lop);
+          totalCount = students.length;
+        }
+
+        const offset = (pageNum - 1) * limitValue;
+        const paginatedStudents = students.slice(offset, offset + limitValue);
+
+        result = {
+          data: paginatedStudents,
+          pagination: {
+            page: pageNum,
+            limit: limitValue,
+            total: totalCount,
+            totalPages: Math.ceil(totalCount / limitValue),
+          },
+        };
       }
 
-      // Lọc theo lớp
-      if (lop) {
-        students = students.filter((student) => student.lop === lop);
-        totalCount = students.length;
-      }
-
-      // Phân trang
-      const paginatedStudents = students.slice(
-        offset,
-        offset + parseInt(limit)
-      );
-
-      res.status(200).json({
-        success: true,
-        data: paginatedStudents,
-        pagination: {
-          currentPage: parseInt(page),
-          totalPages: Math.ceil(totalCount / limit),
-          totalItems: totalCount,
-          itemsPerPage: parseInt(limit),
-        },
-        message: "Lấy danh sách học sinh thành công",
+      return response.ok(res, result.data, {
+        page: pageNum,
+        pageSize: limitValue,
+        total: result.pagination.total,
+        totalPages: result.pagination.totalPages,
+        sortBy,
+        sortOrder: sortOrder.toLowerCase(),
+        q: search || null,
       });
     } catch (error) {
       console.error("Error in StudentController.getAll:", error);
-      res.status(500).json({
-        success: false,
-        message: "Lỗi server khi lấy danh sách học sinh",
-        error: error.message,
-      });
+      return response.serverError(res, "Lỗi server khi lấy danh sách học sinh", error);
     }
   }
 
@@ -61,19 +90,17 @@ class StudentController {
       const { id } = req.params;
 
       if (!id) {
-        return res.status(400).json({
-          success: false,
-          message: "Mã học sinh là bắt buộc",
-        });
+        return response.validationError(res, "Mã học sinh là bắt buộc", [
+          { field: "id", message: "Mã học sinh không được để trống" }
+        ]);
       }
 
-      const student = await HocSinhModel.getById(id);
+      const student = await (StudentService && StudentService.getById 
+        ? StudentService.getById(id)
+        : HocSinhModel.getById(id));
 
       if (!student) {
-        return res.status(404).json({
-          success: false,
-          message: "Không tìm thấy học sinh",
-        });
+        return response.notFound(res, "Không tìm thấy học sinh");
       }
 
       // Lấy thông tin phụ huynh nếu có
@@ -82,21 +109,13 @@ class StudentController {
         parentInfo = await NguoiDungModel.getById(student.maPhuHuynh);
       }
 
-      res.status(200).json({
-        success: true,
-        data: {
-          ...student,
-          parentInfo,
-        },
-        message: "Lấy thông tin học sinh thành công",
+      return response.ok(res, {
+        ...student,
+        parentInfo,
       });
     } catch (error) {
       console.error("Error in StudentController.getById:", error);
-      res.status(500).json({
-        success: false,
-        message: "Lỗi server khi lấy thông tin học sinh",
-        error: error.message,
-      });
+      return response.serverError(res, "Lỗi server khi lấy thông tin học sinh", error);
     }
   }
 

@@ -347,9 +347,144 @@ node src/scripts/check_db.js
 - ✅ OpenAPI documentation
 - ✅ Postman collection export
 
+### ✅ M0 - Auth & Guard (COMPLETED)
+
+**Implemented:**
+- ✅ JWT Access + Refresh tokens
+- ✅ RBAC middleware (admin, driver, parent)
+- ✅ Response envelope chuẩn hóa
+- ✅ Socket.IO JWT handshake
+- ✅ Frontend auth flow & route guards
+- ✅ OpenAPI + Postman cho M0
+
+**Documentation:**
+- 📚 `docs/reports/M0_survey.md`
+- 📚 `docs/reports/M0_status.md`
+- 📚 `docs/reports/M0_done.md`
+
+### ✅ M1-M3 - CRUD & Scheduler (COMPLETED)
+
+**M1 - User/Asset CRUD:**
+- ✅ Buses: Full CRUD với pagination/search/sort
+- ✅ Drivers: Full CRUD với pagination/search/sort
+- ✅ Students: Full CRUD với pagination/search/sort
+
+**M2 - Routes & Stops:**
+- ✅ Routes: Full CRUD với pagination/search/sort
+- ✅ Stops: Full CRUD với pagination/search/sort
+- ✅ Stops Reorder: `PATCH /routes/:id/stops/reorder` (atomic transaction)
+
+**M3 - Scheduler:**
+- ✅ Schedules: Full CRUD với pagination/search/sort/filters
+- ✅ Conflict Detection: 409 với chi tiết (bus/driver/schedule/time/date)
+- ✅ Database Indexes: Migration script cho performance
+
+**Features:**
+- ✅ Response envelope chuẩn: `{ success, data, meta }`
+- ✅ Pagination meta: `{ page, pageSize, total, sortBy, sortOrder, q }`
+- ✅ Query params: `page`, `pageSize`, `q`, `sortBy`, `sortOrder` (asc/desc)
+- ✅ Frontend conflict UI: Banner hiển thị chi tiết conflict
+- ✅ E2E test script: `scripts/test_crud_scheduler.js`
+
+**Documentation:**
+- 📚 `docs/reports/M1-M3_survey.md`
+- 📚 `docs/reports/M1-M3_progress.md`
+- 📚 `docs/reports/M1-M3_done.md`
+- 📚 `database/04_add_m1m3_indexes.sql`
+
+**Test:**
+```bash
+# Run E2E test
+node scripts/test_crud_scheduler.js
+
+# Apply database indexes
+mysql -u root -p school_bus_system < ../database/04_add_m1m3_indexes.sql
+```
+
+### ✅ M4-M6 - Trip Lifecycle & Realtime (COMPLETED)
+
+**M4 - Trip Lifecycle:**
+- ✅ Trip CRUD: Create/Start/End/Cancel với status management
+- ✅ WS Events: `trip_created`, `trip_started`, `trip_completed`, `trip_cancelled`
+
+**M5 - Realtime GPS & Geofence:**
+- ✅ GPS Ingest: `gps:update` handler với throttle (≥2s)
+- ✅ Broadcast: `bus_position_update` đến `trip-{tripId}`, `bus-{busId}`, `role-quan_tri`
+- ✅ Geofence: `approach_stop` event khi ≤60m (configurable)
+- ✅ Delay Alert: `delay_alert` event khi trễ ≥5 phút (configurable)
+
+**M6 - Attendance:**
+- ✅ Check-in/Check-out API: `POST /trips/:id/students/:studentId/checkin|checkout`
+- ✅ WS Event: `pickup_status_update` với status `onboard|dropped`
+
+**Documentation:**
+- 📚 `docs/reports/M4-M6_survey.md`
+- 📚 `docs/reports/M4-M6_done.md`
+
+**Test:**
+```bash
+# GPS Simulator
+node scripts/ws_gps_simulator.js <tripId>
+
+# E2E Realtime Trip Test
+node scripts/test_realtime_trip.js
+```
+
+### ✅ M7 - Reporting & Analytics (COMPLETED)
+
+**Stats Endpoints:**
+- ✅ `GET /api/stats/overview` - Overall statistics với filters
+- ✅ `GET /api/stats/trips-by-day` - Daily trip statistics
+- ✅ `GET /api/stats/driver-performance` - Driver performance metrics
+- ✅ `GET /api/stats/bus-utilization` - Bus utilization (Admin only)
+- ✅ `GET /api/stats/route-punctuality` - Route punctuality (Admin only)
+
+**Features:**
+- ✅ Filters: `from`, `to`, `routeId`, `driverId`, `busId`
+- ✅ RBAC: Admin full access; Driver chỉ xem bản thân; Parent 403
+- ✅ Percentiles: P50, P95 cho delay statistics
+- ✅ Frontend Dashboard: `/admin/dashboard` với KPIs + charts + filters
+
+**Documentation:**
+- 📚 `docs/reports/M7-M8_survey.md`
+- 📚 `docs/reports/M7-M8_done.md`
+
+**Test:**
+```bash
+# E2E Stats & Settings Test
+node scripts/test_stats_settings.js
+```
+
+### ✅ M8 - Admin Settings & Hardening (COMPLETED)
+
+**Settings Endpoints:**
+- ✅ `GET /api/settings` - Get system settings (Admin only)
+- ✅ `PUT /api/settings` - Update settings với validation (Admin only)
+
+**Settings:**
+- ✅ `geofenceRadiusMeters` (20-200m, default 60m)
+- ✅ `delayThresholdMinutes` (1-30min, default 5min)
+- ✅ `realtimeThrottleSeconds` (≥1s, default 2s)
+- ✅ `mapsProvider` ("google" | "osm", default "google")
+
+**Hardening:**
+- ✅ Structured logging với requestId
+- ✅ Error handler: ẩn stack ở production
+- ✅ Rate-limit cho `/trips` POST (burst protection)
+- ✅ CORS chỉ FE_ORIGIN
+- ✅ Helmet security headers
+
+**Frontend:**
+- ✅ Settings page: `/admin/settings` với form + validation
+- ✅ Runtime apply: Settings áp dụng ngay cho geofence/delay/throttle
+
+**Documentation:**
+- 📚 `docs/reports/M7-M8_survey.md`
+- 📚 `docs/reports/M7-M8_done.md`
+
 ### 🔜 Day 4 - Socket.IO Realtime (TODO)
 
-- [ ] WebSocket authentication
+- [ ] WebSocket authentication (✅ Done in M0)
 - [ ] Emit `trip_started` event
 - [ ] Realtime GPS tracking
 - [ ] Room management (bus rooms)

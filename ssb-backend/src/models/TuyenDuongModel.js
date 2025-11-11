@@ -33,7 +33,11 @@ const TuyenDuongModel = {
     query += ` GROUP BY t.maTuyen ORDER BY t.tenTuyen`;
 
     const [rows] = await pool.query(query, params);
-    return rows;
+    // Convert MySQL TINYINT (0/1) to boolean
+    return rows.map(row => ({
+      ...row,
+      trangThai: row.trangThai === 1 || row.trangThai === true
+    }));
   },
 
   // Lấy tuyến đường theo ID (không bao gồm stops - stops sẽ lấy riêng qua RouteStopModel)
@@ -47,7 +51,11 @@ const TuyenDuongModel = {
       return null;
     }
 
-    return tuyen[0];
+    // Convert MySQL TINYINT (0/1) to boolean
+    return {
+      ...tuyen[0],
+      trangThai: tuyen[0].trangThai === 1 || tuyen[0].trangThai === true
+    };
   },
 
   // Lấy tuyến đường theo tên
@@ -56,7 +64,14 @@ const TuyenDuongModel = {
       `SELECT * FROM TuyenDuong WHERE tenTuyen = ?`,
       [tenTuyen]
     );
-    return tuyen.length > 0 ? tuyen[0] : null;
+    if (tuyen.length === 0) {
+      return null;
+    }
+    // Convert MySQL TINYINT (0/1) to boolean
+    return {
+      ...tuyen[0],
+      trangThai: tuyen[0].trangThai === 1 || tuyen[0].trangThai === true
+    };
   },
 
   // Tạo tuyến đường mới
@@ -71,12 +86,18 @@ const TuyenDuongModel = {
       dest_lat,
       dest_lng,
       polyline,
+      trangThai,
     } = data;
+    
+    // Đảm bảo trangThai mặc định là true (hoạt động) nếu không được cung cấp
+    // trangThai có thể là boolean true/false, hoặc undefined
+    const finalTrangThai = trangThai !== undefined ? (trangThai === true || trangThai === 1 || trangThai === 'true' || trangThai === '1') : true;
+    
     const [result] = await pool.query(
       `INSERT INTO TuyenDuong 
        (tenTuyen, diemBatDau, diemKetThuc, thoiGianUocTinh, 
-        origin_lat, origin_lng, dest_lat, dest_lng, polyline)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        origin_lat, origin_lng, dest_lat, dest_lng, polyline, trangThai)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         tenTuyen,
         diemBatDau,
@@ -87,6 +108,7 @@ const TuyenDuongModel = {
         dest_lat || null,
         dest_lng || null,
         polyline || null,
+        finalTrangThai,
       ]
     );
     return result.insertId;

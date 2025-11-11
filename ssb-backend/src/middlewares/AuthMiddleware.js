@@ -1,6 +1,7 @@
 // AuthMiddleware - Middleware xác thực và phân quyền
 import jwt from "jsonwebtoken";
 import NguoiDungModel from "../models/NguoiDungModel.js";
+import * as response from "../utils/response.js";
 
 class AuthMiddleware {
   // Middleware xác thực JWT token (alias: verifyToken)
@@ -9,19 +10,13 @@ class AuthMiddleware {
       const authHeader = req.headers.authorization;
 
       if (!authHeader || !authHeader.startsWith("Bearer ")) {
-        return res.status(401).json({
-          success: false,
-          message: "Token xác thực không được cung cấp",
-        });
+        return response.unauthorized(res, "Token xác thực không được cung cấp");
       }
 
       const token = authHeader.substring(7); // Bỏ "Bearer " prefix
 
       if (!token) {
-        return res.status(401).json({
-          success: false,
-          message: "Token xác thực không hợp lệ",
-        });
+        return response.unauthorized(res, "Token xác thực không hợp lệ");
       }
 
       // Xác thực token
@@ -29,18 +24,13 @@ class AuthMiddleware {
 
       // Kiểm tra người dùng có tồn tại và đang hoạt động không
       const user = await NguoiDungModel.getById(decoded.userId);
+      
       if (!user) {
-        return res.status(401).json({
-          success: false,
-          message: "Người dùng không tồn tại",
-        });
+        return response.unauthorized(res, "Người dùng không tồn tại");
       }
 
       if (!user.trangThai) {
-        return res.status(403).json({
-          success: false,
-          message: "Tài khoản đã bị khóa hoặc ngừng hoạt động",
-        });
+        return response.forbidden(res, "Tài khoản đã bị khóa hoặc ngừng hoạt động");
       }
 
       // Gắn thông tin người dùng vào request
@@ -56,24 +46,14 @@ class AuthMiddleware {
       console.error("Error in AuthMiddleware.authenticate:", error);
 
       if (error.name === "JsonWebTokenError") {
-        return res.status(401).json({
-          success: false,
-          message: "Token xác thực không hợp lệ",
-        });
+        return response.unauthorized(res, "Token xác thực không hợp lệ");
       }
 
       if (error.name === "TokenExpiredError") {
-        return res.status(401).json({
-          success: false,
-          message: "Token xác thực đã hết hạn",
-        });
+        return response.unauthorized(res, "Token xác thực đã hết hạn");
       }
 
-      return res.status(500).json({
-        success: false,
-        message: "Lỗi server khi xác thực",
-        error: error.message,
-      });
+      return response.serverError(res, "Lỗi server khi xác thực", error);
     }
   }
 
@@ -85,21 +65,13 @@ class AuthMiddleware {
     return (req, res, next) => {
       try {
         if (!req.user) {
-          return res.status(401).json({
-            success: false,
-            message: "Chưa xác thực",
-          });
+          return response.unauthorized(res, "Chưa xác thực");
         }
 
         const userRole = req.user.vaiTro;
 
         if (!allowedRoles.includes(userRole)) {
-          return res.status(403).json({
-            success: false,
-            message: "Không có quyền truy cập",
-            requiredRoles: allowedRoles,
-            currentRole: userRole,
-          });
+          return response.forbidden(res, `Không có quyền truy cập. Yêu cầu: ${allowedRoles.join(", ")}, Hiện tại: ${userRole}`);
         }
 
         next();

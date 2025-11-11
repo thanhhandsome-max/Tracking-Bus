@@ -28,6 +28,7 @@ import HocSinhModel from "../models/HocSinhModel.js";
 import NguoiDungModel from "../models/NguoiDungModel.js";
 import { syncBusLocation } from "./firebaseSync.service.js"; // 🔥 Day 5: Firebase sync
 import { notifyApproachStop, notifyDelay } from "./firebaseNotify.service.js"; // 🔥 Day 5: Push Notifications
+import SettingsService from "./settingsService.js"; // M8: Runtime settings
 
 /**
  * 🗺️ IN-MEMORY CACHE - Lưu vị trí xe bus
@@ -234,8 +235,9 @@ class TelemetryService {
       const now = Date.now();
       const lastUpdate = lastUpdateTime.get(`bus-${busId}`);
 
-      if (lastUpdate && now - lastUpdate < RATE_LIMIT_MS) {
-        const waitTime = Math.ceil((RATE_LIMIT_MS - (now - lastUpdate)) / 1000);
+      const rateLimitMs = getRateLimitMs();
+      if (lastUpdate && now - lastUpdate < rateLimitMs) {
+        const waitTime = Math.ceil((rateLimitMs - (now - lastUpdate)) / 1000);
         throw new Error(
           `Vui lòng đợi ${waitTime}s trước khi gửi vị trí tiếp theo`
         );
@@ -255,8 +257,8 @@ class TelemetryService {
       busPositions.set(`bus-${busId}`, position);
       lastUpdateTime.set(`bus-${busId}`, now);
 
-      // 📡 Emit bus_position_update
-      io.to(`trip-${tripId}`).emit("bus_position_update", {
+      // M4-M6: Broadcast bus_position_update to multiple rooms
+      const positionUpdate = {
         busId,
         tripId,
         lat,
@@ -264,7 +266,16 @@ class TelemetryService {
         speed: speed || 0,
         heading: heading || 0,
         timestamp: position.timestamp,
-      });
+      };
+
+      // Emit to trip room (parents + admin subscribed)
+      io.to(`trip-${tripId}`).emit("bus_position_update", positionUpdate);
+      
+      // M4-M6: Also emit to bus room
+      io.to(`bus-${busId}`).emit("bus_position_update", positionUpdate);
+      
+      // M4-M6: Emit to role-admin for monitoring
+      io.to("role-quan_tri").emit("bus_position_update", positionUpdate);
 
       const events = ["bus_position_update"];
 
@@ -353,7 +364,8 @@ class TelemetryService {
         );
 
         // Nếu trong vòng 60m → Emit event
-        if (distance <= GEOFENCE_RADIUS) {
+        const geofenceRadius = getGeofenceRadius();
+        if (distance <= geofenceRadius) {
           // 🚏 Anti-spam: Check if this stop has already been emitted for this trip
           const tripEmittedStops = emittedStops.get(tripId) || new Set();
           
@@ -459,7 +471,8 @@ class TelemetryService {
       console.log(`   - Delay: ${Math.round(delayMin)} phút`);
 
       // Nếu trễ > 5 phút → Emit event (gửi lại sau mỗi 3 phút)
-      if (delayMin > DELAY_THRESHOLD_MIN) {
+      const delayThreshold = getDelayThresholdMin();
+      if (delayMin > delayThreshold) {
         // 🚨 Kiểm tra lần gửi cuối cùng
         const lastSent = delayAlertLastSent.get(tripId);
         const now = Date.now();

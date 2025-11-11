@@ -1,16 +1,35 @@
 // StopController - Controller cho quản lý stops (điểm dừng) độc lập
 import StopService from "../services/StopService.js";
+import * as response from "../utils/response.js";
 
 class StopController {
   // Lấy danh sách stops
   static async getAllStops(req, res) {
     try {
-      const { page = 1, limit = 10, search, minLat, maxLat, minLng, maxLng } = req.query;
+      const {
+        page = 1,
+        pageSize = 10,
+        q, // search query
+        minLat,
+        maxLat,
+        minLng,
+        maxLng,
+        sortBy = "maDiem",
+        sortOrder = "desc",
+      } = req.query;
+
+      // Normalize query params
+      const pageNum = Math.max(1, parseInt(page) || 1);
+      const limit = Math.max(1, Math.min(200, parseInt(pageSize) || 10));
+      const search = q || req.query.search;
+      const sortDir = sortOrder.toLowerCase() === "asc" ? "ASC" : "DESC";
 
       const options = {
-        page,
+        page: pageNum,
         limit,
         search,
+        sortBy,
+        sortDir,
       };
 
       // Bounding box filter
@@ -25,21 +44,18 @@ class StopController {
 
       const result = await StopService.list(options);
 
-      res.status(200).json({
-        success: true,
-        data: result.data,
-        pagination: result.pagination,
-        message: "Lấy danh sách điểm dừng thành công",
+      return response.ok(res, result.data, {
+        page: pageNum,
+        pageSize: limit,
+        total: result.pagination.total,
+        totalPages: result.pagination.totalPages,
+        sortBy,
+        sortOrder: sortOrder.toLowerCase(),
+        q: search || null,
       });
     } catch (error) {
       console.error("Error in StopController.getAllStops:", error);
-      res.status(500).json({
-        success: false,
-        error: {
-          code: "INTERNAL_ERROR",
-          message: "Lỗi server khi lấy danh sách điểm dừng",
-        },
-      });
+      return response.serverError(res, "Lỗi server khi lấy danh sách điểm dừng", error);
     }
   }
 
@@ -49,41 +65,25 @@ class StopController {
       const { id } = req.params;
 
       if (!id) {
-        return res.status(400).json({
-          success: false,
-          error: {
-            code: "MISSING_PARAMS",
-            message: "Mã điểm dừng là bắt buộc",
-          },
-        });
+        return response.validationError(res, "Mã điểm dừng là bắt buộc", [
+          { field: "id", message: "Mã điểm dừng không được để trống" }
+        ]);
       }
 
       const stop = await StopService.getById(id);
 
-      res.status(200).json({
-        success: true,
-        data: stop,
-        message: "Lấy thông tin điểm dừng thành công",
-      });
+      if (!stop) {
+        return response.notFound(res, "Không tìm thấy điểm dừng");
+      }
+
+      return response.ok(res, stop);
     } catch (error) {
       if (error.message === "STOP_NOT_FOUND") {
-        return res.status(404).json({
-          success: false,
-          error: {
-            code: "STOP_NOT_FOUND",
-            message: "Không tìm thấy điểm dừng",
-          },
-        });
+        return response.notFound(res, "Không tìm thấy điểm dừng");
       }
 
       console.error("Error in StopController.getStopById:", error);
-      res.status(500).json({
-        success: false,
-        error: {
-          code: "INTERNAL_ERROR",
-          message: "Lỗi server khi lấy thông tin điểm dừng",
-        },
-      });
+      return response.serverError(res, "Lỗi server khi lấy thông tin điểm dừng", error);
     }
   }
 

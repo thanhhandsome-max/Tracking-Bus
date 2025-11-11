@@ -41,11 +41,22 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { IncidentForm } from "@/components/driver/incident-form";
 import { useTripBusPosition, useTripAlerts } from "@/hooks/use-socket";
 import {
   startTripStrict as startTrip,
   endTrip,
+  cancelTrip,
 } from "@/lib/services/trip.service";
 import { useGPS } from "@/hooks/use-gps";
 import { apiClient } from "@/lib/api";
@@ -53,6 +64,7 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import dynamic from "next/dynamic";
 import type { StopDTO, BusMarker } from "@/components/map/SSBMap";
+import { useETA } from "@/lib/hooks/useMaps";
 
 const SSBMap = dynamic(() => import("@/components/map/SSBMap"), {
   ssr: false,
@@ -187,6 +199,7 @@ export default function TripDetailPage() {
   const [tripStatus, setTripStatus] = useState<
     "chua_khoi_hanh" | "dang_chay" | "hoan_thanh" | "huy" | undefined
   >(undefined);
+  const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
   const { toast } = useToast();
 
   // Realtime: join driver's trip room and move the vehicle marker when updates arrive
@@ -322,6 +335,22 @@ export default function TripDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tripIdNum]);
 
+  // P1 Fix: Calculate ETA for current stop using useETA hook
+  // Note: Currently using mock coordinates - in production, get actual stop coordinates from API
+  const currentStopData = trip.stops[trip.currentStop];
+  const nextStopCoords = currentStopData?.address 
+    ? null // TODO: Get actual coordinates from stop data
+    : { lat: 21.0285, lng: 105.8542 }; // Mock coordinates for demo
+  
+  const etaParams = busLocation && nextStopCoords ? {
+    origins: [`${busLocation.lat},${busLocation.lng}`],
+    destinations: [`${nextStopCoords.lat},${nextStopCoords.lng}`],
+    mode: 'driving' as const,
+    enabled: tripStatus === "dang_chay" && !!busLocation && !!nextStopCoords,
+  } : { origins: [], destinations: [], enabled: false };
+
+  const { data: etaData, isFetchedFromCacheFE, isBESaysCached } = useETA(etaParams);
+
   const currentStop = trip.stops[trip.currentStop];
   const progress = ((trip.currentStop + 1) / trip.stops.length) * 100;
 
@@ -438,6 +467,54 @@ export default function TripDetailPage() {
       setProcessing(false);
     }
   };
+
+  // P1 Fix: Cancel Trip handler
+  const handleCancelTrip = async () => {
+    try {
+      setProcessing(true);
+      setIsCancelDialogOpen(false);
+      await cancelTrip(tripIdNum);
+      stopGPS();
+      setTripStatus("huy");
+      toast({
+        title: "Đã hủy chuyến đi",
+        description: `Trip ${tripIdNum} đã được hủy`,
+        variant: "destructive",
+      });
+      // Điều hướng về giao diện chính Driver
+      router.push("/driver");
+    } catch (e) {
+      toast({
+        title: "Không thể hủy chuyến",
+        description: (e as Error)?.message || "Vui lòng thử lại",
+        variant: "destructive",
+      });
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  // Listen for trip_cancelled event
+  useEffect(() => {
+    const handleTripCancelled = (event: Event) => {
+      const data = (event as CustomEvent).detail;
+      const cancelledTripId = data?.tripId || data?.trip_id || data?.maChuyen;
+      if (cancelledTripId && Number(cancelledTripId) === effectiveTripId) {
+        toast({
+          title: "Chuyến đi đã bị hủy",
+          description: `Trip ${cancelledTripId} đã được hủy`,
+          variant: "destructive",
+        });
+        setTripStatus("huy");
+        stopGPS();
+      }
+    };
+
+    window.addEventListener("tripCancelled", handleTripCancelled as EventListener);
+    return () => {
+      window.removeEventListener("tripCancelled", handleTripCancelled as EventListener);
+    };
+  }, [effectiveTripId, toast, stopGPS]);
 
   // Một nút duy nhất, thay đổi theo trạng thái
   const isLastStop = trip.currentStop === trip.stops.length - 1;
@@ -668,6 +745,27 @@ export default function TripDetailPage() {
                   <div className="flex items-center gap-2 text-primary font-medium">
                     <TrendingUp className="w-4 h-4" />
                     ETA: {currentStop.eta}
+                    {/* P1 Fix: ETA Cached Badge */}
+                    {(() => {
+                      const isCached = isFetchedFromCacheFE || isBESaysCached;
+                      if (isCached) {
+                        const cacheSource = isFetchedFromCacheFE && isBESaysCached 
+                          ? "FE+BE" 
+                          : isFetchedFromCacheFE 
+                          ? "FE" 
+                          : "BE";
+                        return (
+                          <Badge 
+                            variant="outline" 
+                            className="text-xs bg-muted text-muted-foreground"
+                            title="Kết quả được cache 120s"
+                          >
+                            Cached ({cacheSource})
+                          </Badge>
+                        );
+                      }
+                      return null;
+                    })()}
                   </div>
                 </div>
               </CardHeader>
@@ -905,7 +1003,7 @@ export default function TripDetailPage() {
               <CardHeader>
                 <CardTitle>Thao tác</CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-3">
                 <Button
                   size="lg"
                   variant={primaryCta.variant}
@@ -916,6 +1014,40 @@ export default function TripDetailPage() {
                   <primaryCta.icon className="w-5 h-5 mr-2" />
                   {processing ? "Đang xử lý…" : primaryCta.label}
                 </Button>
+                {/* P1 Fix: Cancel Trip Button */}
+                {tripStatus === "dang_chay" && (
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    onClick={() => setIsCancelDialogOpen(true)}
+                    disabled={processing}
+                    className="w-full h-12 rounded-lg border-destructive text-destructive hover:bg-destructive/10"
+                  >
+                    <XCircle className="w-5 h-5 mr-2" />
+                    Hủy chuyến đi
+                  </Button>
+                )}
+                {/* Cancel Trip Confirmation Dialog */}
+                <AlertDialog open={isCancelDialogOpen} onOpenChange={setIsCancelDialogOpen}>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Xác nhận hủy chuyến đi</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Bạn có chắc chắn muốn hủy chuyến đi này? Hành động này không thể hoàn tác.
+                        Phụ huynh sẽ nhận được thông báo về việc hủy chuyến.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Không</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={handleCancelTrip}
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      >
+                        Xác nhận hủy
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </CardContent>
             </Card>
           </div>

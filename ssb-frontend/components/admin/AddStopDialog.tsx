@@ -19,11 +19,23 @@ import PlacePicker from '@/lib/maps/PlacePicker';
 
 interface AddStopDialogProps {
   routeId: string;
-  existingStops: Array<{ maDiem: number; tenDiem: string; viDo: number; kinhDo: number }>;
+  existingStops: Array<{ maDiem: number; tenDiem: string; viDo?: number | null | string; kinhDo?: number | null | string }>;
   currentRouteStops: StopDTO[];
   onClose: () => void;
   onAddStop: (data: { stop_id: number; sequence?: number; dwell_seconds?: number }) => void;
   onCreateStop: (data: { tenDiem: string; address?: string }) => void;
+}
+
+// Helper function to safely format coordinates
+function formatCoordinate(coord: number | null | undefined | string, decimals: number = 4): string {
+  if (coord === null || coord === undefined || coord === '') {
+    return 'N/A';
+  }
+  const num = typeof coord === 'string' ? parseFloat(coord) : coord;
+  if (isNaN(num) || !isFinite(num)) {
+    return 'N/A';
+  }
+  return num.toFixed(decimals);
 }
 
 export default function AddStopDialog({
@@ -92,7 +104,7 @@ export default function AddStopDialog({
                   ) : (
                     availableStops.map((stop) => (
                       <SelectItem key={stop.maDiem} value={String(stop.maDiem)}>
-                        {stop.tenDiem} ({stop.viDo.toFixed(4)}, {stop.kinhDo.toFixed(4)})
+                        {stop.tenDiem} ({formatCoordinate(stop.viDo)}, {formatCoordinate(stop.kinhDo)})
                       </SelectItem>
                     ))
                   )}

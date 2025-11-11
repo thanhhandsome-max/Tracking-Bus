@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useEffect, useRef, useMemo, useCallback, useState } from 'react';
 import { loadGoogleMaps, getGoogle } from '@/lib/maps/googleLoader';
+import apiClient from '@/lib/api-client';
 
 export interface StopDTO {
   maDiem: number;
@@ -67,32 +68,300 @@ function SSBMap({
     
     return { lat, lng };
   }, [center?.lat, center?.lng]);
+
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
   const polylineInstanceRef = useRef<google.maps.Polyline | null>(null);
+  const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
   const markersRef = useRef<Map<string, google.maps.Marker>>(new Map());
   const userMarkerRef = useRef<google.maps.Marker | null>(null);
   const accuracyCircleRef = useRef<google.maps.Circle | null>(null);
-  const [isLoading, setIsLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [geometryReady, setGeometryReady] = useState(false);
+  const [fetchedPolyline, setFetchedPolyline] = useState<string | null>(null);
+  const [isFetchingDirections, setIsFetchingDirections] = useState(false);
+
+  // Check if Geometry library is ready
+  const checkGeometryReady = useCallback(() => {
+    try {
+      const g = getGoogle();
+      if (g?.maps?.geometry?.encoding && typeof g.maps.geometry.encoding.decodePath === 'function') {
+        setGeometryReady(true);
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }, []);
 
   // Decode polyline using Google Maps Geometry library
   const decodePolyline = useCallback((encoded: string): google.maps.LatLng[] => {
-    if (!encoded) return [];
+    if (!encoded || !encoded.trim()) {
+      console.warn('[SSBMap] Empty polyline string');
+      return [];
+    }
+
     try {
       const g = getGoogle();
-      return g.maps.geometry.encoding.decodePath(encoded);
+      
+      // Ensure geometry library is loaded
+      if (!g?.maps?.geometry?.encoding) {
+        console.error('[SSBMap] Geometry library not loaded');
+        return [];
+      }
+
+      if (typeof g.maps.geometry.encoding.decodePath !== 'function') {
+        console.error('[SSBMap] decodePath function not available');
+        return [];
+      }
+
+      const decoded = g.maps.geometry.encoding.decodePath(encoded);
+      
+      if (!decoded || decoded.length === 0) {
+        console.warn('[SSBMap] Decoded polyline is empty');
+        return [];
+      }
+
+      console.log('[SSBMap] Successfully decoded polyline:', {
+        encodedLength: encoded.length,
+        decodedPoints: decoded.length,
+        firstPoint: decoded[0],
+        lastPoint: decoded[decoded.length - 1]
+      });
+
+      return decoded;
     } catch (err) {
-      console.error('Failed to decode polyline:', err);
+      console.error('[SSBMap] Failed to decode polyline:', err, {
+        polylineLength: encoded.length,
+        polylinePreview: encoded.substring(0, 50)
+      });
       return [];
     }
   }, []);
 
-  // Memoized polyline path
+  // Auto-fetch directions if no polyline but has stops
+  useEffect(() => {
+    // Only fetch if:
+    // 1. No polyline from backend
+    // 2. Has stops (at least 2)
+    // 3. Not already fetching
+    // 4. Not already fetched
+    // Note: Don't require mapInstanceRef to be ready, as we can fetch directions before map is ready
+    if (
+      !polyline &&
+      !fetchedPolyline &&
+      stops.length >= 2 &&
+      !isFetchingDirections
+    ) {
+      const sortedStops = [...stops].sort((a, b) => (a.sequence || 0) - (b.sequence || 0));
+      const validStops = sortedStops.filter(
+        (stop) =>
+          stop.viDo != null &&
+          stop.kinhDo != null &&
+          !isNaN(Number(stop.viDo)) &&
+          !isNaN(Number(stop.kinhDo)) &&
+          isFinite(Number(stop.viDo)) &&
+          isFinite(Number(stop.kinhDo))
+      );
+
+      if (validStops.length >= 2) {
+        // Validate coordinates before making request
+        const originLat = Number(validStops[0].viDo);
+        const originLng = Number(validStops[0].kinhDo);
+        const destLat = Number(validStops[validStops.length - 1].viDo);
+        const destLng = Number(validStops[validStops.length - 1].kinhDo);
+
+        if (
+          isNaN(originLat) || isNaN(originLng) || !isFinite(originLat) || !isFinite(originLng) ||
+          isNaN(destLat) || isNaN(destLng) || !isFinite(destLat) || !isFinite(destLng)
+        ) {
+          console.error('[SSBMap] Invalid coordinates for directions request:', {
+            origin: { lat: originLat, lng: originLng },
+            destination: { lat: destLat, lng: destLng },
+          });
+          setIsFetchingDirections(false);
+          return;
+        }
+
+        setIsFetchingDirections(true);
+        console.log('[SSBMap] Auto-fetching directions from frontend (no polyline from backend)');
+
+        // Validate coordinate ranges (latitude: -90 to 90, longitude: -180 to 180)
+        if (
+          originLat < -90 || originLat > 90 || originLng < -180 || originLng > 180 ||
+          destLat < -90 || destLat > 90 || destLng < -180 || destLng > 180
+        ) {
+          console.error('[SSBMap] Coordinates out of valid range:', {
+            origin: { lat: originLat, lng: originLng },
+            destination: { lat: destLat, lng: destLng },
+          });
+          setIsFetchingDirections(false);
+          return;
+        }
+
+        const origin = `${originLat},${originLng}`;
+        const destination = `${destLat},${destLng}`;
+        
+        // Validate origin and destination strings
+        if (!origin || origin.includes('NaN') || !destination || destination.includes('NaN')) {
+          console.error('[SSBMap] Invalid coordinates for directions request:', {
+            origin,
+            destination,
+            originLat,
+            originLng,
+            destLat,
+            destLng,
+          });
+          setIsFetchingDirections(false);
+          return;
+        }
+
+        const waypoints =
+          validStops.length > 2
+            ? validStops.slice(1, -1)
+                .map((stop) => {
+                  const lat = Number(stop.viDo);
+                  const lng = Number(stop.kinhDo);
+                  if (isNaN(lat) || isNaN(lng) || !isFinite(lat) || !isFinite(lng)) {
+                    return null;
+                  }
+                  return { location: `${lat},${lng}` };
+                })
+                .filter((wp): wp is { location: string } => wp !== null)
+            : [];
+
+        console.log('[SSBMap] Calling Directions API with:', {
+          origin,
+          destination,
+          waypointsCount: waypoints.length,
+          mode: 'driving',
+        });
+
+        // Build request payload - only include waypoints if we have them
+        const requestPayload: {
+          origin: string;
+          destination: string;
+          waypoints?: Array<{ location: string }>;
+          mode: string;
+        } = {
+            origin,
+            destination,
+            mode: 'driving',
+        };
+
+        if (waypoints.length > 0) {
+          requestPayload.waypoints = waypoints;
+        }
+
+        apiClient
+          .getDirections(requestPayload)
+          .then((response) => {
+            console.log('[SSBMap] Directions API response:', {
+              success: response.success,
+              hasData: !!response.data,
+              dataKeys: response.data ? Object.keys(response.data) : [],
+              fullResponse: response,
+            });
+
+            // Backend returns: { success: true, data: { polyline: "...", legs: [...], ... } }
+            if (response.success && response.data) {
+              const data = response.data as any;
+              
+              // Check for polyline in various possible locations
+              const newPolyline = data.polyline || data.overview_polyline?.points || null;
+              
+              if (newPolyline && typeof newPolyline === 'string' && newPolyline.trim()) {
+                console.log('[SSBMap] Successfully fetched directions, got polyline:', newPolyline.length, 'chars');
+                setFetchedPolyline(newPolyline);
+              } else {
+                console.warn('[SSBMap] Directions API did not return valid polyline:', {
+                  hasPolyline: !!data.polyline,
+                  hasOverviewPolyline: !!data.overview_polyline,
+                  polylineType: typeof data.polyline,
+                  dataStructure: data,
+                });
+              }
+            } else {
+              console.warn('[SSBMap] Directions API response not successful or missing data:', response);
+            }
+          })
+          .catch((err: any) => {
+            console.error('[SSBMap] Error fetching directions:', {
+              message: err?.message,
+              response: err?.response?.data,
+              status: err?.response?.status,
+              error: err?.response?.data?.error,
+            });
+            
+            // Log the request that failed for debugging
+            console.error('[SSBMap] Failed request details:', {
+              origin,
+              destination,
+              waypointsCount: waypoints.length,
+            });
+            
+            // Check for connection errors and provide helpful message
+            if (err?.message === 'Network Error' || err?.code === 'ERR_NETWORK' || err?.code === 'ERR_CONNECTION_REFUSED') {
+              console.error('[SSBMap] ⚠️ Backend server không chạy hoặc không thể kết nối!');
+              console.error('[SSBMap] 💡 Hãy kiểm tra:');
+              console.error('[SSBMap]   1. Backend server có đang chạy không? (cd ssb-backend && npm run dev)');
+              console.error('[SSBMap]   2. Backend có chạy trên port 4000 không?');
+              console.error('[SSBMap]   3. Thử truy cập: http://localhost:4000/api/v1/health');
+            }
+          })
+          .finally(() => {
+            setIsFetchingDirections(false);
+          });
+      }
+    }
+  }, [polyline, fetchedPolyline, stops, isFetchingDirections]);
+
+  // Memoized polyline path - Ưu tiên polyline từ backend, sau đó từ fetched directions
   const polylinePath = useMemo(() => {
-    if (!polyline) return null;
-    return decodePolyline(polyline);
-  }, [polyline, decodePolyline]);
+    // Use polyline from backend first, then fetched polyline
+    const activePolyline = polyline || fetchedPolyline;
+
+    // Only log in debug mode to reduce console noise
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[SSBMap] Computing polylinePath:', {
+        hasBackendPolyline: !!polyline,
+        hasFetchedPolyline: !!fetchedPolyline,
+        activePolylineLength: activePolyline?.length || 0,
+        stopsCount: stops?.length || 0,
+        geometryReady,
+      });
+    }
+
+    // CHỈ dùng polyline từ backend hoặc fetched (đường đi thực tế từ Directions API)
+    // KHÔNG tạo polyline từ stops (đường thẳng) vì không phản ánh đường đi thực tế
+    if (activePolyline && activePolyline.trim()) {
+      // Check if geometry is ready before decoding
+      if (!geometryReady) {
+        console.warn('[SSBMap] Geometry library not ready, cannot decode polyline yet');
+        // Return null for now, will retry when geometry is ready
+        return null;
+      }
+
+      const decoded = decodePolyline(activePolyline);
+      if (decoded.length > 0) {
+        console.log('[SSBMap] Decoded polyline successfully (real route from Directions API):', decoded.length, 'points');
+        return decoded;
+      } else {
+        console.error('[SSBMap] Failed to decode polyline');
+        return null;
+      }
+    }
+    
+    // Nếu không có polyline, đợi fetch directions
+    // Không hiển thị warning vì đã có auto-fetch logic
+    if (stops && stops.length >= 2 && isFetchingDirections) {
+      console.log('[SSBMap] Fetching directions from API, please wait...');
+    }
+    
+    return null;
+  }, [polyline, fetchedPolyline, stops, decodePolyline, geometryReady, isFetchingDirections]);
 
   // Initialize map
   useEffect(() => {
@@ -102,12 +371,9 @@ function SSBMap({
     const maxAttempts = 180; // ~3s with rAF
 
     const init = () => {
-      // Debug breadcrumbs to verify rendering lifecycle
-      // eslint-disable-next-line no-console
       console.log('[SSBMap] init called. hasRef=', !!mapRef.current);
       if (!mounted) return;
       if (!mapRef.current) {
-        // Wait until the DOM node is attached, then retry next frame
         attempts += 1;
         if (attempts > maxAttempts) {
           console.error('[SSBMap] Map container ref not attached after retries. Aborting.');
@@ -119,28 +385,42 @@ function SSBMap({
         return;
       }
 
-      // eslint-disable-next-line no-console
-      console.log('[SSBMap] loading Google Maps... key prefix=', (process.env.NEXT_PUBLIC_GMAPS_API_KEY || '').slice(0, 4));
+      console.log('[SSBMap] loading Google Maps...');
       loadGoogleMaps()
         .then(async () => {
           if (!mounted || !mapRef.current) return;
 
           const g = getGoogle();
-          // eslint-disable-next-line no-console
           console.log('[SSBMap] Google Maps loaded, creating map instance');
 
-          // Ensure core 'maps' library is initialized (required on newer versions)
+          // Ensure core 'maps' library is initialized
           try {
             if (typeof (g.maps as any).importLibrary === 'function') {
-              // eslint-disable-next-line no-console
               console.log('[SSBMap] importing maps library...');
               await (g.maps as any).importLibrary('maps');
+              
+              // Also import geometry library explicitly
+              console.log('[SSBMap] importing geometry library...');
+              await (g.maps as any).importLibrary('geometry');
             }
           } catch (e) {
-            console.warn('[SSBMap] importLibrary(maps) failed or unavailable:', e);
+            console.warn('[SSBMap] importLibrary failed or unavailable:', e);
           }
 
-          // Warn if container has zero size (map may not render visibly)
+          // Check geometry library
+          if (checkGeometryReady()) {
+            console.log('[SSBMap] Geometry library is ready');
+          } else {
+            console.warn('[SSBMap] Geometry library not ready, will retry');
+            // Retry after a short delay
+            setTimeout(() => {
+              if (checkGeometryReady()) {
+                console.log('[SSBMap] Geometry library ready after retry');
+              }
+            }, 500);
+          }
+
+          // Warn if container has zero size
           try {
             const el = mapRef.current as HTMLDivElement;
             const rect = el.getBoundingClientRect();
@@ -150,7 +430,6 @@ function SSBMap({
           } catch {}
 
           const gm = (window as any).google?.maps;
-          // eslint-disable-next-line no-console
           console.log('[SSBMap] typeof maps.Map =', typeof gm?.Map, 'version=', gm?.version);
           if (!gm || typeof gm.Map !== 'function') {
             throw new Error('Google Maps API loaded but Map constructor is unavailable.');
@@ -162,11 +441,12 @@ function SSBMap({
             mapTypeControl: true,
             streetViewControl: false,
             fullscreenControl: true,
+            zoomControl: true,
           });
 
           mapInstanceRef.current = map;
 
-          // Add "Locate me" control (current location)
+          // Add "Locate me" control
           try {
             const controlDiv = document.createElement('div');
             controlDiv.style.margin = '8px';
@@ -189,7 +469,6 @@ function SSBMap({
             btn.style.justifyContent = 'center';
             btn.style.padding = '0';
 
-            // SVG target icon
             btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#111827" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="m19 19-1.5-1.5"></path><path d="M6.5 6.5 5 5"></path><path d="m19 5-1.5 1.5"></path><path d="M6.5 17.5 5 19"></path></svg>';
 
             const loadingSpan = document.createElement('span');
@@ -216,12 +495,10 @@ function SSBMap({
               navigator.geolocation.getCurrentPosition(
                 (pos) => {
                   const { latitude, longitude, accuracy } = pos.coords;
-                  // eslint-disable-next-line no-console
                   console.log('[SSBMap] Current position:', { latitude, longitude, accuracy });
 
                   const position = new g.maps.LatLng(latitude, longitude);
 
-                  // Update or create user marker
                   if (!userMarkerRef.current) {
                     userMarkerRef.current = new g.maps.Marker({
                       position,
@@ -241,7 +518,6 @@ function SSBMap({
                     userMarkerRef.current.setMap(map);
                   }
 
-                  // Update or create accuracy circle
                   if (!accuracyCircleRef.current) {
                     accuracyCircleRef.current = new g.maps.Circle({
                       strokeColor: '#3B82F6',
@@ -289,7 +565,6 @@ function SSBMap({
         });
     };
 
-    // eslint-disable-next-line no-console
     console.log('[SSBMap] effect mounted');
     init();
 
@@ -305,47 +580,138 @@ function SSBMap({
     mapInstanceRef.current.setZoom(zoom);
   }, [validCenter.lat, validCenter.lng, zoom]);
 
-  // Draw polyline
+  // Draw polyline - IMPROVED VERSION
   useEffect(() => {
-    if (!mapInstanceRef.current || !polylinePath || polylinePath.length === 0) {
-      // Remove existing polyline
-      if (polylineInstanceRef.current) {
-        polylineInstanceRef.current.setMap(null);
-        polylineInstanceRef.current = null;
-      }
+    console.log('[SSBMap] Polyline effect triggered:', {
+      hasMap: !!mapInstanceRef.current,
+      hasPolylinePath: !!polylinePath,
+      polylinePathLength: Array.isArray(polylinePath) ? polylinePath.length : 0,
+      geometryReady,
+    });
+
+    if (!mapInstanceRef.current) {
+      console.warn('[SSBMap] Map instance not ready');
       return;
     }
 
     const g = getGoogle();
-
-    // Remove old polyline
-    if (polylineInstanceRef.current) {
-      polylineInstanceRef.current.setMap(null);
+    if (!g?.maps?.Polyline) {
+      console.warn('[SSBMap] Google Maps Polyline not available yet');
+      return;
     }
 
-    // Create new polyline
-    const polyline = new g.maps.Polyline({
-      path: polylinePath,
-      geodesic: true,
-      strokeColor: '#3B82F6',
-      strokeOpacity: 1.0,
-      strokeWeight: 4,
-    });
+    // Remove old polyline and directions renderer
+    if (polylineInstanceRef.current) {
+      polylineInstanceRef.current.setMap(null);
+      polylineInstanceRef.current = null;
+    }
+    if (directionsRendererRef.current) {
+      directionsRendererRef.current.setMap(null);
+      directionsRendererRef.current = null;
+    }
 
-    polyline.setMap(mapInstanceRef.current);
-    polylineInstanceRef.current = polyline;
+    // If no polyline path, return early
+    if (!polylinePath || (Array.isArray(polylinePath) && polylinePath.length === 0)) {
+      console.log('[SSBMap] No polyline path to render');
+      return;
+    }
 
-    // Fit bounds to polyline
-    if (polylinePath.length > 0) {
-      const bounds = new g.maps.LatLngBounds();
-      polylinePath.forEach((latlng) => bounds.extend(latlng));
-      mapInstanceRef.current.fitBounds(bounds, 50);
+    try {
+      // Convert path to LatLng objects
+      let path: google.maps.LatLng[] = [];
+      
+      if (Array.isArray(polylinePath) && polylinePath.length > 0) {
+        const first = polylinePath[0] as any;
+        
+        // Check if first element is already LatLng
+        if (first instanceof g.maps.LatLng) {
+          // Already LatLng objects
+          path = polylinePath as google.maps.LatLng[];
+        } else if (typeof first.lat === 'number' && typeof first.lng === 'number') {
+          // It's an array of {lat, lng} objects - convert to LatLng
+          path = (polylinePath as unknown as Array<{ lat: number; lng: number }>).map(
+            (p) => new g.maps.LatLng(p.lat, p.lng)
+          );
+        } else if (typeof first.lat === 'function') {
+          // It's already LatLng objects (lat() and lng() are methods)
+          path = polylinePath as google.maps.LatLng[];
+        } else {
+          console.warn('[SSBMap] Unknown polyline path format:', first);
+          return;
+        }
+      } else {
+        console.warn('[SSBMap] Invalid polyline path');
+        return;
+      }
+
+      if (path.length === 0) {
+        console.warn('[SSBMap] Empty path after conversion');
+        return;
+      }
+
+      // Create new polyline with better styling (like Google Maps/Grab)
+      const polylineInstance = new g.maps.Polyline({
+        path: path,
+        geodesic: true,
+        strokeColor: '#4285F4', // Google Maps blue
+        strokeOpacity: 1.0,
+        strokeWeight: 5,
+        zIndex: 100,
+        icons: [{
+          icon: {
+            path: g.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+            scale: 4,
+            strokeColor: '#4285F4',
+            fillColor: '#4285F4',
+            fillOpacity: 1,
+          },
+          offset: '100%',
+          repeat: '100px',
+        }],
+      });
+
+      polylineInstance.setMap(mapInstanceRef.current);
+      polylineInstanceRef.current = polylineInstance;
+
+      console.log('[SSBMap] Polyline rendered successfully (real route):', {
+        pathLength: path.length,
+        firstPoint: { lat: path[0].lat(), lng: path[0].lng() },
+        lastPoint: { lat: path[path.length - 1].lat(), lng: path[path.length - 1].lng() }
+      });
+
+      // Fit bounds to polyline
+      if (path.length > 0) {
+        const bounds = new g.maps.LatLngBounds();
+        path.forEach((latlng) => {
+          bounds.extend(latlng);
+        });
+        
+        // Add padding to bounds
+        mapInstanceRef.current.fitBounds(bounds, {
+          top: 50,
+          right: 50,
+          bottom: 50,
+          left: 50,
+        });
+      }
+    } catch (error) {
+      console.error('[SSBMap] Error rendering polyline:', error);
     }
   }, [polylinePath]);
 
   // Render stop markers
   useEffect(() => {
-    if (!mapInstanceRef.current || stops.length === 0) {
+    console.log('[SSBMap] Stops effect triggered:', {
+      hasMap: !!mapInstanceRef.current,
+      stopsCount: stops.length,
+    });
+
+    if (!mapInstanceRef.current) {
+      console.warn('[SSBMap] Map instance not ready for stops');
+      return;
+    }
+
+    if (stops.length === 0) {
       // Remove stop markers
       markersRef.current.forEach((marker, key) => {
         if (key.startsWith('stop-')) {
@@ -353,22 +719,39 @@ function SSBMap({
           markersRef.current.delete(key);
         }
       });
+      console.log('[SSBMap] No stops to render, removed all stop markers');
       return;
     }
 
     const g = getGoogle();
+    if (!g?.maps?.Marker) {
+      console.warn('[SSBMap] Google Maps Marker not available yet');
+      return;
+    }
 
     // Sort stops by sequence
     const sortedStops = [...stops].sort((a, b) => (a.sequence || 0) - (b.sequence || 0));
+    console.log('[SSBMap] Rendering', sortedStops.length, 'stops');
 
-    sortedStops.forEach((stop) => {
+    let validStopsCount = 0;
+    sortedStops.forEach((stop, index) => {
       const lat = Number(stop.viDo);
       const lng = Number(stop.kinhDo);
       
       if (!stop.viDo || !stop.kinhDo || isNaN(lat) || isNaN(lng) || !isFinite(lat) || !isFinite(lng)) {
-        console.warn('[SSBMap] Invalid stop coordinates, skipping:', stop);
+        console.warn('[SSBMap] Invalid stop coordinates, skipping:', {
+          index,
+          stop: {
+            maDiem: stop.maDiem,
+            tenDiem: stop.tenDiem,
+            viDo: stop.viDo,
+            kinhDo: stop.kinhDo,
+          }
+        });
         return;
       }
+
+      validStopsCount++;
 
       const key = `stop-${stop.maDiem}`;
       let marker = markersRef.current.get(key);
@@ -436,7 +819,31 @@ function SSBMap({
         }
       }
     });
-  }, [stops, onStopClick]);
+
+    // Fit bounds to all stops if autoFitOnUpdate is enabled
+    if (autoFitOnUpdate && validStopsCount > 0) {
+      const bounds = new g.maps.LatLngBounds();
+      sortedStops.forEach((stop) => {
+        const lat = Number(stop.viDo);
+        const lng = Number(stop.kinhDo);
+        if (!isNaN(lat) && !isNaN(lng) && isFinite(lat) && isFinite(lng)) {
+          bounds.extend({ lat, lng });
+        }
+      });
+      
+      if (!bounds.isEmpty()) {
+        mapInstanceRef.current.fitBounds(bounds, {
+          top: 50,
+          right: 50,
+          bottom: 50,
+          left: 50,
+        });
+        console.log('[SSBMap] Fitted bounds to stops');
+      }
+    }
+
+    console.log('[SSBMap] Finished rendering stops, total valid:', validStopsCount);
+  }, [stops, onStopClick, autoFitOnUpdate]);
 
   // Render bus markers
   useEffect(() => {
@@ -547,6 +954,9 @@ function SSBMap({
       if (polylineInstanceRef.current) {
         polylineInstanceRef.current.setMap(null);
       }
+      if (directionsRendererRef.current) {
+        directionsRendererRef.current.setMap(null);
+      }
       if (userMarkerRef.current) {
         userMarkerRef.current.setMap(null);
       }
@@ -579,23 +989,11 @@ function SSBMap({
 
 /**
  * Memoize SSBMap to avoid unnecessary re-renders
- * Only re-render if polyline, stops array length, or buses array length changes
- * 
- * Why memoize?
- * - Map component is expensive (Google Maps API initialization, markers, polylines)
- * - Parent components often re-render frequently (e.g. trip updates, notifications)
- * - Without memo, map would re-render on every parent update even if props didn't change
- * 
- * Comparison strategy:
- * - polyline: shallow equality (string)
- * - stops: check array length (markers are managed internally via refs)
- * - buses: check array length + first item position (for smooth animation)
- * - other props: shallow equality
  */
 export default React.memo(SSBMap, (prevProps, nextProps) => {
   // Check polyline
   if (prevProps.polyline !== nextProps.polyline) {
-    return false; // Props changed, re-render
+    return false;
   }
 
   // Check stops array length
@@ -628,6 +1026,5 @@ export default React.memo(SSBMap, (prevProps, nextProps) => {
     return false;
   }
 
-  // All checked props are equal, skip re-render
   return true;
 });

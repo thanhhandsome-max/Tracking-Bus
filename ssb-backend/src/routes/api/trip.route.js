@@ -1,6 +1,7 @@
 import express from "express";
-import TripController from "controllers/TripController.js";
-import AuthMiddleware from "middlewares/AuthMiddleware.js";
+import rateLimit from "express-rate-limit";
+import TripController from "../../controllers/TripController.js";
+import AuthMiddleware from "../../middlewares/AuthMiddleware.js";
 
 const router = express.Router();
 
@@ -11,19 +12,63 @@ router.get(
   TripController.getStats
 );
 
+// M4-M6: Trip lifecycle routes
 // List trips with optional filters (ngayChay, trangThai, maTaiXe...)
 router.get("/", AuthMiddleware.authenticate, TripController.getAll);
+
+// M8: Rate limit for trip creation (burst protection)
+const tripCreateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 10, // Max 10 trips per minute
+  message: {
+    success: false,
+    code: "RATE_LIMIT_EXCEEDED",
+    message: "Quá nhiều yêu cầu tạo chuyến đi, vui lòng thử lại sau",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Create trip from schedule (Admin only)
+router.post(
+  "/",
+  tripCreateLimiter,
+  AuthMiddleware.authenticate,
+  AuthMiddleware.requireAdmin,
+  TripController.create
+);
 
 // Get trip by ID
 router.get("/:id", AuthMiddleware.authenticate, TripController.getById);
 
+// Start trip (Driver only)
 router.post(
   "/:id/start",
   AuthMiddleware.authenticate,
+  AuthMiddleware.requireDriver,
   TripController.startTrip
 );
 
-router.post("/:id/end", AuthMiddleware.authenticate, TripController.endTrip);
+// End trip (Driver only)
+router.post("/:id/end", AuthMiddleware.authenticate, AuthMiddleware.requireDriver, TripController.endTrip);
+
+// Cancel trip (Admin or Driver of trip)
+router.post("/:id/cancel", AuthMiddleware.authenticate, TripController.cancelTrip);
+
+// M4-M6: Attendance routes (Driver only)
+router.post(
+  "/:id/students/:studentId/checkin",
+  AuthMiddleware.authenticate,
+  AuthMiddleware.requireDriver,
+  TripController.checkinStudent
+);
+
+router.post(
+  "/:id/students/:studentId/checkout",
+  AuthMiddleware.authenticate,
+  AuthMiddleware.requireDriver,
+  TripController.checkoutStudent
+);
 
 export default router;
 

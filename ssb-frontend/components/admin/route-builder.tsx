@@ -37,7 +37,9 @@ import {
   Route as RouteIcon,
   Search,
   Route,
-  Timer
+  Timer,
+  CheckCircle2,
+  XCircle
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import apiClient from '@/lib/api-client';
@@ -66,7 +68,7 @@ interface RouteBuilderProps {
     stops?: any[];
   };
   onClose: () => void;
-  onSaved?: () => void;
+  onSaved?: (route?: any) => void;
 }
 
 export function RouteBuilder({ 
@@ -109,6 +111,20 @@ export function RouteBuilder({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [mapMode, setMapMode] = useState<'view' | 'add'>('view');
   const [draggedMarkerId, setDraggedMarkerId] = useState<string | null>(null);
+  const [pendingStop, setPendingStop] = useState<Stop | null>(null);
+  const pendingMarkerRef = useRef<google.maps.Marker | null>(null);
+
+  // Clear pending stop when map mode changes to view
+  useEffect(() => {
+    if (mapMode === 'view' && pendingStop) {
+      setPendingStop(null);
+      // Remove pending marker from map
+      if (pendingMarkerRef.current) {
+        pendingMarkerRef.current.setMap(null);
+        pendingMarkerRef.current = null;
+      }
+    }
+  }, [mapMode, pendingStop]);
 
   // DnD sensors
   const sensors = useSensors(
@@ -453,7 +469,7 @@ export function RouteBuilder({
     }
   };
 
-  const updatePolylinesOnMap = () => {
+  const updatePolylinesOnMap = async () => {
     console.log('🔄 updatePolylinesOnMap called:', {
       hasMap: !!mapInstanceRef.current,
       isMapReady,
@@ -489,11 +505,30 @@ export function RouteBuilder({
     console.log(`🗺️ Rendering ${routeSegments.length} route segments`);
 
     try {
-      // Check if geometry library is loaded
-      if (!google.maps.geometry || !google.maps.geometry.encoding) {
+      // Check if geometry library is loaded - with retry
+      let geometryReady = false;
+      if (google.maps.geometry && google.maps.geometry.encoding && typeof google.maps.geometry.encoding.decodePath === 'function') {
+        geometryReady = true;
+      } else {
+        // Try to import geometry library if available
+        if (typeof (google.maps as any).importLibrary === 'function') {
+          try {
+            await (google.maps as any).importLibrary('geometry');
+            if (google.maps.geometry && google.maps.geometry.encoding && typeof google.maps.geometry.encoding.decodePath === 'function') {
+              geometryReady = true;
+              console.log('✅ Geometry library imported successfully');
+            }
+          } catch (e) {
+            console.warn('⚠️ Failed to import geometry library:', e);
+          }
+        }
+      }
+
+      if (!geometryReady) {
         console.error('❌ Google Maps Geometry library not loaded!', {
           hasGeometry: !!google.maps.geometry,
           hasEncoding: !!google.maps.geometry?.encoding,
+          hasDecodePath: typeof google.maps.geometry?.encoding?.decodePath,
           googleMapsKeys: Object.keys(google.maps || {})
         });
         return;
@@ -514,13 +549,27 @@ export function RouteBuilder({
 
           console.log(`🔍 Decoding segment ${index} (${segment.from} → ${segment.to}), polyline length: ${segment.polyline.length}`);
           
+          // Validate polyline string
+          if (!segment.polyline || typeof segment.polyline !== 'string' || segment.polyline.trim().length === 0) {
+            console.warn(`⚠️ Segment ${index} has invalid polyline string`);
+            return;
+          }
+          
           // Decode polyline
-          const path = google.maps.geometry.encoding.decodePath(segment.polyline);
+          let path: google.maps.LatLng[];
+          try {
+            path = google.maps.geometry.encoding.decodePath(segment.polyline);
+          } catch (decodeError) {
+            console.error(`❌ Failed to decode polyline for segment ${index}:`, decodeError, {
+              polylinePreview: segment.polyline.substring(0, 50)
+            });
+            return;
+          }
           
           console.log(`📍 Decoded path for segment ${index}:`, {
             pathLength: path?.length,
-            firstPoint: path?.[0],
-            lastPoint: path?.[path.length - 1]
+            firstPoint: path?.[0] ? { lat: path[0].lat(), lng: path[0].lng() } : null,
+            lastPoint: path?.[path.length - 1] ? { lat: path[path.length - 1].lat(), lng: path[path.length - 1].lng() } : null
           });
           
           if (!path || path.length === 0) {
@@ -567,7 +616,7 @@ export function RouteBuilder({
             }
           }
           
-          // Create new polyline
+          // Create new polyline with improved styling (like Google Maps/Grab)
           const newPolyline = new google.maps.Polyline({
             path,
             geodesic: true,
@@ -576,6 +625,17 @@ export function RouteBuilder({
             strokeWeight,
             map: mapInstanceRef.current,
             zIndex,
+            icons: [{
+              icon: {
+                path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+                scale: 4,
+                strokeColor: strokeColor,
+                fillColor: strokeColor,
+                fillOpacity: strokeOpacity,
+              },
+              offset: '100%',
+              repeat: '100px',
+            }],
           });
 
           polylinesRef.current.push(newPolyline);
@@ -592,6 +652,10 @@ export function RouteBuilder({
   };
 
   const handleMapClick = async (lat: number, lng: number) => {
+    if (mapMode !== 'add') return;
+    // Don't allow adding new pending stop if there's already one
+    if (pendingStop) return;
+    
     try {
       // Reverse geocode to get address
       const response = await apiClient.reverseGeocode({
@@ -610,8 +674,9 @@ export function RouteBuilder({
         address = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
       }
 
-      const newStop: Stop = {
-        id: Date.now().toString(),
+      // Create pending stop instead of adding directly
+      const newPendingStop: Stop = {
+        id: `pending-${Date.now()}`,
         name: `Điểm ${stops.length + 1}`,
         address,
         lat,
@@ -620,27 +685,41 @@ export function RouteBuilder({
         sequence: stops.length + 1,
       };
 
-      const updatedStops = [...stops, newStop];
-      setStops(updatedStops);
-      setSelectedStopId(newStop.id);
+      setPendingStop(newPendingStop);
       
-      // Trigger update route ngay lập tức để hiển thị polyline
-      if (updatedStops.filter((s) => s.lat && s.lng && s.address).length >= 2) {
-        setTimeout(() => {
-          updateRoute();
-        }, 100);
+      // Show pending marker on map
+      if (mapInstanceRef.current && window.google?.maps) {
+        const google: typeof window.google = window.google;
+        
+        // Remove old pending marker
+        if (pendingMarkerRef.current) {
+          pendingMarkerRef.current.setMap(null);
+        }
+        
+        // Create new pending marker (different style to indicate it's pending)
+        const marker = new google.maps.Marker({
+          position: { lat, lng },
+          map: mapInstanceRef.current,
+          icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 10,
+            fillColor: '#FF9800', // Orange color for pending
+            fillOpacity: 0.8,
+            strokeColor: 'white',
+            strokeWeight: 3,
+          },
+          title: 'Điểm dừng tạm thời - Chờ xác nhận',
+          zIndex: 2000, // Higher z-index to show on top
+          animation: google.maps.Animation.DROP,
+        });
+        
+        pendingMarkerRef.current = marker;
       }
-      
-      // Không tự tắt mode "add" - giữ để thêm nhiều điểm
-      toast({
-        title: 'Đã thêm điểm dừng',
-        description: 'Vui lòng nhập tên và thời gian dừng cho điểm này',
-      });
     } catch (error) {
       console.error('Failed to reverse geocode:', error);
-      // Add stop anyway with coordinates as address
-      const newStop: Stop = {
-        id: Date.now().toString(),
+      // Create pending stop with coordinates as address
+      const newPendingStop: Stop = {
+        id: `pending-${Date.now()}`,
         name: `Điểm ${stops.length + 1}`,
         address: `${lat.toFixed(6)}, ${lng.toFixed(6)}`,
         lat,
@@ -649,24 +728,45 @@ export function RouteBuilder({
         sequence: stops.length + 1,
       };
       
-      const updatedStops = [...stops, newStop];
-      setStops(updatedStops);
-      setSelectedStopId(newStop.id);
+      setPendingStop(newPendingStop);
       
-      // Trigger update route ngay lập tức để hiển thị polyline
-      if (updatedStops.filter((s) => s.lat && s.lng && s.address).length >= 2) {
-        setTimeout(() => {
-          updateRoute();
-        }, 100);
+      // Show pending marker on map
+      if (mapInstanceRef.current && window.google?.maps) {
+        const google: typeof window.google = window.google;
+        
+        if (pendingMarkerRef.current) {
+          pendingMarkerRef.current.setMap(null);
+        }
+        
+        const marker = new google.maps.Marker({
+          position: { lat, lng },
+          map: mapInstanceRef.current,
+          icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 10,
+            fillColor: '#FF9800',
+            fillOpacity: 0.8,
+            strokeColor: 'white',
+            strokeWeight: 3,
+          },
+          title: 'Điểm dừng tạm thời - Chờ xác nhận',
+          zIndex: 2000,
+          animation: google.maps.Animation.DROP,
+        });
+        
+        pendingMarkerRef.current = marker;
       }
-      
-      // Không tự tắt mode "add"
     }
   };
 
   const addStopFromSearch = (place: { name: string; lat: number; lng: number; address: string }) => {
-    const newStop: Stop = {
-      id: Date.now().toString(),
+    if (mapMode !== 'add') return;
+    // Don't allow adding new pending stop if there's already one
+    if (pendingStop) return;
+    
+    // Create pending stop instead of adding directly
+    const newPendingStop: Stop = {
+      id: `pending-${Date.now()}`,
       name: place.name || `Điểm ${stops.length + 1}`,
       address: place.address || '',
       lat: place.lat,
@@ -675,18 +775,90 @@ export function RouteBuilder({
       sequence: stops.length + 1,
     };
 
-    const updatedStops = [...stops, newStop];
-    setStops(updatedStops);
-    setSelectedStopId(newStop.id);
+    setPendingStop(newPendingStop);
     
-    // Trigger update route ngay lập tức để hiển thị polyline
-    // updateRoute sẽ được gọi tự động qua useEffect, nhưng có thể gọi thủ công để nhanh hơn
+    // Show pending marker on map
+    if (mapInstanceRef.current && window.google?.maps) {
+      const google: typeof window.google = window.google;
+      
+      // Remove old pending marker
+      if (pendingMarkerRef.current) {
+        pendingMarkerRef.current.setMap(null);
+      }
+      
+      // Create new pending marker
+      const marker = new google.maps.Marker({
+        position: { lat: place.lat, lng: place.lng },
+        map: mapInstanceRef.current,
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: 10,
+          fillColor: '#FF9800', // Orange color for pending
+          fillOpacity: 0.8,
+          strokeColor: 'white',
+          strokeWeight: 3,
+        },
+        title: 'Điểm dừng tạm thời - Chờ xác nhận',
+        zIndex: 2000,
+        animation: google.maps.Animation.DROP,
+      });
+      
+      pendingMarkerRef.current = marker;
+    }
+  };
+
+  // Confirm pending stop - add it to stops
+  const confirmPendingStop = () => {
+    if (!pendingStop) return;
+    
+    // Generate new ID for the confirmed stop
+    const confirmedStop: Stop = {
+      ...pendingStop,
+      id: Date.now().toString(),
+      sequence: stops.length + 1,
+    };
+    
+    const updatedStops = [...stops, confirmedStop];
+    setStops(updatedStops);
+    setSelectedStopId(confirmedStop.id);
+    setPendingStop(null);
+    
+    // Remove pending marker
+    if (pendingMarkerRef.current) {
+      pendingMarkerRef.current.setMap(null);
+      pendingMarkerRef.current = null;
+    }
+    
+    // Update markers to show the new confirmed stop
+    updateMarkers();
+    
+    // Trigger update route
     if (updatedStops.filter((s) => s.lat && s.lng && s.address).length >= 2) {
-      // Gọi updateRoute sau một chút để đảm bảo state đã được cập nhật
       setTimeout(() => {
         updateRoute();
       }, 100);
     }
+    
+    toast({
+      title: 'Đã thêm điểm dừng',
+      description: 'Điểm dừng đã được thêm vào danh sách',
+    });
+  };
+
+  // Cancel pending stop - remove it but keep add mode
+  const cancelPendingStop = () => {
+    setPendingStop(null);
+    
+    // Remove pending marker
+    if (pendingMarkerRef.current) {
+      pendingMarkerRef.current.setMap(null);
+      pendingMarkerRef.current = null;
+    }
+    
+    toast({
+      title: 'Đã hủy',
+      description: 'Điểm dừng tạm thời đã được hủy',
+    });
   };
 
   const removeStop = (id: string) => {
@@ -843,7 +1015,8 @@ export function RouteBuilder({
       }
 
       if (mode === 'edit' && initialRoute?.id) {
-        await apiClient.updateRoute(initialRoute.id, routePayload);
+        const updateResult = await apiClient.updateRoute(initialRoute.id, routePayload);
+        const updatedRouteData = (updateResult.data as any) || { ...routePayload, id: initialRoute.id, maTuyen: initialRoute.id };
         
         // Invalidate routes cache để refresh danh sách
         queryClient.invalidateQueries({ queryKey: routeKeys.all });
@@ -853,7 +1026,7 @@ export function RouteBuilder({
           title: 'Thành công',
           description: 'Đã cập nhật tuyến đường',
         });
-        onSaved?.();
+        onSaved?.(updatedRouteData);
         onClose();
       } else {
         // Log payload trước khi gửi
@@ -1091,7 +1264,7 @@ export function RouteBuilder({
           title: 'Thành công',
           description: 'Đã tạo tuyến đường mới',
         });
-        onSaved?.();
+        onSaved?.(routeData);
         onClose();
       }
     } catch (err: any) {
@@ -1109,10 +1282,32 @@ export function RouteBuilder({
   const selectedStop = stops.find((s) => s.id === selectedStopId);
 
   // Sortable Stop Item Component
-  const SortableStopItem = React.memo(({ stop, index }: { stop: Stop; index: number }) => {
+  const SortableStopItem = React.memo(({ 
+    stop, 
+    index, 
+    onUpdateStop, 
+    onRemoveStop, 
+    isSelected,
+    onSelect 
+  }: { 
+    stop: Stop; 
+    index: number;
+    onUpdateStop: (id: string, field: keyof Stop, value: string | number) => void;
+    onRemoveStop: (id: string) => void;
+    isSelected: boolean;
+    onSelect: (id: string) => void;
+  }) => {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
       id: stop.id,
     });
+
+    // Local state for estimatedTime input to prevent auto-update while typing
+    const [localEstimatedTime, setLocalEstimatedTime] = useState(stop.estimatedTime);
+    
+    // Update local state when stop.estimatedTime changes from outside
+    useEffect(() => {
+      setLocalEstimatedTime(stop.estimatedTime);
+    }, [stop.estimatedTime]);
 
     const style = {
       transform: CSS.Transform.toString(transform),
@@ -1120,18 +1315,28 @@ export function RouteBuilder({
       opacity: isDragging ? 0.5 : 1,
     };
 
+    const handleEstimatedTimeBlur = () => {
+      onUpdateStop(stop.id, 'estimatedTime', localEstimatedTime);
+    };
+
+    const handleEstimatedTimeKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter') {
+        e.currentTarget.blur();
+      }
+    };
+
     return (
       <Card
         ref={setNodeRef}
         style={style}
         className={`p-3 cursor-pointer transition-colors ${
-          selectedStopId === stop.id
+          isSelected
             ? 'border-primary bg-primary/5'
             : 'hover:border-primary/50'
         } ${isDragging ? 'z-50' : ''}`}
-        onClick={() => setSelectedStopId(stop.id)}
+        onClick={() => onSelect(stop.id)}
       >
-        <div className="flex items-start gap-2">
+        <div className="flex items-start gap-2 relative pr-9 pb-1">
           <div
             {...attributes}
             {...listeners}
@@ -1142,40 +1347,51 @@ export function RouteBuilder({
           <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
             {index + 1}
           </div>
-          <div className="flex-1 min-w-0">
-            <Input
-              value={stop.name}
-              onChange={(e) => updateStop(stop.id, 'name', e.target.value)}
-              placeholder="Tên điểm dừng"
-              className="text-sm mb-1"
-              onClick={(e) => e.stopPropagation()}
-            />
-            <p className="text-xs text-muted-foreground truncate mb-1">
-              {stop.address}
-            </p>
-            <div className="flex items-center gap-2">
-              <Clock className="w-3 h-3 text-muted-foreground" />
+          <div className="flex-1 min-w-0 overflow-hidden">
+            <div className="pr-8">
               <Input
-                type="number"
-                value={stop.estimatedTime}
-                onChange={(e) => updateStop(stop.id, 'estimatedTime', e.target.value)}
-                placeholder="Phút"
-                className="text-xs w-16 h-6"
+                value={stop.name}
+                onChange={(e) => onUpdateStop(stop.id, 'name', e.target.value)}
+                placeholder="Tên điểm dừng"
+                className="text-sm mb-1"
                 onClick={(e) => e.stopPropagation()}
               />
-              <span className="text-xs text-muted-foreground">phút</span>
+            </div>
+            <p 
+              className="text-xs text-muted-foreground mb-2 line-clamp-2 break-words leading-relaxed pr-8"
+              title={stop.address}
+            >
+              {stop.address || 'Chưa có địa chỉ'}
+            </p>
+            <div className="flex items-center gap-2">
+              <Clock className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+              <Input
+                type="number"
+                min="0"
+                step="1"
+                value={localEstimatedTime}
+                onChange={(e) => setLocalEstimatedTime(e.target.value)}
+                onBlur={handleEstimatedTimeBlur}
+                onKeyDown={handleEstimatedTimeKeyDown}
+                placeholder="Phút"
+                className="text-xs w-20 h-7 flex-shrink-0"
+                onClick={(e) => e.stopPropagation()}
+              />
+              <span className="text-xs text-muted-foreground flex-shrink-0 whitespace-nowrap">phút</span>
             </div>
           </div>
           <Button
             variant="ghost"
             size="icon"
-            className="h-6 w-6 text-destructive hover:text-destructive"
+            className="absolute top-1 right-1 h-7 w-7 flex-shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10 z-20 bg-background/95 backdrop-blur-sm border border-destructive/20 shadow-sm hover:border-destructive/40 rounded-md"
             onClick={(e) => {
               e.stopPropagation();
-              removeStop(stop.id);
+              onRemoveStop(stop.id);
             }}
+            title="Xóa điểm dừng"
+            onMouseDown={(e) => e.stopPropagation()}
           >
-            <Trash2 className="w-3 h-3" />
+            <Trash2 className="w-3.5 h-3.5" />
           </Button>
         </div>
       </Card>
@@ -1239,26 +1455,124 @@ export function RouteBuilder({
               </Badge>
             </div>
             <div className="flex gap-2">
-              <Button
-                variant={mapMode === 'add' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setMapMode(mapMode === 'add' ? 'view' : 'add')}
-              >
-                <Plus className="w-3 h-3 mr-1" />
-                {mapMode === 'add' ? 'Hủy' : 'Thêm'}
-              </Button>
+              {mapMode === 'add' ? (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      // Cancel pending stop if exists
+                      if (pendingStop) {
+                        cancelPendingStop();
+                      }
+                      setMapMode('view');
+                    }}
+                  >
+                    <X className="w-3 h-3 mr-1" />
+                    Hủy
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() => setMapMode('add')}
+                >
+                  <Plus className="w-3 h-3 mr-1" />
+                  Thêm điểm dừng
+                </Button>
+              )}
             </div>
           </div>
 
-          {mapMode === 'add' && (
-            <div className="mb-3">
+          {mapMode === 'add' && !pendingStop && (
+            <div className="mb-3 p-3 bg-primary/5 rounded-lg border border-primary/20">
               <PlacePicker
-                onPlaceSelected={addStopFromSearch}
+                onPlaceSelected={(place) => {
+                  addStopFromSearch(place);
+                }}
                 placeholder="Tìm kiếm địa điểm..."
               />
-              <p className="text-xs text-muted-foreground mt-1">
-                Hoặc click trên bản đồ để thêm điểm
+              <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+                <MapPin className="w-3 h-3" />
+                Hoặc click trên bản đồ để thêm điểm dừng
               </p>
+            </div>
+          )}
+          
+          {mapMode === 'add' && pendingStop && (
+            <div className="mb-3 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
+              <p className="text-xs text-blue-900 dark:text-blue-100 flex items-center gap-1">
+                <MapPin className="w-3 h-3" />
+                Xác nhận hoặc hủy điểm dừng hiện tại để thêm điểm mới
+              </p>
+            </div>
+          )}
+
+          {/* Pending Stop Preview */}
+          {pendingStop && (
+            <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-950/20 rounded-lg border-2 border-amber-300 dark:border-amber-700">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-6 h-6 rounded-full bg-amber-500 flex items-center justify-center">
+                  <MapPin className="w-3 h-3 text-white" />
+                </div>
+                <Label className="text-sm font-semibold text-amber-900 dark:text-amber-100">
+                  Điểm dừng tạm thời
+                </Label>
+              </div>
+              
+              <div className="space-y-3">
+                <div>
+                  <Label className="text-xs text-amber-900 dark:text-amber-100">Tên điểm dừng</Label>
+                  <Input
+                    value={pendingStop.name}
+                    onChange={(e) => setPendingStop({ ...pendingStop, name: e.target.value })}
+                    placeholder="VD: Trường TH ABC"
+                    className="text-sm mt-1"
+                  />
+                </div>
+                
+                <div>
+                  <Label className="text-xs text-amber-900 dark:text-amber-100">Địa chỉ</Label>
+                  <p className="text-xs text-muted-foreground mt-1 line-clamp-2 break-words" title={pendingStop.address}>
+                    {pendingStop.address || 'Chưa có địa chỉ'}
+                  </p>
+                </div>
+                
+                <div>
+                  <Label className="text-xs text-amber-900 dark:text-amber-100">Thời gian dừng (phút)</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={pendingStop.estimatedTime}
+                    onChange={(e) => setPendingStop({ ...pendingStop, estimatedTime: e.target.value })}
+                    placeholder="VD: 2"
+                    className="text-sm mt-1 w-full"
+                  />
+                </div>
+                
+                <div className="flex gap-2 pt-2">
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={confirmPendingStop}
+                    className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    <CheckCircle2 className="w-4 h-4 mr-1" />
+                    Xác nhận
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={cancelPendingStop}
+                    className="flex-1 border-amber-300 text-amber-900 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-100 dark:hover:bg-amber-900/30"
+                  >
+                    <XCircle className="w-4 h-4 mr-1" />
+                    Hủy
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
 
@@ -1285,7 +1599,15 @@ export function RouteBuilder({
                 >
                   <div className="space-y-2">
                     {stops.map((stop, index) => (
-                      <SortableStopItem key={stop.id} stop={stop} index={index} />
+                      <SortableStopItem 
+                        key={stop.id} 
+                        stop={stop} 
+                        index={index}
+                        onUpdateStop={updateStop}
+                        onRemoveStop={removeStop}
+                        isSelected={selectedStopId === stop.id}
+                        onSelect={setSelectedStopId}
+                      />
                     ))}
                   </div>
                 </SortableContext>

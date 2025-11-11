@@ -58,7 +58,7 @@ export async function loadGoogleMaps(): Promise<typeof google> {
   loaderInstance = new Loader({
     apiKey: getApiKey(),
     version: 'weekly',
-    libraries: ['places', 'geometry'], // Places for Autocomplete, Geometry for polyline decoding
+    libraries: ['places', 'geometry', 'routes'], // Places for Autocomplete, Geometry for polyline decoding, Routes for Directions
   });
 
   // Start loading
@@ -72,15 +72,34 @@ export async function loadGoogleMaps(): Promise<typeof google> {
   );
 
   loadPromise = Promise.race([loader, timeout])
-    .then(() => {
+    .then(async () => {
       // Wait a bit more to ensure all constructors are available
       return new Promise<typeof google>((resolve, reject) => {
         let attempts = 0;
-        const maxAttempts = 10;
+        const maxAttempts = 20; // Increased for geometry library
         
-        const checkReady = () => {
+        const checkReady = async () => {
           if (window.google?.maps?.Map) {
-            resolve(window.google as typeof google);
+            // Also check for geometry library
+            if (window.google?.maps?.geometry?.encoding) {
+              console.log('[GMaps] All libraries loaded including geometry');
+              resolve(window.google as typeof google);
+            } else if (attempts < maxAttempts) {
+              attempts++;
+              // Try to import geometry library if not available
+              if (typeof (window.google?.maps as any)?.importLibrary === 'function') {
+                try {
+                  await (window.google.maps as any).importLibrary('geometry');
+                  console.log('[GMaps] Geometry library imported');
+                } catch (e) {
+                  console.warn('[GMaps] Failed to import geometry library:', e);
+                }
+              }
+              setTimeout(checkReady, 100);
+            } else {
+              console.warn('[GMaps] Geometry library not available but continuing');
+              resolve(window.google as typeof google);
+            }
           } else if (attempts < maxAttempts) {
             attempts++;
             setTimeout(checkReady, 100);

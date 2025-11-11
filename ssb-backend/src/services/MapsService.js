@@ -1,11 +1,43 @@
 import fetch from "node-fetch";
 import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
 import { getCacheProvider, generateCacheKey } from "../core/cacheProvider.js";
 
-dotenv.config();
+// Get __dirname equivalent in ESM
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load environment variables from the same location as env.ts
+// This ensures we load from ssb-backend/.env (not root .env)
+dotenv.config({ path: path.join(__dirname, "../../.env") });
+
+// Also try loading from root .env as fallback (for cases where .env is at project root)
+const rootEnvPath = path.join(__dirname, "../../../.env");
+try {
+  dotenv.config({ path: rootEnvPath, override: false }); // override: false means don't overwrite existing vars
+} catch (err) {
+  // Ignore if root .env doesn't exist
+}
 
 const MAPS_API_KEY = process.env.MAPS_API_KEY;
 const MAPS_API_BASE_URL = "https://maps.googleapis.com/maps/api";
+
+// Debug logging to verify API key is loaded
+if (!MAPS_API_KEY) {
+  console.warn("[MapsService] ⚠️ MAPS_API_KEY is undefined!");
+  console.warn("[MapsService] Current working directory:", process.cwd());
+  console.warn("[MapsService] Looking for .env at:", path.join(__dirname, "../../.env"));
+  console.warn("[MapsService] Also checked:", rootEnvPath);
+  console.warn("[MapsService] All env vars with 'MAPS':", 
+    Object.keys(process.env).filter(k => k.includes('MAPS')).map(k => `${k}=${process.env[k] ? '***' : 'undefined'}`)
+  );
+} else {
+  const maskedKey = MAPS_API_KEY.length > 8 
+    ? `${MAPS_API_KEY.substring(0, 4)}...${MAPS_API_KEY.substring(MAPS_API_KEY.length - 4)}`
+    : '***';
+  console.log(`[MapsService] ✅ MAPS_API_KEY loaded: ${maskedKey}`);
+}
 
 // Cache TTL (seconds) - from environment or defaults
 const CACHE_TTL = {
@@ -33,6 +65,7 @@ class MapsService {
    */
   static async getDirections(params) {
     if (!MAPS_API_KEY) {
+      console.error("[MapsService] MAPS_API_KEY not configured");
       throw new Error("MAPS_API_KEY not configured");
     }
 
@@ -47,11 +80,24 @@ class MapsService {
       units = "metric",
     } = params;
 
+    // Validate required params
+    if (!origin || !destination) {
+      throw new Error("Origin and destination are required");
+    }
+
+    // Ensure waypoints is an array and filter out invalid entries
+    const validWaypoints = (Array.isArray(waypoints) ? waypoints : [])
+      .filter((w) => {
+        if (typeof w === "string") return w.trim() !== "";
+        if (w && typeof w === "object" && w.location) return w.location.trim() !== "";
+        return false;
+      });
+
     // Generate cache key
     const cacheKey = generateCacheKey("dir", {
       origin,
       destination,
-      waypoints: waypoints.map((w) => (typeof w === "string" ? w : w.location)).sort(),
+      waypoints: validWaypoints.map((w) => (typeof w === "string" ? w : w.location)).sort(),
       mode,
       alternatives,
       avoid,
@@ -61,32 +107,98 @@ class MapsService {
     const cache = await this._getCache();
     const cached = await cache.get(cacheKey);
     if (cached) {
+      console.log("[MapsService] Using cached directions result");
       return { ...cached, cached: true };
     }
 
     // Build URL
-    const waypointsStr = waypoints.length > 0
-      ? `&waypoints=${waypoints.map((w) => (typeof w === "string" ? w : w.location)).join("|")}`
+    const waypointsStr = validWaypoints.length > 0
+      ? `&waypoints=${validWaypoints.map((w) => (typeof w === "string" ? w : w.location)).join("|")}`
       : "";
     const avoidStr = avoid.length > 0 ? `&avoid=${avoid.join("|")}` : "";
     const alternativesStr = alternatives ? "&alternatives=true" : "";
 
     const url = `${MAPS_API_BASE_URL}/directions/json?origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}${waypointsStr}&mode=${mode}${avoidStr}${alternativesStr}&language=${language}&units=${units}&key=${MAPS_API_KEY}`;
 
+    console.log("[MapsService] Calling Directions API:", {
+      origin,
+      destination,
+      waypointsCount: validWaypoints.length,
+      mode,
+    });
+
     try {
-      const response = await fetch(url);
+      // Add timeout to fetch (30 seconds)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+      let response;
+      try {
+        response = await fetch(url, {
+          signal: controller.signal,
+          headers: {
+            'Accept': 'application/json',
+          },
+        });
+        clearTimeout(timeoutId);
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        if (fetchError.name === 'AbortError') {
+          throw new Error("Maps API request timeout (30s)");
+        }
+        throw fetchError;
+      }
+
+      if (!response.ok) {
+        throw new Error(`Maps API HTTP error: ${response.status} ${response.statusText}`);
+      }
+
       const data = await response.json();
 
+      console.log("[MapsService] Directions API response:", {
+        status: data.status,
+        routesCount: data.routes?.length || 0,
+        hasPolyline: !!data.routes?.[0]?.overview_polyline?.points,
+      });
+
       if (data.status !== "OK") {
-        throw new Error(`Maps API error: ${data.status} - ${data.error_message || "Unknown error"}`);
+        const errorMsg = data.error_message || "Unknown error";
+        console.error("[MapsService] Maps API error:", {
+          status: data.status,
+          message: errorMsg,
+        });
+        
+        // Provide helpful error message for REQUEST_DENIED
+        if (data.status === "REQUEST_DENIED") {
+          if (errorMsg.includes("legacy API") || errorMsg.includes("not enabled")) {
+            console.error("[MapsService] ⚠️ Directions API (Legacy) chưa được enable!");
+            console.error("[MapsService] 💡 Hãy enable Directions API trong Google Cloud Console:");
+            console.error("[MapsService]   1. Vào: https://console.cloud.google.com/apis/library");
+            console.error("[MapsService]   2. Tìm 'Directions API' (không phải Routes API)");
+            console.error("[MapsService]   3. Click ENABLE");
+            console.error("[MapsService]   4. Đợi 1-2 phút và restart backend");
+            throw new Error(`Directions API (Legacy) chưa được enable. Vui lòng enable trong Google Cloud Console. Chi tiết: ${errorMsg}`);
+          }
+        }
+        
+        throw new Error(`Maps API error: ${data.status} - ${errorMsg}`);
       }
 
       // Extract polyline from first route
+      if (!data.routes || data.routes.length === 0) {
+        throw new Error("Maps API returned no routes");
+      }
+
       const route = data.routes[0];
       const polyline = route.overview_polyline?.points || null;
 
+      if (!polyline) {
+        console.warn("[MapsService] No polyline in route response");
+        throw new Error("Maps API returned route without polyline");
+      }
+
       // Extract legs (distance, duration for each segment)
-      const legs = route.legs.map((leg) => ({
+      const legs = route.legs?.map((leg) => ({
         distance: leg.distance?.value || 0, // meters
         duration: leg.duration?.value || 0, // seconds
         start_address: leg.start_address,
@@ -99,7 +211,7 @@ class MapsService {
           polyline: step.polyline?.points || null,
           html_instructions: step.html_instructions,
         })) || [],
-      }));
+      })) || [];
 
       // Total distance and duration
       const distance = legs.reduce((sum, leg) => sum + leg.distance, 0);
@@ -113,12 +225,25 @@ class MapsService {
         cached: false,
       };
 
+      console.log("[MapsService] Directions result:", {
+        polylineLength: polyline.length,
+        legsCount: legs.length,
+        distance,
+        duration,
+      });
+
       // Cache result
       await cache.set(cacheKey, result, CACHE_TTL.DIRECTIONS);
 
       return result;
     } catch (error) {
-      console.error("Maps Directions API error:", error);
+      console.error("[MapsService] Directions API error:", {
+        message: error.message,
+        stack: error.stack,
+        origin,
+        destination,
+        waypointsCount: waypoints.length,
+      });
       throw error;
     }
   }

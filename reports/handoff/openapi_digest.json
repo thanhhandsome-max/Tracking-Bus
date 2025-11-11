@@ -1,0 +1,160 @@
+{
+  "specVersion": "3.0.0",
+  "title": "SSB 1.0 API",
+  "version": "1.0.0",
+  "lastModified": "2025-11-11",
+  "servers": [
+    {
+      "url": "http://localhost:4000/api/v1",
+      "description": "Development server"
+    },
+    {
+      "url": "https://api.ssb.com/v1",
+      "description": "Production server"
+    }
+  ],
+  "securitySchemes": {
+    "bearerAuth": {
+      "type": "http",
+      "scheme": "bearer",
+      "bearerFormat": "JWT"
+    }
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health check",
+        "tags": ["Health"],
+        "security": []
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "summary": "User login",
+        "tags": ["Authentication"],
+        "security": []
+      }
+    },
+    "/auth/refresh": {
+      "post": {
+        "summary": "Refresh access token",
+        "tags": ["Authentication"],
+        "security": []
+      }
+    },
+    "/auth/register": {
+      "post": {
+        "summary": "User registration",
+        "tags": ["Authentication"]
+      }
+    },
+    "/auth/profile": {
+      "get": {
+        "summary": "Get user profile",
+        "tags": ["Authentication"]
+      }
+    },
+    "/buses": {
+      "get": {
+        "summary": "Get all buses",
+        "tags": ["Buses"]
+      },
+      "post": {
+        "summary": "Create a new bus",
+        "tags": ["Buses"]
+      }
+    },
+    "/buses/{id}": {
+      "get": {
+        "summary": "Get bus by ID",
+        "tags": ["Buses"]
+      }
+    },
+    "/buses/{id}/position": {
+      "post": {
+        "summary": "Update bus position",
+        "tags": ["Buses"]
+      }
+    },
+    "/trips/{id}/start": {
+      "post": {
+        "summary": "Start a trip",
+        "tags": ["Trips"]
+      }
+    },
+    "/trips/{id}/end": {
+      "post": {
+        "summary": "End a trip",
+        "tags": ["Trips"]
+      }
+    },
+    "/routes": {
+      "get": {
+        "summary": "Get all routes",
+        "tags": ["Routes"]
+      }
+    },
+    "/routes/{id}/stops": {
+      "get": {
+        "summary": "Get route stops",
+        "tags": ["Routes"]
+      }
+    },
+    "/schedules": {
+      "post": {
+        "summary": "Create a new schedule",
+        "tags": ["Schedules"]
+      }
+    },
+    "/drivers": {
+      "get": {
+        "summary": "Get all drivers",
+        "tags": ["Drivers"]
+      }
+    },
+    "/students": {
+      "get": {
+        "summary": "Get all students",
+        "tags": ["Students"]
+      }
+    },
+    "/reports/buses/stats": {
+      "get": {
+        "summary": "Get bus statistics",
+        "tags": ["Reports"]
+      }
+    },
+    "/reports/trips/stats": {
+      "get": {
+        "summary": "Get trip statistics",
+        "tags": ["Reports"]
+      }
+    }
+  },
+  "mainSchemas": [
+    "User",
+    "Bus",
+    "BusStats",
+    "TripStats",
+    "EnvelopeOk",
+    "ErrorResponse",
+    "PaginationMeta"
+  ],
+  "tags": [
+    "Health",
+    "Authentication",
+    "Buses",
+    "Drivers",
+    "Routes",
+    "Schedules",
+    "Trips",
+    "Students",
+    "Parents",
+    "Notifications",
+    "Reports",
+    "Admin"
+  ],
+  "totalPaths": 18,
+  "totalSchemas": 7
+}
+

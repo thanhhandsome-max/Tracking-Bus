@@ -1,6 +1,7 @@
 import TuyenDuongModel from "../models/TuyenDuongModel.js";
 import DiemDungModel from "../models/DiemDungModel.js";
 import RouteStopModel from "../models/RouteStopModel.js";
+import pool from "../config/db.js";
 
 class RouteService {
   static async list(options = {}) {
@@ -158,6 +159,62 @@ class RouteService {
   }
 
   /**
+   * Cập nhật stop trong route (sequence, dwell_seconds, hoặc stop info)
+   */
+  static async updateStopInRoute(routeId, stopId, updateData) {
+    const route = await TuyenDuongModel.getById(routeId);
+    if (!route) throw new Error("ROUTE_NOT_FOUND");
+
+    // Kiểm tra stop có trong route không
+    const routeStop = await RouteStopModel.getByRouteAndStop(routeId, stopId);
+    if (!routeStop) throw new Error("STOP_NOT_IN_ROUTE");
+
+    // Validate lat/lng nếu có update stop info
+    if (updateData.viDo !== undefined || updateData.kinhDo !== undefined) {
+      if (updateData.viDo !== undefined && (updateData.viDo < -90 || updateData.viDo > 90)) {
+        throw new Error("INVALID_LATITUDE");
+      }
+      if (updateData.kinhDo !== undefined && (updateData.kinhDo < -180 || updateData.kinhDo > 180)) {
+        throw new Error("INVALID_LONGITUDE");
+      }
+    }
+
+    // Update stop info nếu có
+    if (updateData.tenDiem || updateData.viDo !== undefined || updateData.kinhDo !== undefined || updateData.address !== undefined || updateData.scheduled_time !== undefined) {
+      const stopUpdateData = {};
+      if (updateData.tenDiem !== undefined) stopUpdateData.tenDiem = updateData.tenDiem;
+      if (updateData.viDo !== undefined) stopUpdateData.viDo = updateData.viDo;
+      if (updateData.kinhDo !== undefined) stopUpdateData.kinhDo = updateData.kinhDo;
+      if (updateData.address !== undefined) stopUpdateData.address = updateData.address;
+      if (updateData.scheduled_time !== undefined) stopUpdateData.scheduled_time = updateData.scheduled_time;
+
+      await DiemDungModel.update(stopId, stopUpdateData);
+    }
+
+    // Update route_stops (sequence, dwell_seconds)
+    const sequence = updateData.sequence !== undefined ? updateData.sequence : null;
+    const dwellSeconds = updateData.dwell_seconds !== undefined ? updateData.dwell_seconds : null;
+
+    // Nếu update sequence, kiểm tra conflict
+    if (sequence !== null && sequence !== routeStop.sequence) {
+      const [existing] = await pool.query(
+        `SELECT * FROM route_stops WHERE route_id = ? AND sequence = ? AND stop_id != ?`,
+        [routeId, sequence, stopId]
+      );
+      if (existing.length > 0) {
+        throw new Error("SEQUENCE_ALREADY_EXISTS");
+      }
+    }
+
+    await RouteStopModel.updateStop(routeId, stopId, sequence, dwellSeconds);
+
+    // Backfill origin/dest nếu cần
+    await this._updateRouteOriginDest(routeId);
+
+    return await RouteStopModel.getByRouteId(routeId);
+  }
+
+  /**
    * Sắp xếp lại stops trong route
    */
   static async reorderStops(routeId, items) {
@@ -205,45 +262,87 @@ class RouteService {
    * Rebuild polyline cho route (dùng Maps API)
    */
   static async rebuildPolyline(routeId, mapsService) {
+    console.log(`[RouteService] Rebuilding polyline for route ${routeId}`);
+    
     const route = await TuyenDuongModel.getById(routeId);
-    if (!route) throw new Error("ROUTE_NOT_FOUND");
+    if (!route) {
+      console.error(`[RouteService] Route ${routeId} not found`);
+      throw new Error("ROUTE_NOT_FOUND");
+    }
 
     const stops = await RouteStopModel.getByRouteId(routeId);
+    console.log(`[RouteService] Found ${stops.length} stops for route ${routeId}`);
+    
     if (stops.length < 2) {
+      console.error(`[RouteService] Route ${routeId} has insufficient stops: ${stops.length}`);
       throw new Error("INSUFFICIENT_STOPS");
     }
 
+    // Sort stops by sequence to ensure correct order
+    const sortedStops = stops.sort((a, b) => (a.thuTu || 0) - (b.thuTu || 0));
+
+    // Validate stops have coordinates
+    for (const stop of sortedStops) {
+      if (!stop.viDo || !stop.kinhDo || isNaN(Number(stop.viDo)) || isNaN(Number(stop.kinhDo))) {
+        console.error(`[RouteService] Stop ${stop.maDiem} has invalid coordinates:`, stop);
+        throw new Error(`Stop ${stop.maDiem} has invalid coordinates`);
+      }
+    }
+
     // Origin = stop đầu tiên
-    const origin = `${stops[0].viDo},${stops[0].kinhDo}`;
+    const origin = `${sortedStops[0].viDo},${sortedStops[0].kinhDo}`;
     // Destination = stop cuối cùng
-    const destination = `${stops[stops.length - 1].viDo},${stops[stops.length - 1].kinhDo}`;
+    const destination = `${sortedStops[sortedStops.length - 1].viDo},${sortedStops[sortedStops.length - 1].kinhDo}`;
     // Waypoints = các stop ở giữa
-    const waypoints = stops.slice(1, -1).map((stop) => ({
+    const waypoints = sortedStops.slice(1, -1).map((stop) => ({
       location: `${stop.viDo},${stop.kinhDo}`,
     }));
 
-    // Gọi Maps API
-    const directionsResult = await mapsService.getDirections({
+    console.log(`[RouteService] Calling Maps API:`, {
       origin,
       destination,
-      waypoints: waypoints.length > 0 ? waypoints : undefined,
-      mode: "driving",
+      waypointsCount: waypoints.length,
     });
 
-    if (!directionsResult.polyline) {
-      throw new Error("MAPS_API_ERROR");
+    try {
+      // Gọi Maps API
+      const directionsResult = await mapsService.getDirections({
+        origin,
+        destination,
+        waypoints: waypoints.length > 0 ? waypoints : undefined,
+        mode: "driving",
+      });
+
+      if (!directionsResult || !directionsResult.polyline) {
+        console.error(`[RouteService] No polyline in directions result for route ${routeId}`);
+        throw new Error("MAPS_API_ERROR");
+      }
+
+      console.log(`[RouteService] Got polyline for route ${routeId}, length: ${directionsResult.polyline.length}`);
+
+      // Cập nhật polyline vào DB
+      await TuyenDuongModel.update(routeId, {
+        polyline: directionsResult.polyline,
+      });
+
+      console.log(`[RouteService] Successfully updated polyline for route ${routeId}`);
+
+      return {
+        polyline: directionsResult.polyline,
+        updated: true,
+        cached: directionsResult.cached || false,
+      };
+    } catch (error) {
+      console.error(`[RouteService] Error rebuilding polyline for route ${routeId}:`, {
+        message: error.message,
+        stack: error.stack,
+      });
+      // Re-throw with more context
+      if (error.message.includes("Maps API") || error.message.includes("MAPS_API")) {
+        throw error; // Let controller handle Maps API errors
+      }
+      throw error;
     }
-
-    // Cập nhật polyline vào DB
-    await TuyenDuongModel.update(routeId, {
-      polyline: directionsResult.polyline,
-    });
-
-    return {
-      polyline: directionsResult.polyline,
-      updated: true,
-      cached: directionsResult.cached || false,
-    };
   }
 }
 

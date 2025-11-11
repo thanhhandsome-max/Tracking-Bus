@@ -1,0 +1,248 @@
+{
+  "apiClient": {
+    "file": "ssb-frontend/lib/api.ts",
+    "baseURL": "process.env.NEXT_PUBLIC_API_URL || http://localhost:4000/api/v1",
+    "methods": {
+      "auth": {
+        "login": {
+          "method": "POST",
+          "path": "/auth/login",
+          "usedIn": ["app/login/page.tsx", "lib/auth-context.tsx"]
+        },
+        "register": {
+          "method": "POST",
+          "path": "/auth/register",
+          "usedIn": ["app/login/page.tsx"]
+        },
+        "refresh": {
+          "method": "POST",
+          "path": "/auth/refresh",
+          "usedIn": ["lib/api.ts"]
+        },
+        "getProfile": {
+          "method": "GET",
+          "path": "/auth/profile",
+          "usedIn": ["lib/auth-context.tsx"]
+        }
+      },
+      "buses": {
+        "getBuses": {
+          "method": "GET",
+          "path": "/buses",
+          "usedIn": ["app/admin/buses/page.tsx"]
+        },
+        "getBusById": {
+          "method": "GET",
+          "path": "/buses/{id}",
+          "usedIn": ["app/admin/buses/page.tsx"]
+        },
+        "createBus": {
+          "method": "POST",
+          "path": "/buses",
+          "usedIn": ["app/admin/buses/page.tsx"]
+        },
+        "updateBus": {
+          "method": "PUT",
+          "path": "/buses/{id}",
+          "usedIn": ["app/admin/buses/page.tsx"]
+        },
+        "deleteBus": {
+          "method": "DELETE",
+          "path": "/buses/{id}",
+          "usedIn": ["app/admin/buses/page.tsx"]
+        },
+        "updateBusLocation": {
+          "method": "POST",
+          "path": "/buses/{id}/position",
+          "usedIn": ["hooks/use-gps.ts"]
+        },
+        "getBusStats": {
+          "method": "GET",
+          "path": "/buses/stats",
+          "usedIn": ["app/admin/page.tsx"]
+        }
+      },
+      "routes": {
+        "getRoutes": {
+          "method": "GET",
+          "path": "/routes",
+          "usedIn": ["app/admin/routes/page.tsx", "lib/hooks/useRoutes.ts"]
+        },
+        "getRouteById": {
+          "method": "GET",
+          "path": "/routes/{id}",
+          "usedIn": ["app/admin/routes/[id]/page.tsx", "lib/hooks/useRoutes.ts"]
+        },
+        "createRoute": {
+          "method": "POST",
+          "path": "/routes",
+          "usedIn": ["lib/hooks/useRoutes.ts"]
+        },
+        "updateRoute": {
+          "method": "PUT",
+          "path": "/routes/{id}",
+          "usedIn": ["lib/hooks/useRoutes.ts"]
+        },
+        "deleteRoute": {
+          "method": "DELETE",
+          "path": "/routes/{id}",
+          "usedIn": ["lib/hooks/useRoutes.ts"]
+        },
+        "getRouteStops": {
+          "method": "GET",
+          "path": "/routes/{id}/stops",
+          "usedIn": ["app/admin/routes/[id]/page.tsx"]
+        },
+        "addRouteStop": {
+          "method": "POST",
+          "path": "/routes/{id}/stops",
+          "usedIn": ["app/admin/routes/[id]/page.tsx"]
+        },
+        "rebuildPolyline": {
+          "method": "POST",
+          "path": "/routes/{id}/rebuild-polyline",
+          "usedIn": ["app/admin/routes/[id]/page.tsx"]
+        }
+      },
+      "trips": {
+        "getTrips": {
+          "method": "GET",
+          "path": "/trips",
+          "usedIn": ["app/driver/page.tsx"]
+        },
+        "getTripById": {
+          "method": "GET",
+          "path": "/trips/{id}",
+          "usedIn": ["app/driver/trip/[id]/page.tsx"]
+        },
+        "getTripHistory": {
+          "method": "GET",
+          "path": "/trips/history",
+          "usedIn": ["app/parent/history/page.tsx", "app/driver/history/page.tsx"]
+        }
+      },
+      "drivers": {
+        "getDrivers": {
+          "method": "GET",
+          "path": "/drivers",
+          "usedIn": ["app/admin/drivers/page.tsx"]
+        },
+        "getDriverById": {
+          "method": "GET",
+          "path": "/drivers/{id}",
+          "usedIn": ["app/admin/drivers/page.tsx"]
+        }
+      },
+      "students": {
+        "getStudents": {
+          "method": "GET",
+          "path": "/students",
+          "usedIn": ["app/admin/students/page.tsx"]
+        },
+        "getStudentsByParent": {
+          "method": "GET",
+          "path": "/students/by-parent",
+          "usedIn": ["app/parent/page.tsx"]
+        }
+      },
+      "schedules": {
+        "getSchedules": {
+          "method": "GET",
+          "path": "/schedules",
+          "usedIn": ["app/admin/schedule/page.tsx"]
+        },
+        "createSchedule": {
+          "method": "POST",
+          "path": "/schedules",
+          "usedIn": ["app/admin/schedule/page.tsx"]
+        }
+      },
+      "maps": {
+        "getDirections": {
+          "method": "POST",
+          "path": "/maps/directions",
+          "usedIn": ["lib/hooks/useMaps.ts", "lib/api-client.ts"]
+        },
+        "getDistanceMatrix": {
+          "method": "POST",
+          "path": "/maps/distance-matrix",
+          "usedIn": ["lib/hooks/useMaps.ts", "app/driver/trip/[id]/page.tsx"]
+        },
+        "geocode": {
+          "method": "POST",
+          "path": "/maps/geocode",
+          "usedIn": ["lib/hooks/useMaps.ts"]
+        },
+        "reverseGeocode": {
+          "method": "POST",
+          "path": "/maps/reverse-geocode",
+          "usedIn": ["lib/hooks/useMaps.ts"]
+        },
+        "snapToRoads": {
+          "method": "POST",
+          "path": "/maps/roads/snap",
+          "usedIn": ["lib/api-client.ts"]
+        }
+      },
+      "notifications": {
+        "getNotifications": {
+          "method": "GET",
+          "path": "/notifications",
+          "usedIn": ["app/parent/notifications/page.tsx", "app/admin/notifications/page.tsx"]
+        },
+        "getUnreadCount": {
+          "method": "GET",
+          "path": "/notifications/unread-count",
+          "usedIn": ["app/parent/notifications/page.tsx"]
+        },
+        "markNotificationRead": {
+          "method": "PATCH",
+          "path": "/notifications/{id}/read",
+          "usedIn": ["app/parent/notifications/page.tsx"]
+        }
+      },
+      "reports": {
+        "getReportsOverview": {
+          "method": "GET",
+          "path": "/reports/overview",
+          "usedIn": ["app/admin/reports/page.tsx"]
+        },
+        "getTripStats": {
+          "method": "GET",
+          "path": "/trips/stats",
+          "usedIn": ["app/admin/page.tsx"]
+        }
+      },
+      "health": {
+        "getHealth": {
+          "method": "GET",
+          "path": "/health",
+          "usedIn": ["lib/api.ts"]
+        }
+      }
+    }
+  },
+  "tripService": {
+    "file": "ssb-frontend/lib/services/trip.service.ts",
+    "methods": {
+      "startTrip": {
+        "method": "POST",
+        "path": "/trips/{id}/start",
+        "usedIn": ["app/driver/trip/[id]/page.tsx", "app/driver/page.tsx"]
+      },
+      "endTrip": {
+        "method": "POST",
+        "path": "/trips/{id}/end",
+        "usedIn": ["app/driver/trip/[id]/page.tsx"]
+      },
+      "cancelTrip": {
+        "method": "POST",
+        "path": "/trips/{id}/cancel",
+        "usedIn": ["app/driver/trip/[id]/page.tsx"]
+      }
+    }
+  },
+  "totalEndpoints": 45,
+  "totalFilesUsingAPI": 30
+}
+

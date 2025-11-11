@@ -53,10 +53,15 @@ type ViewMode = "grid" | "list"
   })
 
   function mapRoute(r: any): Route {
+    // Normalize trangThai: convert number (1/0) to boolean, or keep as is
+    let status = r.trangThai || r.status;
+    if (typeof status === 'number') {
+      status = status === 1;
+    }
     return {
       id: String(r.maTuyen || r.id || r._id || ''),
       name: r.tenTuyen || r.ten || r.name || '',
-      status: r.trangThai || r.status,
+      status: status,
       stopsCount: r.soDiemDung || r.stops?.length || r.diemDung?.length || 0,
       distance: r.quangDuong || r.distance || r.khoangCach,
       duration: r.thoiLuong || r.duration || r.thoiGianUocTinh,

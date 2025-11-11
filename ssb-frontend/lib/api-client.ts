@@ -61,6 +61,7 @@ class ApiClient {
     this.client.interceptors.response.use(
       (response) => response,
       async (error: AxiosError) => {
+        // Only handle 401 errors for token refresh
         if (error.response?.status === 401 && typeof window !== 'undefined') {
           // Kiểm tra lại token trước khi refresh
           const currentToken = localStorage.getItem('ssb_token') || localStorage.getItem('token');
@@ -93,7 +94,13 @@ class ApiClient {
                 }
               }
             } catch (refreshError) {
-              console.error('Token refresh failed:', refreshError);
+              // Safely log refresh error
+              try {
+                const refreshErrMsg = refreshError instanceof Error ? refreshError.message : String(refreshError);
+                console.error('Token refresh failed:', refreshErrMsg);
+              } catch {
+                console.error('Token refresh failed');
+              }
               this.clearToken();
               // Chỉ redirect nếu không phải đang ở trang login
               if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
@@ -111,6 +118,7 @@ class ApiClient {
             }
           }
         }
+        // Reject the error so it can be handled in the request method
         return Promise.reject(error);
       }
     );
@@ -155,12 +163,110 @@ class ApiClient {
     } catch (error) {
       if (axios.isAxiosError(error)) {
         const axiosError = error as AxiosError<ApiResponse>;
+        
+        // Log detailed error information for debugging
+        // Use console.warn and log properties individually to avoid Next.js error interception
+        if (axiosError.response) {
+          // Request got a response (but status code indicates error)
+          // This is an API error response, not a network error
+          // Use console.warn to avoid Next.js error handler interception
+          if (process.env.NODE_ENV === 'development') {
+            try {
+              const responseData = axiosError.response.data;
+              
+              // Log error info property by property to avoid serialization issues
+              console.warn('[api-client] API error response:');
+              console.warn('  URL:', config.url || 'unknown');
+              console.warn('  Method:', config.method || 'unknown');
+              console.warn('  Status:', axiosError.response.status);
+              console.warn('  StatusText:', axiosError.response.statusText || 'unknown');
+              
+              // Safely extract error details
+              if (responseData) {
+                if (responseData.error) {
+                  console.warn('  Error Code:', responseData.error.code || 'unknown');
+                  console.warn('  Error Message:', responseData.error.message || 'unknown');
+                } else if (responseData.message) {
+                  console.warn('  Message:', responseData.message);
+                }
+              }
+              
+              // Log request payload if available (for debugging)
+              if (config.data) {
+                try {
+                  const requestDataStr = typeof config.data === 'string' 
+                    ? config.data.substring(0, 200)
+                    : JSON.stringify(config.data, null, 2).substring(0, 500);
+                  console.log('[api-client] Request payload:', requestDataStr);
+                } catch {
+                  // Ignore serialization errors
+                }
+              }
+            } catch (logError) {
+              // If logging fails, just log basic info without object
+              console.warn('[api-client] API error (unable to log details)');
+              console.warn('  URL:', config.url || 'unknown');
+              console.warn('  Status:', axiosError.response?.status || 'unknown');
+            }
+          }
+        } else {
+          // Request failed without response (network error, CORS, timeout, etc.)
+          // Use console.warn for network errors to avoid Next.js error interception
+          // These are expected errors when backend is not running
+          const errorDetails = {
+            url: config.url || 'unknown',
+            method: config.method || 'unknown',
+            message: axiosError.message || 'Unknown error',
+            code: axiosError.code || 'unknown',
+          };
+          
+          // Log as warning (not error) to avoid Next.js error handler
+          console.warn('[api-client] Network error (backend may be offline):', errorDetails);
+          
+          // Check for common issues and log as warnings
+          if (axiosError.code === 'ECONNREFUSED') {
+            console.warn('  ⚠️  Connection refused - Backend server may not be running');
+          } else if (axiosError.code === 'ERR_NETWORK') {
+            console.warn('  ⚠️  Network error - Check if backend server is running');
+          } else if (axiosError.code === 'ETIMEDOUT' || axiosError.code === 'ECONNABORTED') {
+            console.warn('  ⚠️  Request timeout - Server may be slow or unresponsive');
+          } else if (axiosError.message?.includes('CORS')) {
+            console.warn('  ⚠️  CORS error - Check backend CORS configuration');
+          }
+        }
+        
+        // If we have a response, return it (even if it's an error response)
         if (axiosError.response?.data) {
           return axiosError.response.data;
         }
-        throw new Error(axiosError.message || 'API request failed');
+        
+        // For network errors (no response), return a structured error response
+        // instead of throwing, so React Query can handle it properly
+        const errorMessage = axiosError.message || 'API request failed';
+        const errorCode = axiosError.code || 'UNKNOWN_ERROR';
+        
+        // Return error response structure instead of throwing
+        return {
+          success: false,
+          error: {
+            code: errorCode === 'ERR_NETWORK' ? 'NETWORK_ERROR' : 
+                  errorCode === 'ECONNREFUSED' ? 'CONNECTION_REFUSED' : 
+                  errorCode === 'ETIMEDOUT' ? 'TIMEOUT' : 'UNKNOWN_ERROR',
+            message: errorCode === 'ERR_NETWORK' || errorCode === 'ECONNREFUSED' 
+              ? 'Không thể kết nối đến server. Vui lòng kiểm tra backend server có đang chạy không (cd ssb-backend && npm run dev)'
+              : errorMessage,
+          },
+        } as ApiResponse<T>;
       }
-      throw error;
+      
+      // For non-axios errors, return error response structure
+      return {
+        success: false,
+        error: {
+          code: 'UNKNOWN_ERROR',
+          message: error instanceof Error ? error.message : 'Unknown error occurred',
+        },
+      } as ApiResponse<T>;
     }
   }
 
@@ -246,6 +352,22 @@ class ApiClient {
     language?: string;
     units?: string;
   }) {
+    // Log the request data for debugging
+    console.log('[api-client] getDirections request data:');
+    console.log('  Origin:', data.origin);
+    console.log('  Destination:', data.destination);
+    console.log('  Waypoints Count:', data.waypoints?.length || 0);
+    if (data.waypoints && data.waypoints.length > 0) {
+      console.log('  Waypoints:', data.waypoints.map(wp => wp.location || wp).join(', '));
+    }
+    console.log('  Mode:', data.mode || 'driving');
+    
+    // Validate before sending
+    if (!data.origin || !data.destination) {
+      console.error('[api-client] getDirections: Missing origin or destination!');
+      throw new Error('Origin and destination are required');
+    }
+    
     return this.request({ method: 'post', url: '/maps/directions', data });
   }
 

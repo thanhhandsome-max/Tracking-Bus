@@ -31,17 +31,18 @@ export function useDistanceMatrix() {
  * Features:
  * - Caches results for 120s (staleTime)
  * - Works in tandem with backend cache (also 120s)
- * - Returns { data, isLoading, error, cached }
+ * - Returns { data, isLoading, error, isFetchedFromCacheFE, isBESaysCached }
  * - Automatically retries on failure
  * 
  * Usage:
  * ```tsx
- * const { data, isLoading } = useETA({
+ * const { data, isLoading, isFetchedFromCacheFE, isBESaysCached } = useETA({
  *   origins: ['10.77653,106.700981'],
  *   destinations: ['10.762622,106.660172'],
  *   mode: 'driving'
  * });
- * // data.cached = true if from FE cache OR backend cache
+ * // isFetchedFromCacheFE: true if served from FE cache (React Query)
+ * // isBESaysCached: true if BE response has cached: true
  * ```
  */
 export function useETA(params: {
@@ -52,7 +53,7 @@ export function useETA(params: {
 }) {
   const { origins, destinations, mode = 'driving', enabled = true } = params;
   
-  return useQuery({
+  const query = useQuery({
     queryKey: ['eta', 'distance-matrix', origins.sort().join(','), destinations.sort().join(','), mode],
     queryFn: async () => {
       const response = await apiClient.getDistanceMatrix({
@@ -74,6 +75,22 @@ export function useETA(params: {
     refetchOnWindowFocus: false,
     refetchOnMount: false,
   });
+
+  // Determine if data was fetched from FE cache (React Query)
+  // If dataUpdatedAt is recent and isStale is false, likely from cache
+  const isFetchedFromCacheFE = query.dataUpdatedAt > 0 && 
+    (Date.now() - query.dataUpdatedAt) < 120000 && 
+    !query.isStale &&
+    query.dataUpdatedAt < Date.now();
+
+  // Check if BE says it's cached
+  const isBESaysCached = Boolean((query.data as any)?.cached === true);
+
+  return {
+    ...query,
+    isFetchedFromCacheFE,
+    isBESaysCached,
+  };
 }
 
 // Directions

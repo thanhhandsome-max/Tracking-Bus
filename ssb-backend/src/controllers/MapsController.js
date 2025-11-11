@@ -7,21 +7,59 @@ class MapsController {
     try {
       const { origin, destination, waypoints, mode, alternatives, avoid, language, units } = req.body;
 
-      // Validation
-      if (!origin || !destination) {
+      // Log incoming request for debugging
+      console.log('[MapsController] getDirections request:', {
+        hasOrigin: !!origin,
+        hasDestination: !!destination,
+        origin: origin,
+        destination: destination,
+        originType: typeof origin,
+        destinationType: typeof destination,
+        waypointsType: typeof waypoints,
+        waypointsIsArray: Array.isArray(waypoints),
+        waypointsLength: Array.isArray(waypoints) ? waypoints.length : 'N/A',
+        waypoints: waypoints,
+        fullBody: JSON.stringify(req.body),
+      });
+
+      // Validation - check for empty strings as well
+      if (!origin || typeof origin !== 'string' || origin.trim() === '') {
+        console.warn('[MapsController] Invalid origin:', { origin, type: typeof origin });
         return res.status(400).json({
           success: false,
           error: {
             code: "MISSING_REQUIRED_FIELDS",
-            message: "origin và destination là bắt buộc",
+            message: "origin là bắt buộc và phải là chuỗi không rỗng",
           },
         });
       }
 
+      if (!destination || typeof destination !== 'string' || destination.trim() === '') {
+        console.warn('[MapsController] Invalid destination:', { destination, type: typeof destination });
+        return res.status(400).json({
+          success: false,
+          error: {
+            code: "MISSING_REQUIRED_FIELDS",
+            message: "destination là bắt buộc và phải là chuỗi không rỗng",
+          },
+        });
+      }
+
+      // Normalize waypoints - ensure it's an array
+      let normalizedWaypoints = [];
+      if (waypoints) {
+        if (Array.isArray(waypoints)) {
+          normalizedWaypoints = waypoints;
+        } else if (typeof waypoints === 'object' && waypoints.location) {
+          // Single waypoint object
+          normalizedWaypoints = [waypoints];
+        }
+      }
+
       const result = await MapsService.getDirections({
-        origin,
-        destination,
-        waypoints,
+        origin: origin.trim(),
+        destination: destination.trim(),
+        waypoints: normalizedWaypoints,
         mode: mode || "driving",
         alternatives: alternatives || false,
         avoid: avoid || [],
