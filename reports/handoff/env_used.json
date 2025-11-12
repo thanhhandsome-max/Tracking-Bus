@@ -1,183 +1,306 @@
 {
   "frontend": {
-    "file": "ssb-frontend/env.example",
-    "variables": [
+    "required": [
       {
         "name": "NEXT_PUBLIC_API_BASE",
-        "usedIn": [
-          "lib/api-client.ts:3",
-          "lib/api.ts:6"
-        ],
-        "default": "http://localhost:4000/api/v1",
-        "description": "Backend API base URL"
+        "files": ["lib/api-client.ts:3"],
+        "fallback": "NEXT_PUBLIC_API_URL",
+        "default": "http://localhost:4000/api/v1"
       },
       {
         "name": "NEXT_PUBLIC_API_URL",
-        "usedIn": [
-          "lib/api.ts:6",
-          "lib/services/trip.service.ts:7",
-          "lib/api-client.ts:3"
-        ],
-        "default": "http://localhost:4000/api/v1",
-        "description": "Alternative API URL (fallback)"
+        "files": ["lib/api.ts:6", "lib/services/trip.service.ts:7"],
+        "fallback": "NEXT_PUBLIC_API_BASE",
+        "default": "http://localhost:4000/api/v1"
       },
       {
         "name": "NEXT_PUBLIC_GMAPS_API_KEY",
-        "usedIn": [
-          "lib/maps/googleLoader.ts:17",
-          "components/map/SSBMap.tsx:123"
-        ],
+        "files": ["lib/maps/googleLoader.ts:17"],
         "required": true,
         "description": "Google Maps JavaScript API key"
       },
       {
         "name": "NEXT_PUBLIC_SOCKET_URL",
-        "usedIn": [
-          "lib/socket.ts:4"
-        ],
+        "files": ["lib/socket.ts:4"],
         "default": "http://localhost:4000",
-        "description": "Socket.IO server URL"
-      },
+        "fallback": "NEXT_PUBLIC_WS_URL"
+      }
+    ],
+    "optional": [
       {
-        "name": "NEXT_PUBLIC_TEST_TRIP_ID",
-        "usedIn": [
-          "app/driver/trip/[id]/page.tsx:209"
-        ],
-        "optional": true,
-        "description": "Test trip ID for development"
+        "name": "NODE_ENV",
+        "files": ["lib/providers/QueryProvider.tsx:27", "lib/hooks/useRoutes.ts:45,112", "lib/api-client.ts:173", "components/map/SSBMap.tsx:327"],
+        "values": ["development", "production"]
       },
       {
         "name": "NEXT_PUBLIC_API_ORIGIN",
-        "usedIn": [
-          "hooks/use-gps.ts:6"
-        ],
-        "default": "http://localhost:4000",
-        "description": "API origin for GPS service"
+        "files": ["hooks/use-gps.ts:6"],
+        "default": "http://localhost:4000"
       },
       {
-        "name": "NODE_ENV",
-        "usedIn": [
-          "lib/providers/QueryProvider.tsx:27"
-        ],
-        "description": "Environment mode (development/production)"
+        "name": "NEXT_PUBLIC_GOOGLE_MAPS_API_KEY",
+        "files": ["components/driver/trip-map.tsx:49"],
+        "fallback": "NEXT_PUBLIC_GMAPS_API_KEY"
+      },
+      {
+        "name": "NEXT_PUBLIC_TEST_TRIP_ID",
+        "files": ["app/driver/trip/[id]/page.tsx:209"],
+        "description": "For testing only"
       }
     ]
   },
   "backend": {
-    "file": "env.example (root)",
-    "variables": [
+    "required": [
       {
         "name": "PORT",
-        "usedIn": [
-          "ssb-backend/src/server.ts:288"
-        ],
-        "default": "4000",
-        "description": "Server port"
+        "files": ["src/config/env.ts:86", "src/server.ts"],
+        "default": "4000"
       },
+      {
+        "name": "DB_HOST",
+        "files": ["src/config/env.ts:89", "src/config/db.js:9"],
+        "default": "localhost"
+      },
+      {
+        "name": "DB_USER",
+        "files": ["src/config/env.ts:90", "src/config/db.js:10"],
+        "default": "root"
+      },
+      {
+        "name": "DB_NAME",
+        "files": ["src/config/env.ts:92", "src/config/db.js:12"],
+        "default": "school_bus_system"
+      },
+      {
+        "name": "JWT_SECRET",
+        "files": ["src/config/env.ts:95", "src/middlewares/AuthMiddleware.js:23,359", "src/controllers/AuthController.js:158,240,521,573,652", "src/utils/wsAuth.js:10,66", "src/middlewares/socketAuth.js:14", "src/services/SocketService.js:40"],
+        "required": true,
+        "description": "JWT signing secret"
+      },
+      {
+        "name": "JWT_REFRESH_SECRET",
+        "files": ["src/config/env.ts:96", "src/controllers/AuthController.js:250,635"],
+        "required": true,
+        "description": "JWT refresh token secret"
+      },
+      {
+        "name": "FE_ORIGIN",
+        "files": ["src/config/env.ts:104"],
+        "description": "Frontend origin(s), comma-separated for CORS"
+      }
+    ],
+    "optional": [
       {
         "name": "NODE_ENV",
-        "usedIn": [
-          "ssb-backend/src/ws/index.js:55"
-        ],
-        "default": "development",
-        "description": "Environment mode"
+        "files": ["src/config/env.ts:87", "src/ws/index.js:56", "src/utils/wsAuth.js:28,56", "src/services/LoggingService.js:27", "src/services/HealthCheckService.js:16,260", "src/middlewares/ErrorHandler.js:137", "src/utils/response.js:148", "src/controllers/RouteController.js:463,699,726"],
+        "values": ["development", "production"]
       },
       {
-        "name": "HOST",
-        "usedIn": [
-          "ssb-backend/src/server.ts:288"
-        ],
-        "default": "0.0.0.0",
-        "description": "Server host"
+        "name": "DB_PASSWORD",
+        "files": ["src/config/env.ts:91", "src/config/db.js:11"],
+        "fallback": "DB_PASS",
+        "default": ""
+      },
+      {
+        "name": "DB_PASS",
+        "files": ["src/config/db.js:11"],
+        "fallback": "DB_PASSWORD"
+      },
+      {
+        "name": "DB_PORT",
+        "files": ["src/config/db.js:13"],
+        "default": "3306"
+      },
+      {
+        "name": "JWT_EXPIRES_IN",
+        "files": ["src/config/env.ts:97"],
+        "default": "15m"
+      },
+      {
+        "name": "JWT_REFRESH_EXPIRES_IN",
+        "files": ["src/config/env.ts:98"],
+        "default": "7d"
+      },
+      {
+        "name": "WS_ENABLED",
+        "files": ["src/config/env.ts:101"],
+        "default": "true"
+      },
+      {
+        "name": "SOCKET_CORS_ORIGIN",
+        "files": ["src/config/env.ts:107"],
+        "fallback": "FE_ORIGIN"
+      },
+      {
+        "name": "API_PREFIX",
+        "files": ["src/config/env.ts:110"],
+        "default": "/api/v1"
+      },
+      {
+        "name": "LOG_LEVEL",
+        "files": ["src/config/env.ts:113"],
+        "default": "info"
+      },
+      {
+        "name": "LOG_FILE",
+        "files": ["src/config/env.ts:114"],
+        "default": "logs/app.log"
+      },
+      {
+        "name": "RATE_LIMIT_WINDOW_MS",
+        "files": ["src/config/env.ts:117"],
+        "default": "900000"
+      },
+      {
+        "name": "RATE_LIMIT_MAX_REQUESTS",
+        "files": ["src/config/env.ts:118"],
+        "default": "100"
+      },
+      {
+        "name": "MAX_FILE_SIZE",
+        "files": ["src/config/env.ts:121"],
+        "default": "5242880"
+      },
+      {
+        "name": "UPLOAD_PATH",
+        "files": ["src/config/env.ts:122"],
+        "default": "uploads/"
       },
       {
         "name": "MAPS_API_KEY",
-        "usedIn": [
-          "ssb-backend/src/services/MapsService.js:7"
-        ],
-        "required": true,
+        "files": ["src/services/MapsService.js:23", "src/services/settingsService.js:135"],
         "description": "Google Maps API key for backend proxy"
       },
       {
-        "name": "CACHE_TTL_DIRECTIONS",
-        "usedIn": [
-          "ssb-backend/src/services/MapsService.js:12"
-        ],
-        "default": "21600",
-        "description": "Directions cache TTL (seconds)"
-      },
-      {
-        "name": "CACHE_TTL_DISTANCE_MATRIX",
-        "usedIn": [
-          "ssb-backend/src/services/MapsService.js:13"
-        ],
-        "default": "120",
-        "description": "Distance Matrix cache TTL (seconds)"
-      },
-      {
-        "name": "CACHE_TTL_GEOCODE",
-        "usedIn": [
-          "ssb-backend/src/services/MapsService.js:14"
-        ],
-        "default": "86400",
-        "description": "Geocode cache TTL (seconds)"
-      },
-      {
-        "name": "CACHE_TTL_ROADS",
-        "usedIn": [
-          "ssb-backend/src/services/MapsService.js:15"
-        ],
-        "default": "900",
-        "description": "Roads Snap cache TTL (seconds)"
-      },
-      {
         "name": "CACHE_DRIVER",
-        "usedIn": [
-          "ssb-backend/src/core/cacheProvider.js:7"
-        ],
+        "files": ["src/core/cacheProvider.js:7"],
         "default": "memory",
-        "description": "Cache driver (memory/redis)"
+        "values": ["memory", "redis"]
       },
       {
         "name": "REDIS_URL",
-        "usedIn": [
-          "ssb-backend/src/core/cacheProvider.js:8"
-        ],
-        "default": "redis://localhost:6379",
-        "description": "Redis connection URL"
+        "files": ["src/core/cacheProvider.js:8", "src/config/cache.js"],
+        "default": "redis://localhost:6379"
+      },
+      {
+        "name": "REDIS_HOST",
+        "files": ["src/config/cache.js:8"],
+        "fallback": "From REDIS_URL"
+      },
+      {
+        "name": "REDIS_PORT",
+        "files": ["src/config/cache.js:9"],
+        "fallback": "From REDIS_URL",
+        "default": "6379"
+      },
+      {
+        "name": "REDIS_PASSWORD",
+        "files": ["src/config/cache.js:10"]
+      },
+      {
+        "name": "CACHE_TTL_DIRECTIONS",
+        "files": ["src/services/MapsService.js:44"],
+        "default": "21600"
+      },
+      {
+        "name": "CACHE_TTL_DISTANCE_MATRIX",
+        "files": ["src/services/MapsService.js:45"],
+        "default": "120"
+      },
+      {
+        "name": "CACHE_TTL_GEOCODE",
+        "files": ["src/services/MapsService.js:46"],
+        "default": "86400"
+      },
+      {
+        "name": "CACHE_TTL_ROADS",
+        "files": ["src/services/MapsService.js:47"],
+        "default": "900"
       },
       {
         "name": "RL_WINDOW",
-        "usedIn": [
-          "ssb-backend/src/middlewares/mapsLimiter.js:22,50,78,106"
-        ],
-        "default": "60",
-        "description": "Rate limit window (seconds)"
+        "files": ["src/middlewares/mapsLimiter.js:22,50,78,106"],
+        "default": "60"
       },
       {
         "name": "RL_MAX_MATRIX",
-        "usedIn": [
-          "ssb-backend/src/middlewares/mapsLimiter.js:23,79"
-        ],
-        "default": "60",
-        "description": "Max requests per window for Distance Matrix"
+        "files": ["src/middlewares/mapsLimiter.js:23,79"],
+        "default": "60"
       },
       {
         "name": "RL_MAX_DIRECTIONS",
-        "usedIn": [
-          "ssb-backend/src/middlewares/mapsLimiter.js:51,107"
-        ],
-        "default": "30",
-        "description": "Max requests per window for Directions"
+        "files": ["src/middlewares/mapsLimiter.js:51,107"],
+        "default": "30"
+      },
+      {
+        "name": "SMTP_HOST",
+        "files": ["src/config/env.ts:129"],
+        "default": "smtp.gmail.com"
+      },
+      {
+        "name": "SMTP_PORT",
+        "files": ["src/config/env.ts:130"],
+        "default": "587"
+      },
+      {
+        "name": "SMTP_USER",
+        "files": ["src/config/env.ts:131"]
+      },
+      {
+        "name": "SMTP_PASS",
+        "files": ["src/config/env.ts:132"]
+      },
+      {
+        "name": "FIREBASE_PROJECT_ID",
+        "files": ["src/config/firebase.js"]
+      },
+      {
+        "name": "FIREBASE_PRIVATE_KEY",
+        "files": ["src/config/firebase.js"]
+      },
+      {
+        "name": "FIREBASE_CLIENT_EMAIL",
+        "files": ["src/config/firebase.js"]
+      },
+      {
+        "name": "FIREBASE_DB_URL",
+        "files": ["src/config/firebase.js:47"]
+      },
+      {
+        "name": "SENTRY_DSN",
+        "files": ["src/config/env.ts:148"]
+      },
+      {
+        "name": "HOST",
+        "files": ["src/server.ts:301"],
+        "default": "0.0.0.0"
+      },
+      {
+        "name": "GEOFENCE_RADIUS_METERS",
+        "files": ["src/services/settingsService.js:123"],
+        "default": "60"
+      },
+      {
+        "name": "DELAY_THRESHOLD_MINUTES",
+        "files": ["src/services/settingsService.js:126"],
+        "default": "5"
+      },
+      {
+        "name": "REALTIME_THROTTLE_SECONDS",
+        "files": ["src/services/settingsService.js:129"],
+        "default": "2"
+      },
+      {
+        "name": "MAPS_PROVIDER",
+        "files": ["src/services/settingsService.js:132"]
+      },
+      {
+        "name": "FRONTEND_URL",
+        "files": ["src/services/SocketService.js:17"],
+        "default": "http://localhost:5173"
       }
     ]
-  },
-  "summary": {
-    "frontendVariables": 7,
-    "backendVariables": 13,
-    "totalVariables": 20,
-    "requiredVariables": 2,
-    "note": "Values not included for security - see env.example files"
   }
 }
+
 

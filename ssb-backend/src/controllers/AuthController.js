@@ -488,48 +488,81 @@ class AuthController {
   // Quên mật khẩu
   static async forgotPassword(req, res) {
     try {
-      const { email } = req.body;
+      const { email, soDienThoai } = req.body;
+      const identifier = email || soDienThoai;
 
-      if (!email) {
+      if (!identifier) {
         return res.status(400).json({
           success: false,
-          message: "Email là bắt buộc",
+          message: "Email hoặc số điện thoại là bắt buộc",
         });
       }
 
-      // Validation email
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email)) {
-        return res.status(400).json({
-          success: false,
-          message: "Email không hợp lệ",
-        });
+      // Tìm user theo email hoặc số điện thoại
+      let user = null;
+      if (email) {
+        // Validation email
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+          return res.status(400).json({
+            success: false,
+            message: "Email không hợp lệ",
+          });
+        }
+        user = await NguoiDungModel.getByEmail(email);
+      } else if (soDienThoai) {
+        // Validation số điện thoại (chỉ số, 10-15 ký tự)
+        const phoneRegex = /^[0-9]{10,15}$/;
+        const cleanPhone = soDienThoai.replace(/\D/g, '');
+        if (!phoneRegex.test(cleanPhone)) {
+          return res.status(400).json({
+            success: false,
+            message: "Số điện thoại không hợp lệ",
+          });
+        }
+        user = await NguoiDungModel.getByPhone(cleanPhone);
       }
 
-      // Kiểm tra email có tồn tại không
-      const user = await NguoiDungModel.getByEmail(email);
       if (!user) {
-        return res.status(404).json({
-          success: false,
-          message: "Email không tồn tại trong hệ thống",
+        // Không tiết lộ thông tin tài khoản có tồn tại hay không (bảo mật)
+        return res.status(200).json({
+          success: true,
+          message: "Nếu email/số điện thoại tồn tại trong hệ thống, mật khẩu mới đã được gửi đến email của bạn",
         });
       }
 
-      // Tạo token reset password
-      const resetToken = jwt.sign(
-        { userId: user.maNguoiDung, email: user.email },
-        process.env.JWT_SECRET,
-        { expiresIn: "1h" }
-      );
+      // Kiểm tra user có email không (cần email để gửi mật khẩu mới)
+      if (!user.email) {
+        return res.status(400).json({
+          success: false,
+          message: "Tài khoản này chưa có email. Vui lòng liên hệ quản trị viên",
+        });
+      }
 
-      // TODO: Gửi email reset password
-      // Ở đây chỉ trả về token để test, trong thực tế sẽ gửi email
+      // Tạo mật khẩu mới ngẫu nhiên (8 ký tự: chữ hoa, chữ thường, số)
+      const generatePassword = () => {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+        let password = '';
+        for (let i = 0; i < 8; i++) {
+          password += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return password;
+      };
+
+      const newPassword = generatePassword();
+      const saltRounds = 12;
+      const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
+
+      // Cập nhật mật khẩu mới vào database
+      await NguoiDungModel.update(user.maNguoiDung, { matKhau: hashedPassword });
+
+      // Gửi email mật khẩu mới
+      const EmailService = (await import("../services/EmailService.js")).default;
+      await EmailService.sendPasswordReset(user.email, user.hoTen, newPassword);
+
       res.status(200).json({
         success: true,
-        data: {
-          resetToken, // Chỉ để test, không trả về trong production
-        },
-        message: "Token reset password đã được tạo",
+        message: "Mật khẩu mới đã được gửi đến email của bạn",
       });
     } catch (error) {
       console.error("Error in AuthController.forgotPassword:", error);

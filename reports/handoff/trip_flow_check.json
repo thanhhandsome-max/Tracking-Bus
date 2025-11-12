@@ -1,170 +1,118 @@
 {
   "tripStates": {
-    "chua_khoi_hanh": {
-      "description": "Trip not started",
-      "canStart": true,
-      "canEnd": false,
-      "canCancel": true
-    },
-    "dang_chay": {
-      "description": "Trip in progress",
-      "canStart": false,
-      "canEnd": true,
-      "canCancel": true,
-      "gpsTracking": true
-    },
-    "hoan_thanh": {
-      "description": "Trip completed",
-      "canStart": false,
-      "canEnd": false,
-      "canCancel": false
-    },
-    "huy": {
-      "description": "Trip cancelled",
-      "canStart": false,
-      "canEnd": false,
-      "canCancel": false
+    "states": ["chua_khoi_hanh", "dang_chay", "hoan_thanh", "huy"],
+    "transitions": {
+      "start": {
+        "from": "chua_khoi_hanh",
+        "to": "dang_chay",
+        "endpoint": "POST /trips/{id}/start",
+        "controller": "TripController.startTrip",
+        "file": "ssb-backend/src/controllers/TripController.js:594",
+        "validation": "Check trip exists, status is 'chua_khoi_hanh', driver owns trip",
+        "socketEvent": "trip_started",
+        "socketRooms": ["trip-{tripId}", "bus-{busId}", "role-quan_tri"]
+      },
+      "end": {
+        "from": "dang_chay",
+        "to": "hoan_thanh",
+        "endpoint": "POST /trips/{id}/end",
+        "controller": "TripController.endTrip",
+        "file": "ssb-backend/src/controllers/TripController.js",
+        "validation": "Check trip exists, status is 'dang_chay', driver owns trip",
+        "socketEvent": "trip_completed",
+        "socketRooms": ["trip-{tripId}", "bus-{busId}", "role-quan_tri"],
+        "cleanup": "TelemetryService.clearTripData"
+      },
+      "cancel": {
+        "from": ["chua_khoi_hanh", "dang_chay"],
+        "to": "huy",
+        "endpoint": "POST /trips/{id}/cancel",
+        "controller": "TripController.cancelTrip",
+        "file": "ssb-backend/src/controllers/TripController.js",
+        "validation": "Check trip exists, status allows cancellation, user has permission",
+        "socketEvent": "trip_cancelled",
+        "socketRooms": ["trip-{tripId}", "bus-{busId}", "role-quan_tri"],
+        "cleanup": "TelemetryService.clearTripData"
+      }
     }
   },
-  "startTrip": {
-    "endpoint": "POST /api/v1/trips/{id}/start",
-    "controller": "ssb-backend/src/controllers/TripController.js",
-    "validation": {
-      "tripExists": true,
-      "statusCheck": "Must be 'chua_khoi_hanh'",
-      "driverCheck": "Driver must be assigned"
-    },
-    "actions": [
-      "Update trangThai = 'dang_chay'",
-      "Set gioBatDauThucTe = now()",
-      "Emit socket event: trip_started",
-      "Start GPS tracking"
-    ],
-    "socketEvent": {
-      "name": "trip_started",
-      "room": "trip-{tripId}",
-      "payload": "{ tripId, busId, driverId, startTime, route }"
-    },
-    "frontendHandler": {
-      "file": "app/driver/trip/[id]/page.tsx",
-      "actions": [
-        "Update UI status",
-        "Enable GPS tracking (useGPS().start())",
-        "Join trip room (socket.joinTrip())"
-      ]
-    }
-  },
-  "endTrip": {
-    "endpoint": "POST /api/v1/trips/{id}/end",
-    "controller": "ssb-backend/src/controllers/TripController.js",
-    "validation": {
-      "tripExists": true,
-      "statusCheck": "Must be 'dang_chay'"
-    },
-    "actions": [
-      "Update trangThai = 'hoan_thanh'",
-      "Set gioKetThucThucTe = now()",
-      "Clear telemetry cache (TelemetryService.clearTripData())",
-      "Emit socket event: trip_completed"
-    ],
-    "socketEvent": {
-      "name": "trip_completed",
-      "room": "trip-{tripId}",
-      "payload": "{ tripId, busId, driverId, endTime, duration, stats }"
-    },
-    "frontendHandler": {
-      "file": "app/driver/trip/[id]/page.tsx",
-      "actions": [
-        "Stop GPS tracking (useGPS().stop())",
-        "Leave trip room (socket.leaveTrip())",
-        "Show completion toast",
-        "Redirect to dashboard"
-      ]
-    }
-  },
-  "proximityCheck": {
-    "description": "Anti-spam geofence check for approach_stop events",
-    "service": "ssb-backend/src/services/telemetryService.js",
-    "method": "checkGeofence()",
-    "radius": 60,
-    "unit": "meters",
+  "proximityChecks": {
+    "service": "TelemetryService.checkGeofence",
+    "file": "ssb-backend/src/services/telemetryService.js:345",
+    "radius": "GEOFENCE_RADIUS = 60 meters",
     "antiSpam": {
-      "enabled": true,
-      "mechanism": "Map<tripId, Set<stopId>>",
-      "file": "ssb-backend/src/services/telemetryService.js:80",
-      "description": "Track emitted stops per trip to prevent duplicate events",
-      "clearOn": [
-        "Trip completed",
-        "Trip cancelled"
-      ]
+      "mechanism": "emittedStops Map<tripId, Set<stopId>>",
+      "description": "Only emit approach_stop once per stop per trip",
+      "clearOn": "Trip completed or cancelled"
     },
-    "event": {
-      "name": "approach_stop",
-      "room": "trip-{tripId}",
-      "payload": "{ tripId, stopId, stopName, distance_m, timestamp }",
-      "frequency": "Once per stop per trip"
-    },
-    "frontendHandler": {
-      "file": "hooks/use-socket.ts",
-      "component": "app/driver/trip/[id]/page.tsx",
-      "action": "Show toast notification"
-    }
+    "trigger": "When GPS update is within 60m of any stop in trip route",
+    "socketEvent": "approach_stop",
+    "payload": "{ tripId, stopId, stopName, distance, eta }"
   },
-  "delayCheck": {
-    "description": "Delay alert when trip is late",
-    "service": "ssb-backend/src/services/telemetryService.js",
-    "method": "checkDelay()",
-    "threshold": 5,
-    "unit": "minutes",
-    "throttle": {
-      "enabled": true,
-      "interval": 180000,
-      "unit": "milliseconds (3 minutes)",
-      "file": "ssb-backend/src/services/telemetryService.js:102",
-      "description": "Prevent spam - emit delay_alert max once per 3 minutes"
+  "delayAlerts": {
+    "service": "TelemetryService.checkDelay",
+    "file": "ssb-backend/src/services/telemetryService.js:444",
+    "threshold": "DELAY_THRESHOLD_MIN = 5 minutes",
+    "calculation": "Compare current time with scheduled start time",
+    "antiSpam": {
+      "mechanism": "delayAlertLastSent Map<tripId, timestamp>",
+      "interval": "DELAY_ALERT_INTERVAL = 3 minutes (180000ms)",
+      "description": "Only send delay alert once every 3 minutes per trip"
     },
-    "event": {
-      "name": "delay_alert",
-      "room": "trip-{tripId}",
-      "payload": "{ tripId, busId, delayMinutes, reason, estimatedArrival, alertLevel }",
-      "frequency": "Max once per 3 minutes"
-    },
-    "frontendHandler": {
-      "file": "hooks/use-socket.ts",
-      "component": "app/driver/trip/[id]/page.tsx",
-      "action": "Show delay alert toast"
-    }
+    "trigger": "When trip start delay > 5 minutes",
+    "socketEvent": "delay_alert",
+    "payload": "{ tripId, delayMinutes, scheduledTime, currentTime }",
+    "note": "Only checks start delay. ETA-based delay (with EMA speed) not yet implemented (P1 enhancement)"
   },
-  "gpsTracking": {
-    "description": "Realtime GPS position updates",
+  "gpsUpdates": {
     "rateLimit": {
-      "minimum": 2000,
-      "unit": "milliseconds (2 seconds)",
-      "file": "ssb-backend/src/services/telemetryService.js:86",
-      "description": "Prevent GPS spam - minimum 2s between updates"
+      "mechanism": "lastUpdateTime Map<busId, timestamp>",
+      "interval": "RATE_LIMIT_MS = 2000ms (2 seconds)",
+      "file": "ssb-backend/src/services/telemetryService.js:68"
     },
-    "event": {
-      "emit": "driver_gps",
-      "listen": "bus_position_update",
-      "frequency": "Every 2-3 seconds when trip is active"
-    },
-    "frontendHook": {
-      "file": "hooks/use-gps.ts",
-      "usage": "app/driver/trip/[id]/page.tsx",
-      "actions": [
-        "Get GPS position from browser",
-        "Emit driver_gps event",
-        "Listen for bus_position_update",
-        "Update map marker"
+    "validation": {
+      "file": "ssb-backend/src/ws/index.js:147",
+      "checks": [
+        "Trip exists",
+        "Schedule exists",
+        "Driver owns trip (user.vaiTro === 'tai_xe' && schedule.maTaiXe === user.userId)"
       ]
+    },
+    "processing": {
+      "service": "TelemetryService.updatePosition",
+      "file": "ssb-backend/src/services/telemetryService.js",
+      "steps": [
+        "Update bus position cache",
+        "Check geofence (proximity to stops)",
+        "Check delay",
+        "Broadcast bus_position_update",
+        "Emit approach_stop if within geofence",
+        "Emit delay_alert if delayed"
+      ]
+    },
+    "broadcast": {
+      "rooms": ["trip-{tripId}", "bus-{busId}", "role-quan_tri"],
+      "event": "bus_position_update",
+      "payload": "{ busId, tripId, lat, lng, speed, heading, timestamp }"
     }
   },
-  "summary": {
-    "stateTransitions": 4,
-    "validationChecks": 3,
-    "socketEvents": 5,
-    "antiSpamMechanisms": 2,
-    "rateLimits": 2
+  "attendance": {
+    "checkin": {
+      "endpoint": "POST /trips/{id}/students/{studentId}/checkin",
+      "controller": "TripController.checkinStudent",
+      "file": "ssb-backend/src/controllers/TripController.js",
+      "status": "da_don (onboard)",
+      "socketEvent": "pickup_status_update",
+      "payload": "{ tripId, studentId, status: 'onboard', timestamp }"
+    },
+    "checkout": {
+      "endpoint": "POST /trips/{id}/students/{studentId}/checkout",
+      "controller": "TripController.checkoutStudent",
+      "file": "ssb-backend/src/controllers/TripController.js",
+      "status": "da_tra (dropped)",
+      "socketEvent": "pickup_status_update",
+      "payload": "{ tripId, studentId, status: 'dropped', timestamp }"
+    }
   }
 }
 

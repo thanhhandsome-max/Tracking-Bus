@@ -134,6 +134,19 @@ class ApiClient {
         }
       }
 
+      // Handle rate limit errors (429)
+      if (status === 429) {
+        const retryAfter = json?.retryAfter || 60; // Default 60 seconds
+        const errorMessage = json?.message || "Too many requests from this IP, please try again later.";
+        const error = new Error(errorMessage);
+        (error as any).status = 429;
+        (error as any).code = json?.code || 'RATE_LIMIT_EXCEEDED';
+        (error as any).retryAfter = retryAfter;
+        (error as any).response = json;
+        console.warn(`[API] Rate limit exceeded. Retry after ${retryAfter}s`);
+        throw error;
+      }
+
       // Check for error response (either HTTP error or success: false)
       if (!ok || json?.success === false) {
         const errorMessage = json?.message || json?.error || "API request failed";
@@ -185,6 +198,13 @@ class ApiClient {
     return this.request("/auth/register", {
       method: "POST",
       body: JSON.stringify(userData),
+    });
+  }
+
+  async forgotPassword(email?: string, soDienThoai?: string) {
+    return this.request("/auth/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ email, soDienThoai }),
     });
   }
 
@@ -363,6 +383,14 @@ class ApiClient {
     return this.request(`/students/${id}`, {
       method: "DELETE",
     });
+  }
+
+  async getStudentStats() {
+    return this.request("/students/stats");
+  }
+
+  async findParentByPhone(phone: string) {
+    return this.request(`/students/parent/by-phone/${phone}`);
   }
 
   // Route endpoints

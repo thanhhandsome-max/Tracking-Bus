@@ -3,167 +3,199 @@
     {
       "pathname": "/",
       "file": "app/page.tsx",
-      "type": "page",
-      "description": "Root redirect to /login"
+      "type": "redirect",
+      "redirectsTo": "/login"
     },
     {
       "pathname": "/login",
       "file": "app/login/page.tsx",
       "type": "page",
-      "description": "Login page"
+      "usesMap": false
+    },
+    {
+      "pathname": "/auth-check",
+      "file": "app/auth-check/page.tsx",
+      "type": "page",
+      "usesMap": false
     },
     {
       "pathname": "/admin",
       "file": "app/admin/page.tsx",
       "type": "page",
-      "description": "Admin dashboard"
+      "usesMap": false
+    },
+    {
+      "pathname": "/admin/dashboard",
+      "file": "app/admin/dashboard/page.tsx",
+      "type": "page",
+      "usesMap": false
     },
     {
       "pathname": "/admin/routes",
       "file": "app/admin/routes/page.tsx",
       "type": "page",
-      "description": "Routes list page",
-      "usesMap": true
+      "usesMap": true,
+      "mapComponent": "RouteBuilder"
     },
     {
       "pathname": "/admin/routes/[id]",
       "file": "app/admin/routes/[id]/page.tsx",
       "type": "dynamic",
-      "description": "Route detail page with map",
-      "usesMap": true
+      "usesMap": true,
+      "mapComponent": "SSBMap"
     },
     {
       "pathname": "/admin/buses",
       "file": "app/admin/buses/page.tsx",
-      "type": "page"
+      "type": "page",
+      "usesMap": false
     },
     {
       "pathname": "/admin/drivers",
       "file": "app/admin/drivers/page.tsx",
-      "type": "page"
+      "type": "page",
+      "usesMap": false
     },
     {
       "pathname": "/admin/students",
       "file": "app/admin/students/page.tsx",
-      "type": "page"
+      "type": "page",
+      "usesMap": false
     },
     {
       "pathname": "/admin/schedule",
       "file": "app/admin/schedule/page.tsx",
-      "type": "page"
+      "type": "page",
+      "usesMap": false
     },
     {
       "pathname": "/admin/tracking",
       "file": "app/admin/tracking/page.tsx",
       "type": "page",
-      "usesMap": true
+      "usesMap": true,
+      "mapComponent": "MapView"
     },
     {
       "pathname": "/admin/reports",
       "file": "app/admin/reports/page.tsx",
-      "type": "page"
+      "type": "page",
+      "usesMap": false
     },
     {
       "pathname": "/admin/notifications",
       "file": "app/admin/notifications/page.tsx",
-      "type": "page"
-    },
-    {
-      "pathname": "/admin/profile",
-      "file": "app/admin/profile/page.tsx",
-      "type": "page"
+      "type": "page",
+      "usesMap": false
     },
     {
       "pathname": "/admin/settings",
       "file": "app/admin/settings/page.tsx",
-      "type": "page"
+      "type": "page",
+      "usesMap": false
+    },
+    {
+      "pathname": "/admin/profile",
+      "file": "app/admin/profile/page.tsx",
+      "type": "page",
+      "usesMap": false
+    },
+    {
+      "pathname": "/admin/route-assignment",
+      "file": "app/admin/route-assignment/page.tsx",
+      "type": "page",
+      "usesMap": false
     },
     {
       "pathname": "/driver",
       "file": "app/driver/page.tsx",
       "type": "page",
-      "description": "Driver dashboard",
-      "usesMap": true
+      "usesMap": true,
+      "mapComponent": "MapView"
     },
     {
       "pathname": "/driver/trip/[id]",
       "file": "app/driver/trip/[id]/page.tsx",
       "type": "dynamic",
-      "description": "Trip detail page with realtime tracking",
-      "usesMap": true
+      "usesMap": true,
+      "mapComponent": "TripMap"
     },
     {
       "pathname": "/driver/history",
       "file": "app/driver/history/page.tsx",
-      "type": "page"
+      "type": "page",
+      "usesMap": false
     },
     {
       "pathname": "/driver/incidents",
       "file": "app/driver/incidents/page.tsx",
-      "type": "page"
+      "type": "page",
+      "usesMap": false
     },
     {
       "pathname": "/driver/profile",
       "file": "app/driver/profile/page.tsx",
-      "type": "page"
+      "type": "page",
+      "usesMap": false
     },
     {
       "pathname": "/driver/settings",
       "file": "app/driver/settings/page.tsx",
-      "type": "page"
+      "type": "page",
+      "usesMap": false
     },
     {
       "pathname": "/parent",
       "file": "app/parent/page.tsx",
       "type": "page",
-      "description": "Parent dashboard",
-      "usesMap": true
+      "usesMap": true,
+      "mapComponent": "MapView"
     },
     {
       "pathname": "/parent/history",
       "file": "app/parent/history/page.tsx",
-      "type": "page"
+      "type": "page",
+      "usesMap": false
     },
     {
       "pathname": "/parent/notifications",
       "file": "app/parent/notifications/page.tsx",
-      "type": "page"
+      "type": "page",
+      "usesMap": false
     },
     {
       "pathname": "/parent/profile",
       "file": "app/parent/profile/page.tsx",
-      "type": "page"
+      "type": "page",
+      "usesMap": false
     },
     {
       "pathname": "/parent/settings",
       "file": "app/parent/settings/page.tsx",
-      "type": "page"
+      "type": "page",
+      "usesMap": false
     }
   ],
-  "mapUsage": {
-    "components": [
-      {
-        "name": "SSBMap",
-        "file": "components/map/SSBMap.tsx",
-        "description": "Main Google Maps component"
-      },
-      {
-        "name": "MapView",
-        "file": "components/tracking/MapView.tsx",
-        "description": "Legacy map view component"
-      }
-    ],
-    "pagesWithMaps": [
-      "/admin/routes",
-      "/admin/routes/[id]",
-      "/admin/tracking",
-      "/driver",
-      "/driver/trip/[id]",
-      "/parent"
-    ]
-  },
-  "totalRoutes": 25,
-  "dynamicRoutes": 2,
-  "pagesWithMaps": 6
+  "mapComponents": {
+    "SSBMap": {
+      "file": "components/map/SSBMap.tsx",
+      "usesGoogleMaps": true,
+      "usesPlaces": false
+    },
+    "MapView": {
+      "file": "components/tracking/MapView.tsx",
+      "usesGoogleMaps": true,
+      "usesPlaces": false
+    },
+    "RouteBuilder": {
+      "file": "components/admin/route-builder.tsx",
+      "usesGoogleMaps": true,
+      "usesPlaces": true
+    },
+    "TripMap": {
+      "file": "components/driver/trip-map.tsx",
+      "usesGoogleMaps": true,
+      "usesPlaces": false
+    }
+  }
 }
 

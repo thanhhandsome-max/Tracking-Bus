@@ -42,6 +42,14 @@ router.get(
   StudentController.getByCurrentParent
 );
 
+// GET /api/v1/students/parent/by-phone/:phone - Tìm phụ huynh theo SĐT
+router.get(
+  "/parent/by-phone/:phone",
+  AuthMiddleware.authenticate,
+  AuthMiddleware.authorize("quan_tri"),
+  StudentController.findParentByPhone
+);
+
 // GET /api/v1/students/:id - Chi tiết học sinh
 router.get(
   "/:id",

@@ -1,113 +1,132 @@
 {
   "backendProxy": {
-    "description": "6 Google Maps APIs proxied through backend for caching and rate limiting",
+    "description": "All Google Maps APIs (except Places) are proxied through backend for caching and rate limiting",
     "apis": [
       {
-        "name": "Directions",
-        "endpoint": "POST /api/v1/maps/directions",
+        "name": "Directions API",
+        "endpoint": "POST /maps/directions",
         "backendFile": "ssb-backend/src/controllers/MapsController.js",
         "serviceFile": "ssb-backend/src/services/MapsService.js",
         "frontendUsage": [
-          "lib/hooks/useMaps.ts (useDirections)",
-          "lib/api-client.ts (getDirections)"
+          {
+            "file": "ssb-frontend/lib/api-client.ts",
+            "function": "getDirections",
+            "calledFrom": ["lib/hooks/useMaps.ts", "components/admin/route-builder.tsx"]
+          }
         ],
-        "cacheTTL": 21600,
-        "rateLimit": "30 req/min"
+        "caching": true,
+        "cacheTTL": "CACHE_TTL_DIRECTIONS (21600s = 6h)"
       },
       {
-        "name": "Distance Matrix",
-        "endpoint": "POST /api/v1/maps/distance-matrix",
+        "name": "Distance Matrix API",
+        "endpoint": "POST /maps/distance-matrix",
         "backendFile": "ssb-backend/src/controllers/MapsController.js",
         "serviceFile": "ssb-backend/src/services/MapsService.js",
         "frontendUsage": [
-          "lib/hooks/useMaps.ts (useDistanceMatrix, useETA)",
-          "app/driver/trip/[id]/page.tsx (ETA calculation)"
+          {
+            "file": "ssb-frontend/lib/api-client.ts",
+            "function": "getDistanceMatrix",
+            "calledFrom": ["lib/hooks/useMaps.ts"]
+          }
         ],
-        "cacheTTL": 120,
-        "rateLimit": "60 req/min",
-        "frontendCache": "120s (React Query)"
+        "caching": true,
+        "cacheTTL": "CACHE_TTL_DISTANCE_MATRIX (120s = 2m)"
       },
       {
-        "name": "Geocode",
-        "endpoint": "POST /api/v1/maps/geocode",
+        "name": "Geocoding API",
+        "endpoint": "POST /maps/geocode",
         "backendFile": "ssb-backend/src/controllers/MapsController.js",
         "serviceFile": "ssb-backend/src/services/MapsService.js",
         "frontendUsage": [
-          "lib/hooks/useMaps.ts (useGeocode)"
+          {
+            "file": "ssb-frontend/lib/api-client.ts",
+            "function": "geocode",
+            "calledFrom": ["lib/hooks/useMaps.ts"]
+          }
         ],
-        "cacheTTL": 86400,
-        "rateLimit": "60 req/min"
+        "caching": true,
+        "cacheTTL": "CACHE_TTL_GEOCODE (86400s = 24h)"
       },
       {
-        "name": "Reverse Geocode",
-        "endpoint": "POST /api/v1/maps/reverse-geocode",
+        "name": "Reverse Geocoding API",
+        "endpoint": "POST /maps/reverse-geocode",
         "backendFile": "ssb-backend/src/controllers/MapsController.js",
         "serviceFile": "ssb-backend/src/services/MapsService.js",
         "frontendUsage": [
-          "lib/hooks/useMaps.ts (useReverseGeocode)"
+          {
+            "file": "ssb-frontend/lib/api-client.ts",
+            "function": "reverseGeocode",
+            "calledFrom": ["lib/hooks/useMaps.ts"]
+          }
         ],
-        "cacheTTL": 86400,
-        "rateLimit": "60 req/min"
+        "caching": true,
+        "cacheTTL": "CACHE_TTL_GEOCODE (86400s = 24h)"
       },
       {
-        "name": "Roads Snap",
-        "endpoint": "POST /api/v1/maps/roads/snap",
+        "name": "Roads API (Snap to Roads)",
+        "endpoint": "POST /maps/roads/snap",
         "backendFile": "ssb-backend/src/controllers/MapsController.js",
         "serviceFile": "ssb-backend/src/services/MapsService.js",
         "frontendUsage": [
-          "lib/api-client.ts (snapToRoads)"
+          {
+            "file": "ssb-frontend/lib/api-client.ts",
+            "function": "snapToRoads",
+            "calledFrom": ["lib/hooks/useMaps.ts"]
+          }
         ],
-        "cacheTTL": 900,
-        "rateLimit": "30 req/min"
-      },
-      {
-        "name": "Places Autocomplete",
-        "endpoint": "N/A (Direct from FE)",
-        "backendFile": null,
-        "serviceFile": null,
-        "frontendUsage": [
-          "lib/maps/googleLoader.ts",
-          "components/admin/route-builder.tsx (Autocomplete input)"
-        ],
-        "directCall": true,
-        "sdk": "Google Maps JavaScript API",
-        "note": "Only Places API called directly from frontend"
+        "caching": true,
+        "cacheTTL": "CACHE_TTL_ROADS (900s = 15m)"
       }
-    ]
+    ],
+    "rateLimiting": {
+      "file": "ssb-backend/src/middlewares/mapsLimiter.js",
+      "window": "RL_WINDOW (60s)",
+      "maxMatrix": "RL_MAX_MATRIX (60 req/window)",
+      "maxDirections": "RL_MAX_DIRECTIONS (30 req/window)"
+    }
   },
   "frontendDirect": {
-    "description": "Places API only - called directly via Google Maps JS SDK",
-    "files": [
+    "description": "Only Places API is called directly from frontend via Google Maps JavaScript SDK",
+    "apis": [
       {
-        "file": "lib/maps/googleLoader.ts",
-        "purpose": "Load Google Maps JS SDK",
-        "apiKey": "process.env.NEXT_PUBLIC_GMAPS_API_KEY"
+        "name": "Places API (Autocomplete)",
+        "method": "Direct via Google Maps JS SDK",
+        "loaderFile": "ssb-frontend/lib/maps/googleLoader.ts",
+        "usage": [
+          {
+            "file": "components/admin/route-builder.tsx",
+            "component": "Autocomplete input for address search",
+            "library": "@googlemaps/js-api-loader with 'places' library"
+          }
+        ],
+        "apiKey": "NEXT_PUBLIC_GMAPS_API_KEY",
+        "libraries": ["places", "geometry", "routes"]
       },
       {
-        "file": "components/admin/route-builder.tsx",
-        "purpose": "Places Autocomplete for stop address input"
-      },
-      {
-        "file": "components/map/SSBMap.tsx",
-        "purpose": "Main map component using Google Maps JS SDK"
+        "name": "Maps JavaScript API",
+        "method": "Direct via Google Maps JS SDK",
+        "loaderFile": "ssb-frontend/lib/maps/googleLoader.ts",
+        "usage": [
+          {
+            "file": "components/map/SSBMap.tsx",
+            "description": "Main map component"
+          },
+          {
+            "file": "components/tracking/MapView.tsx",
+            "description": "Tracking map view"
+          },
+          {
+            "file": "components/driver/trip-map.tsx",
+            "description": "Driver trip map"
+          }
+        ],
+        "apiKey": "NEXT_PUBLIC_GMAPS_API_KEY"
       }
     ]
   },
   "noDirectCalls": {
-    "description": "All other Maps APIs must go through backend proxy",
-    "verified": true,
-    "evidence": [
-      "No https://maps.googleapis.com/maps/api/ calls in FE code",
-      "All FE code uses apiClient methods",
-      "Backend has caching and rate limiting"
-    ]
-  },
-  "summary": {
-    "totalAPIs": 6,
-    "proxiedAPIs": 5,
-    "directAPIs": 1,
-    "caching": "Backend (Redis/Memory) + Frontend (React Query)",
-    "rateLimiting": "Backend middleware (express-rate-limit)"
+    "note": "No direct calls to Google Maps REST APIs from frontend. All REST APIs go through backend proxy."
   }
 }
+
 

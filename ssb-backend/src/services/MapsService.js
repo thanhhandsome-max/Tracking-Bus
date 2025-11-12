@@ -168,6 +168,16 @@ class MapsService {
           message: errorMsg,
         });
         
+        // Handle ZERO_RESULTS gracefully (no route found)
+        if (data.status === "ZERO_RESULTS") {
+          console.warn("[MapsService] ZERO_RESULTS - No route found between origin and destination");
+          console.warn("[MapsService] This may happen if:");
+          console.warn("[MapsService]   - Coordinates are invalid or out of range");
+          console.warn("[MapsService]   - No route exists (e.g., across water without bridge)");
+          console.warn("[MapsService]   - Waypoints are too far apart");
+          throw new Error(`Maps API error: ZERO_RESULTS - No route found between points. ${errorMsg}`);
+        }
+        
         // Provide helpful error message for REQUEST_DENIED
         if (data.status === "REQUEST_DENIED") {
           if (errorMsg.includes("legacy API") || errorMsg.includes("not enabled")) {

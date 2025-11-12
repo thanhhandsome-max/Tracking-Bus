@@ -298,37 +298,121 @@ export default function TripDetailPage() {
     async function loadDetail() {
       try {
         if (!tripIdNum) return;
+        console.log('[Driver Trip] Loading trip detail for:', tripIdNum);
         const res = await apiClient.getTripById(tripIdNum);
         const data: any = (res as any).data || res;
-        // Map minimal fields used by UI
-        const route =
+        console.log('[Driver Trip] API response:', data);
+
+        // Map route name with trip type (don_sang/tra_chieu)
+        const loaiChuyen = data?.schedule?.loaiChuyen || '';
+        const baseRouteName =
           data?.routeInfo?.tenTuyen ||
           data?.tuyen?.tenTuyen ||
           data?.tenTuyen ||
-          trip.route;
-        const stops =
-          data?.routeInfo?.diemDung ||
-          data?.tuyen?.diemDung ||
-          data?.stops ||
-          [];
+          "Chưa có tên tuyến";
+        // Add trip type indicator if not already in name
+        const routeName = baseRouteName.includes('Đi') || baseRouteName.includes('Về')
+          ? baseRouteName
+          : `${baseRouteName} ${loaiChuyen === 'don_sang' ? '(Đi)' : loaiChuyen === 'tra_chieu' ? '(Về)' : ''}`;
+
+        // Map stops from routeInfo.diemDung (already sorted by sequence from backend)
+        const routeStops = data?.routeInfo?.diemDung || [];
+        const mappedStops = routeStops.map((stop: any, index: number) => {
+          // Use stop.sequence if available, otherwise use index + 1
+          const stopSequence = stop.sequence || (index + 1);
+          
+          // Find students for this stop (by thuTuDiemDon matching sequence)
+          const stopStudents = (data?.students || []).filter((student: any) => {
+            // Match students to stops by thuTuDiemDon (sequence) or maDiem
+            return student.thuTuDiemDon === stopSequence || 
+                   student.maDiem === stop.maDiem ||
+                   student.thuTuDiemDon === (index + 1);
+          }).map((student: any) => ({
+            id: String(student.maHocSinh || student.id || ''),
+            name: student.hoTen || student.name || 'Học sinh',
+            status: student.trangThai === 'da_don' ? 'picked' :
+                   student.trangThai === 'vang' ? 'absent' : 'pending',
+            avatar: student.anhDaiDien || "/placeholder.svg?height=40&width=40",
+            parent: student.soDienThoaiPhuHuynh || student.parentPhone || '',
+          }));
+
+          // Determine stop status
+          let stopStatus: 'completed' | 'current' | 'upcoming' = 'upcoming';
+          if (data?.trangThai === 'dang_chay') {
+            // For running trips, we need to determine current stop
+            // This is a simplified logic - you may need to enhance based on actual tracking
+            stopStatus = index === 0 ? 'current' : 'upcoming';
+          } else if (data?.trangThai === 'hoan_thanh' || data?.trangThai === 'da_hoan_thanh') {
+            stopStatus = 'completed';
+          }
+
+          return {
+            id: String(stop.maDiem || stop.id || index + 1),
+            name: stop.tenDiem || stop.name || `Điểm ${index + 1}`,
+            address: stop.address || `${stop.viDo || 0}, ${stop.kinhDo || 0}`,
+            time: stop.scheduled_time || data?.schedule?.gioKhoiHanh || '--:--',
+            eta: stop.scheduled_time || '--:--',
+            status: stopStatus,
+            notes: '',
+            students: stopStudents,
+            lat: stop.viDo || 0,
+            lng: stop.kinhDo || 0,
+          };
+        });
+
+        // Set trip status
         if (data?.trangThai) {
           setTripStatus(data.trangThai);
-          if (data.trangThai === "dang_chay") setStarted(true);
+          if (data.trangThai === "dang_chay") {
+            setStarted(true);
+          }
         }
-        setTrip((prev) => ({
-          ...prev,
-          id: (data?.maChuyen || data?.id || prev.id) + "",
-          route: route || prev.route,
-          stops:
-            Array.isArray(stops) && stops.length > 0
-              ? prev.stops.map((s, i) => ({
-                  ...s,
-                  name: stops[i]?.tenDiem || s.name,
-                }))
-              : prev.stops,
-        }));
+
+        // Determine current stop index
+        let currentStopIndex = 0;
+        if (data?.trangThai === 'dang_chay' && mappedStops.length > 0) {
+          // Find first non-completed stop
+          const firstNonCompleted = mappedStops.findIndex((s: any) => s.status !== 'completed');
+          currentStopIndex = firstNonCompleted >= 0 ? firstNonCompleted : 0;
+        }
+
+        // Update trip state with real data
+        setTrip({
+          id: String(data?.maChuyen || data?.id || tripIdNum),
+          route: routeName,
+          startTime: data?.gioBatDauThucTe || data?.schedule?.gioKhoiHanh || data?.gioKhoiHanh || '--:--',
+          status: data?.trangThai === 'dang_chay' ? 'in-progress' : 
+                 data?.trangThai === 'hoan_thanh' || data?.trangThai === 'da_hoan_thanh' ? 'completed' : 'pending',
+          currentStop: currentStopIndex,
+          vehicle: {
+            plateNumber: data?.busInfo?.bienSoXe || data?.bienSoXe || 'N/A',
+            fuel: 75, // Not available from API yet
+            speed: 0,
+            temperature: 85, // Not available from API yet
+            mileage: 0, // Not available from API yet
+          },
+          weather: {
+            temp: 28, // Not available from API yet
+            condition: "Nắng nhẹ",
+            humidity: 65,
+            wind: 12,
+          },
+          stops: mappedStops.length > 0 ? mappedStops : trip.stops, // Fallback to mock if no stops
+        });
+
+        console.log('[Driver Trip] Trip data loaded:', {
+          route: routeName,
+          stopsCount: mappedStops.length,
+          status: data?.trangThai,
+          currentStop: currentStopIndex,
+        });
       } catch (e) {
-        console.warn("Failed to load trip detail", e);
+        console.error("Failed to load trip detail", e);
+        toast({
+          title: "Lỗi",
+          description: "Không thể tải thông tin chuyến đi. Vui lòng thử lại.",
+          variant: "destructive",
+        });
       }
     }
     loadDetail();
@@ -336,11 +420,13 @@ export default function TripDetailPage() {
   }, [tripIdNum]);
 
   // P1 Fix: Calculate ETA for current stop using useETA hook
-  // Note: Currently using mock coordinates - in production, get actual stop coordinates from API
-  const currentStopData = trip.stops[trip.currentStop];
-  const nextStopCoords = currentStopData?.address 
-    ? null // TODO: Get actual coordinates from stop data
-    : { lat: 21.0285, lng: 105.8542 }; // Mock coordinates for demo
+  const currentStopData = trip.stops[trip.currentStop] as any;
+  // Use actual coordinates from stop data (lat/lng from API)
+  const nextStopCoords = currentStopData && 
+    Number.isFinite(currentStopData.lat) && 
+    Number.isFinite(currentStopData.lng)
+    ? { lat: currentStopData.lat, lng: currentStopData.lng }
+    : null;
   
   const etaParams = busLocation && nextStopCoords ? {
     origins: [`${busLocation.lat},${busLocation.lng}`],
@@ -416,25 +502,69 @@ export default function TripDetailPage() {
   async function doStartTrip() {
     try {
       setProcessing(true);
+      console.log('[Driver Trip] Starting trip:', tripIdNum);
       const res = await startTrip(tripIdNum);
-      startGPS();
-      setStarted(true);
-      setTripStatus("dang_chay");
+      console.log('[Driver Trip] Start trip response:', res);
+      
+      // Extract trip ID from response
       const newId =
         (res as any)?.data?.maChuyen ||
         (res as any)?.trip?.maChuyen ||
+        (res as any)?.maChuyen ||
         tripIdNum;
+
+      // Start GPS tracking
+      startGPS();
+      setStarted(true);
+      setTripStatus("dang_chay");
+
+      // Reload trip data to get updated status
+      try {
+        const updatedRes = await apiClient.getTripById(newId);
+        const updatedData: any = (updatedRes as any).data || updatedRes;
+        
+        // Update trip status in state
+        if (updatedData?.trangThai) {
+          setTripStatus(updatedData.trangThai);
+        }
+
+        // Update route name if available
+        const routeName =
+          updatedData?.routeInfo?.tenTuyen ||
+          updatedData?.tuyen?.tenTuyen ||
+          updatedData?.tenTuyen ||
+          trip.route;
+        
+        setTrip((prev) => ({
+          ...prev,
+          route: routeName,
+          status: 'in-progress',
+        }));
+      } catch (reloadError) {
+        console.warn('[Driver Trip] Failed to reload trip data after start:', reloadError);
+        // Continue anyway - the trip was started successfully
+      }
+
       toast({
         title: "Đã bắt đầu chuyến đi",
-        description: `Trip ${newId} đang chạy`,
+        description: `Chuyến đi #${newId} đang chạy`,
       });
+
+      // Only redirect if trip ID changed
       if (newId && newId !== tripIdNum) {
         router.push(`/driver/trip/${newId}`);
       }
-    } catch (e) {
+    } catch (e: any) {
+      console.error('[Driver Trip] Failed to start trip:', e);
+      const errorMessage = 
+        e?.response?.data?.message ||
+        e?.message ||
+        e?.error ||
+        "Vui lòng thử lại";
+      
       toast({
         title: "Không thể bắt đầu chuyến",
-        description: (e as Error)?.message || "Vui lòng thử lại",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -787,11 +917,11 @@ export default function TripDetailPage() {
                             status: "running",
                           },
                         ]}
-                        stops={trip.stops.map((stop, idx) => ({
+                        stops={trip.stops.map((stop: any, idx) => ({
                           maDiem: parseInt(stop.id) || idx + 1,
                           tenDiem: stop.name,
-                          viDo: stop.address ? 0 : 21.0285, // TODO: Get actual coordinates
-                          kinhDo: stop.address ? 0 : 105.8542,
+                          viDo: Number.isFinite(stop.lat) ? stop.lat : 0,
+                          kinhDo: Number.isFinite(stop.lng) ? stop.lng : 0,
                           sequence: idx + 1,
                         }))}
                         autoFitOnUpdate={true}

@@ -158,13 +158,11 @@ export default function AdminDashboard() {
                 </div>
               </CardHeader>
                 <CardContent>
-                  {/* Replace demo preview with Leaflet MapView showing mock buses */}
+                  {/* Real-time tracking map with active trips */}
                   <MapView
-                    buses={[
-                      { id: "1", plateNumber: "51A-12345", route: "Tuyến 1", lat: 10.762622, lng: 106.660172, speed: 35, students: 28 },
-                      { id: "2", plateNumber: "51B-67890", route: "Tuyến 3", lat: 10.772622, lng: 106.670172, speed: 28, students: 24 },
-                    ] as any}
+                    buses={[]}
                     height="480px"
+                    autoFitOnUpdate
                   />
                 </CardContent>
             </Card>

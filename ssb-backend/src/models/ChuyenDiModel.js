@@ -304,6 +304,45 @@ const ChuyenDiModel = {
     return rows;
   },
 
+  // Đếm số lượng chuyến đi với filters (dùng cho pagination)
+  async count(filters = {}) {
+    let query = `
+      SELECT COUNT(*) as total
+      FROM ChuyenDi cd
+      INNER JOIN LichTrinh lt ON cd.maLichTrinh = lt.maLichTrinh
+      WHERE 1=1
+    `;
+    const params = [];
+
+    if (filters.ngayChay) {
+      query += " AND DATE(cd.ngayChay) = DATE(?)";
+      params.push(filters.ngayChay);
+    }
+    if (filters.trangThai) {
+      query += " AND cd.trangThai = ?";
+      params.push(filters.trangThai);
+    }
+    if (filters.maLichTrinh) {
+      query += " AND cd.maLichTrinh = ?";
+      params.push(filters.maLichTrinh);
+    }
+    if (filters.maTaiXe) {
+      query += " AND lt.maTaiXe = ?";
+      params.push(filters.maTaiXe);
+    }
+    if (filters.maXe) {
+      query += " AND lt.maXe = ?";
+      params.push(filters.maXe);
+    }
+    if (filters.maTuyen) {
+      query += " AND lt.maTuyen = ?";
+      params.push(filters.maTuyen);
+    }
+
+    const [rows] = await pool.query(query, params);
+    return rows[0]?.total || 0;
+  },
+
   // Thống kê chuyến đi
   async getStats(filters = {}) {
     let query = `

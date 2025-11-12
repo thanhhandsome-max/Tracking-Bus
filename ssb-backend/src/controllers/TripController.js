@@ -4,6 +4,7 @@ import TrangThaiHocSinhModel from "../models/TrangThaiHocSinhModel.js";
 import XeBuytModel from "../models/XeBuytModel.js";
 import TaiXeModel from "../models/TaiXeModel.js";
 import TuyenDuongModel from "../models/TuyenDuongModel.js";
+import RouteStopModel from "../models/RouteStopModel.js";
 import HocSinhModel from "../models/HocSinhModel.js";
 import tripService from "../services/tripService.js"; // kết nối tới service xử lý logic trip
 import TelemetryService from "../services/telemetryService.js"; // clear cache khi trip ends
@@ -190,6 +191,12 @@ class TripController {
       const driverInfo = schedule ? await TaiXeModel.getById(schedule.maTaiXe) : null;
       const routeInfo = schedule ? await TuyenDuongModel.getById(schedule.maTuyen) : null;
 
+      // Lấy danh sách điểm dừng của tuyến đường
+      let routeStops = [];
+      if (routeInfo && routeInfo.maTuyen) {
+        routeStops = await RouteStopModel.getByRouteId(routeInfo.maTuyen);
+      }
+
       // Lấy danh sách học sinh trong chuyến đi
       const students = await TrangThaiHocSinhModel.getByTripId(id);
 
@@ -198,7 +205,10 @@ class TripController {
         schedule,
         busInfo,
         driverInfo,
-        routeInfo,
+        routeInfo: routeInfo ? {
+          ...routeInfo,
+          diemDung: routeStops, // Thêm danh sách điểm dừng vào routeInfo
+        } : null,
         students,
       });
     } catch (error) {

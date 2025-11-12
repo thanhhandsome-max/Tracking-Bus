@@ -113,6 +113,26 @@ const LichTrinhModel = {
     return this.getByRoute(maTuyen);
   },
 
+  // Lấy lịch trình theo tuyến và loại chuyến (don_sang/tra_chieu)
+  async getByRouteAndType(maTuyen, loaiChuyen) {
+    const [rows] = await pool.query(
+      `SELECT 
+        lt.*,
+        td.tenTuyen,
+        xb.bienSoXe,
+        xb.dongXe,
+        nd.hoTen as tenTaiXe
+       FROM LichTrinh lt
+       INNER JOIN TuyenDuong td ON lt.maTuyen = td.maTuyen
+       INNER JOIN XeBuyt xb ON lt.maXe = xb.maXe
+       INNER JOIN NguoiDung nd ON lt.maTaiXe = nd.maNguoiDung
+       WHERE lt.maTuyen = ? AND lt.loaiChuyen = ? AND lt.dangApDung = TRUE
+       ORDER BY lt.gioKhoiHanh`,
+      [maTuyen, loaiChuyen]
+    );
+    return rows;
+  },
+
   // Lấy lịch trình theo xe buýt
   async getByBus(maXe) {
     const [rows] = await pool.query(

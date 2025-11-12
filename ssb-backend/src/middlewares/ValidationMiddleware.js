@@ -98,11 +98,26 @@ class ValidationMiddleware {
         "string.max": "Lớp không được quá 50 ký tự",
       }),
       maPhuHuynh: Joi.number().integer().positive().optional(),
-      diaChi: Joi.string().max(255).optional(),
-      anhDaiDien: Joi.string().uri().optional(),
+      diaChi: Joi.string().max(500).optional().allow("").messages({
+        "string.max": "Địa chỉ không được quá 500 ký tự",
+      }),
+      anhDaiDien: Joi.string().uri().optional().allow(""),
+      // Parent creation fields (optional, used when creating new parent)
+      sdtPhuHuynh: Joi.string().pattern(/^[0-9+\-\s()]+$/).min(10).max(15).optional().allow("").messages({
+        "string.pattern.base": "Số điện thoại không hợp lệ",
+        "string.min": "Số điện thoại phải có ít nhất 10 ký tự",
+        "string.max": "Số điện thoại không được quá 15 ký tự",
+      }),
+      tenPhuHuynh: Joi.string().min(2).max(100).optional().allow("").messages({
+        "string.min": "Tên phụ huynh phải có ít nhất 2 ký tự",
+        "string.max": "Tên phụ huynh không được quá 100 ký tự",
+      }),
+      emailPhuHuynh: Joi.string().email().optional().allow("").messages({
+        "string.email": "Email phụ huynh không hợp lệ",
+      }),
     });
 
-    const { error } = schema.validate(req.body);
+    const { error } = schema.validate(req.body, { abortEarly: false });
     if (error) {
       return res.status(400).json({
         success: false,

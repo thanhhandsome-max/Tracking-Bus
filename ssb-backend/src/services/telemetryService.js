@@ -87,6 +87,25 @@ const emittedStops = new Map();
 const RATE_LIMIT_MS = 2000;
 
 /**
+ * Lấy rate limit (ms) cho GPS updates
+ * Có thể lấy từ SettingsService hoặc dùng giá trị mặc định
+ * @returns {number} Rate limit in milliseconds
+ */
+function getRateLimitMs() {
+  try {
+    // Có thể lấy từ SettingsService nếu có
+    const settings = SettingsService.getSettings();
+    if (settings.realtimeThrottleSeconds) {
+      return settings.realtimeThrottleSeconds * 1000; // Convert to ms
+    }
+  } catch (error) {
+    // Nếu có lỗi, dùng giá trị mặc định
+    console.warn('⚠️ Could not get rate limit from SettingsService, using default:', error.message);
+  }
+  return RATE_LIMIT_MS;
+}
+
+/**
  * 📍 GEOFENCE RADIUS - Bán kính phát hiện "gần điểm dừng"
  * 60 mét = Khoảng 7 giây với tốc độ 30km/h
  */

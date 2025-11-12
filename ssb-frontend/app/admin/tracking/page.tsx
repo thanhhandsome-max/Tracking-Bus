@@ -13,70 +13,239 @@ import { apiClient } from "@/lib/api"
 import { socketService } from "@/lib/socket"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
-type Bus = { id: string; plateNumber: string; route: string; driver?: string; driverPhone?: string; status: 'running'|'late'|'incident'|string; speed?: number; students?: number; currentStop?: string; nextStop?: string; eta?: string; progress?: number; lat: number; lng: number }
+type Bus = { 
+  id: string; 
+  tripId?: string;
+  plateNumber: string; 
+  route: string; 
+  routeId?: number;
+  routePolyline?: string | null;
+  driver?: string; 
+  driverPhone?: string; 
+  status: 'running'|'late'|'incident'|'idle'; 
+  speed?: number; 
+  students?: number; 
+  currentStop?: string; 
+  nextStop?: string; 
+  eta?: string; 
+  progress?: number; 
+  lat: number; 
+  lng: number;
+  hasDelay?: boolean;
+}
+
+type RouteInfo = {
+  routeId: number;
+  routeName: string;
+  polyline: string | null;
+  color: string;
+}
 
 export default function TrackingPage() {
   const [buses, setBuses] = useState<Bus[]>([])
   const [selectedBus, setSelectedBus] = useState<Bus | null>(null)
+  const [routes, setRoutes] = useState<RouteInfo[]>([])
+
+  // Helper function to determine bus status
+  const determineStatus = (trip: any, speed: number, hasDelay: boolean): 'running'|'late'|'incident'|'idle' => {
+    // Check for incidents first
+    if (trip?.suCo || trip?.hasIncident) return 'incident'
+    
+    // Check for delay
+    if (hasDelay) return 'late'
+    
+    // Check if running (speed > 0)
+    if (speed > 0) return 'running'
+    
+    // Otherwise idle
+    return 'idle'
+  }
+
+  // Helper function to get status color
+  const getStatusColor = (status: string): string => {
+    switch (status) {
+      case 'running': return '#22c55e' // green-500
+      case 'late': return '#eab308' // yellow-500
+      case 'incident': return '#ef4444' // red-500
+      case 'idle': return '#6b7280' // gray-500
+      default: return '#6b7280'
+    }
+  }
 
   useEffect(() => {
     async function load() {
       try {
-        const res = await apiClient.getBuses()
-        const list: any[] = Array.isArray(res?.data) ? res.data : []
-        const mapped: Bus[] = list.map((b: any) => ({
-          id: (b.maXe || b.id) + '',
-          plateNumber: b.bienSoXe || b.plateNumber || '',
-          route: b.tenTuyen || b.route || '-',
-          speed: Number(b.tocDo ?? b.speed ?? 0),
-          status: (Number(b.tocDo ?? b.speed ?? 0) > 0)
-            ? 'running'
-            : ((b.trangThai === 'su_co' || b.status === 'incident') ? 'incident' : 'idle'),
-          lat: Number(b.viDo ?? b.lat ?? 10.762622),
-          lng: Number(b.kinhDo ?? b.lng ?? 106.660172),
-          students: Number(b.soHocSinh || b.students || 0),
-          progress: Number(b.tienDo || b.progress || 0),
-        }))
-        setBuses(mapped)
-        setSelectedBus(mapped[0] || null)
+        // Load active trips with route information
+        const tripsRes = await apiClient.getTrips({ trangThai: 'dang_chay' })
+        const trips: any[] = Array.isArray(tripsRes?.data) ? tripsRes.data : []
+        
+        console.log('[Tracking] Loaded trips:', trips.length)
 
-        // Join all running trip rooms to receive realtime updates (best effort)
-        try {
-          const trips = await apiClient.getTrips({ trangThai: 'dang_chay' })
-          const ids = Array.isArray(trips?.data) ? trips.data.map((t: any) => t.maChuyen || t.id || t.maChuyenDi).filter(Boolean) : []
-          ids.forEach((id: any) => socketService.joinTrip(id))
-        } catch {}
+        // Fetch detailed trip info for each trip to get route polyline
+        // Use Promise.all with delay to avoid rate limiting
+        const busesWithRoutes: Bus[] = []
+        const routeMap = new Map<number, RouteInfo>()
+
+        // Helper to add delay between requests
+        const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+        // Process trips in batches to avoid rate limiting
+        const batchSize = 3
+        for (let i = 0; i < trips.length; i += batchSize) {
+          const batch = trips.slice(i, i + batchSize)
+          
+          // Process batch in parallel
+          const batchPromises = batch.map(async (trip, idx) => {
+            // Add small delay between requests in batch
+            if (idx > 0) {
+              await delay(200) // 200ms delay between requests
+            }
+            
+            try {
+              const tripDetail = await apiClient.getTripById(trip.maChuyen || trip.id)
+              const detail: any = tripDetail?.data || tripDetail
+              return { trip, detail }
+            } catch (err: any) {
+              // Handle rate limit errors
+              if (err?.status === 429 || err?.message?.includes('Too many requests')) {
+                console.warn(`[Tracking] Rate limited for trip ${trip.maChuyen || trip.id}, will retry later`)
+                return null
+              }
+              console.warn(`[Tracking] Failed to load trip detail for ${trip.maChuyen || trip.id}:`, err)
+              return null
+            }
+          })
+
+          const batchResults = await Promise.all(batchPromises)
+          
+          // Process results
+          for (const result of batchResults) {
+            if (!result) continue
+            
+            const { trip, detail } = result
+            
+            const routeInfo = detail?.routeInfo
+            const busInfo = detail?.busInfo
+            const driverInfo = detail?.driverInfo
+            const schedule = detail?.schedule
+            
+            // Get current position from telemetry or use default
+            const currentPos = detail?.currentPosition || { lat: 10.762622, lng: 106.660172 }
+            const speed = Number(detail?.speed ?? detail?.tocDo ?? 0)
+            
+            // Check for delay (simplified: check if trip started late)
+            const hasDelay = detail?.hasDelay || false
+            
+            const routeId = routeInfo?.maTuyen || schedule?.maTuyen
+            const routeName = routeInfo?.tenTuyen || schedule?.tenTuyen || 'Chưa có tên tuyến'
+            const polyline = routeInfo?.polyline || null
+
+            // Store route info
+            if (routeId && !routeMap.has(routeId)) {
+              routeMap.set(routeId, {
+                routeId,
+                routeName,
+                polyline,
+                color: getStatusColor(determineStatus(detail, speed, hasDelay))
+              })
+            }
+
+            // Count students
+            const students = Array.isArray(detail?.students) ? detail.students.length : 0
+
+            busesWithRoutes.push({
+              id: (busInfo?.maXe || detail?.maXe || trip.maXe || trip.id) + '',
+              tripId: (trip.maChuyen || trip.id) + '',
+              plateNumber: busInfo?.bienSoXe || detail?.bienSoXe || 'N/A',
+              route: routeName,
+              routeId,
+              routePolyline: polyline,
+              driver: driverInfo?.tenTaiXe || driverInfo?.hoTen || '-',
+              driverPhone: driverInfo?.soDienThoai || '-',
+              speed,
+              status: determineStatus(detail, speed, hasDelay),
+              students,
+              lat: Number(currentPos.lat || currentPos.viDo || 10.762622),
+              lng: Number(currentPos.lng || currentPos.kinhDo || 106.660172),
+              hasDelay,
+              progress: 0, // TODO: Calculate progress based on stops
+            })
+
+            // Join trip room for realtime updates
+            const tripId = trip.maChuyen || trip.id
+            if (tripId) {
+              socketService.joinTrip(tripId)
+            }
+          }
+          
+          // Add delay between batches to avoid rate limiting
+          if (i + batchSize < trips.length) {
+            await delay(500) // 500ms delay between batches
+          }
+        }
+
+        setBuses(busesWithRoutes)
+        setRoutes(Array.from(routeMap.values()))
+        setSelectedBus(busesWithRoutes[0] || null)
+
+        console.log('[Tracking] Loaded buses:', busesWithRoutes.length, 'routes:', routeMap.size)
       } catch (e) {
-        console.warn('Failed to load buses', e)
+        console.error('[Tracking] Failed to load trips:', e)
       }
     }
     load()
+    
+    // Refresh every 60 seconds to avoid rate limiting
+    const interval = setInterval(load, 60000)
+    return () => clearInterval(interval)
   }, [])
 
-  // Realtime: update bus list when bus position events arrive (so speed/status UI stays fresh)
+  // Realtime: update bus list when bus position events arrive
   useEffect(() => {
-    const handler = (e: Event) => {
+    const positionHandler = (e: Event) => {
       const d: any = (e as CustomEvent).detail
       if (!d) return
-      const id = (d.busId ?? d.id ?? d.vehicleId ?? d.bus?.id)
+      const tripId = d.tripId ?? d.maChuyen
+      const busId = d.busId ?? d.id ?? d.vehicleId ?? d.bus?.id
       const lat = d.lat ?? d.latitude ?? d.coords?.lat
       const lng = d.lng ?? d.longitude ?? d.coords?.lng ?? d.lon
       const speed = typeof d.speed === 'number' ? d.speed : undefined
-      if (!id && lat == null && lng == null && speed == null) return
+      
+      if (!tripId && !busId && lat == null && lng == null && speed == null) return
+      
       setBuses((prev) => prev.map((b) => {
-        if ((b.id + '') !== (id + '')) return b
+        // Match by tripId first, then busId
+        const matches = (tripId && b.tripId === String(tripId)) || 
+                       (busId && (b.id + '') === (busId + ''))
+        if (!matches) return b
+        
         const nextLat = (typeof lat === 'number') ? lat : b.lat
         const nextLng = (typeof lng === 'number') ? lng : b.lng
         const nextSpeed = (typeof speed === 'number') ? speed : b.speed || 0
-        const nextStatus = (nextSpeed > 0) ? 'running' : (b.status === 'incident' ? 'incident' : 'idle')
+        const nextStatus = determineStatus({}, nextSpeed, b.hasDelay || false)
+        
         return { ...b, lat: nextLat, lng: nextLng, speed: nextSpeed, status: nextStatus }
       }))
     }
-    window.addEventListener('busPositionUpdate', handler as EventListener)
-    window.addEventListener('busLocationUpdate', handler as EventListener)
+
+    const delayHandler = (e: Event) => {
+      const d: any = (e as CustomEvent).detail
+      if (!d?.tripId) return
+      
+      setBuses((prev) => prev.map((b) => {
+        if (b.tripId !== String(d.tripId)) return b
+        return { ...b, hasDelay: true, status: 'late' }
+      }))
+    }
+
+    window.addEventListener('busPositionUpdate', positionHandler as EventListener)
+    window.addEventListener('busLocationUpdate', positionHandler as EventListener)
+    window.addEventListener('delayAlert', delayHandler as EventListener)
+    
     return () => {
-      window.removeEventListener('busPositionUpdate', handler as EventListener)
-      window.removeEventListener('busLocationUpdate', handler as EventListener)
+      window.removeEventListener('busPositionUpdate', positionHandler as EventListener)
+      window.removeEventListener('busLocationUpdate', positionHandler as EventListener)
+      window.removeEventListener('delayAlert', delayHandler as EventListener)
     }
   }, [])
 
@@ -110,6 +279,12 @@ export default function TrackingPage() {
                   buses={buses as any}
                   selectedBus={selectedBus as any}
                   onSelectBus={(b: any) => setSelectedBus(b)}
+                  routes={routes.map(r => ({
+                    routeId: r.routeId,
+                    routeName: r.routeName,
+                    polyline: r.polyline,
+                    color: r.color
+                  }))}
                   autoFitOnUpdate
                 />
               </CardContent>

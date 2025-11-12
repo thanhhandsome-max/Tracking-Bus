@@ -22,9 +22,17 @@ interface Bus {
   students: number
 }
 
+type RouteInfo = {
+  routeId: number
+  routeName: string
+  polyline: string | null
+  color: string
+}
+
 interface MapViewProps {
   buses: Bus[]
   stops?: { id: string; lat: number; lng: number; label?: string }[]
+  routes?: RouteInfo[]
   selectedBus?: Bus
   onSelectBus?: (bus: Bus) => void
   className?: string
@@ -38,6 +46,7 @@ interface MapViewProps {
 export function MapView({
   buses,
   stops,
+  routes = [],
   selectedBus,
   onSelectBus,
   className = '',
@@ -113,6 +122,12 @@ export function MapView({
             zoom={13}
             buses={throttledBuses}
             stops={stopMarkers}
+            routes={routes.map(r => ({
+              routeId: r.routeId,
+              routeName: r.routeName,
+              polyline: r.polyline,
+              color: r.color
+            }))}
             onBusClick={(bus) => {
               if (onSelectBus) {
                 const b = buses.find((x) => String(x.id) === String(bus.id))
@@ -127,19 +142,19 @@ export function MapView({
                style={{ zIndex: 99999 }}>
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-green-500" />
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#22c55e' }} />
                 <span className="text-xs text-foreground">Đang chạy</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-gray-500" />
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#6b7280' }} />
                 <span className="text-xs text-foreground">Đứng yên</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-yellow-500" />
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#eab308' }} />
                 <span className="text-xs text-foreground">Trễ</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-red-500" />
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#ef4444' }} />
                 <span className="text-xs text-foreground">Sự cố</span>
               </div>
             </div>

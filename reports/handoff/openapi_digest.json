@@ -1,8 +1,7 @@
 {
-  "specVersion": "3.0.0",
+  "version": "3.0.0",
   "title": "SSB 1.0 API",
-  "version": "1.0.0",
-  "lastModified": "2025-11-11",
+  "apiVersion": "1.0.0",
   "servers": [
     {
       "url": "http://localhost:4000/api/v1",
@@ -13,6 +12,120 @@
       "description": "Production server"
     }
   ],
+  "lastModified": "2025-11-11",
+  "totalPaths": 45,
+  "paths": {
+    "auth": [
+      "/auth/login",
+      "/auth/refresh",
+      "/auth/register",
+      "/auth/profile"
+    ],
+    "buses": [
+      "/buses",
+      "/buses/{id}",
+      "/buses/{id}/position",
+      "/reports/buses/stats"
+    ],
+    "trips": [
+      "/trips",
+      "/trips/{id}",
+      "/trips/{id}/start",
+      "/trips/{id}/end",
+      "/trips/{id}/cancel",
+      "/trips/{id}/position",
+      "/trips/{id}/students/{studentId}/checkin",
+      "/trips/{id}/students/{studentId}/checkout"
+    ],
+    "routes": [
+      "/routes",
+      "/routes/{id}",
+      "/routes/{id}/stops",
+      "/routes/{id}/stops/reorder",
+      "/routes/{id}/stops/{stopId}",
+      "/routes/{id}/rebuild-polyline"
+    ],
+    "stops": [
+      "/stops",
+      "/stops/{id}"
+    ],
+    "maps": [
+      "/maps/directions",
+      "/maps/distance-matrix",
+      "/maps/geocode",
+      "/maps/reverse-geocode",
+      "/maps/roads/snap"
+    ],
+    "stats": [
+      "/stats/overview",
+      "/stats/trips-by-day",
+      "/stats/driver-performance",
+      "/stats/bus-utilization",
+      "/stats/route-punctuality"
+    ],
+    "settings": [
+      "/settings"
+    ],
+    "schedules": [
+      "/schedules"
+    ],
+    "drivers": [
+      "/drivers"
+    ],
+    "students": [
+      "/students"
+    ],
+    "reports": [
+      "/reports/trips/stats"
+    ],
+    "health": [
+      "/health"
+    ]
+  },
+  "mainSchemas": [
+    "User",
+    "Bus",
+    "Trip",
+    "TripDetail",
+    "TripPosition",
+    "TripPositionUpdate",
+    "TripEvent",
+    "StudentTripStatus",
+    "Route",
+    "RouteDetail",
+    "Stop",
+    "RouteStopDetail",
+    "CreateRoutePayload",
+    "UpdateRoutePayload",
+    "CreateStopPayload",
+    "UpdateStopPayload",
+    "ReorderStopsPayload",
+    "DirectionsRequest",
+    "DirectionsResponse",
+    "DistanceMatrixRequest",
+    "DistanceMatrixResponse",
+    "GeocodeRequest",
+    "GeocodeResponse",
+    "RoadsSnapRequest",
+    "RoadsSnapResponse",
+    "LoginRequest",
+    "LoginResponse",
+    "RefreshResponse",
+    "ProfileResponse",
+    "ErrorResponse",
+    "PaginationMeta",
+    "EnvelopeOk",
+    "CreateTripRequest",
+    "StatsOverview",
+    "TripsByDay",
+    "DriverPerformance",
+    "BusUtilization",
+    "RoutePunctuality",
+    "SystemSettings",
+    "UpdateSettingsRequest",
+    "BusStats",
+    "TripStats"
+  ],
   "securitySchemes": {
     "bearerAuth": {
       "type": "http",
@@ -20,126 +133,6 @@
       "bearerFormat": "JWT"
     }
   },
-  "paths": {
-    "/health": {
-      "get": {
-        "summary": "Health check",
-        "tags": ["Health"],
-        "security": []
-      }
-    },
-    "/auth/login": {
-      "post": {
-        "summary": "User login",
-        "tags": ["Authentication"],
-        "security": []
-      }
-    },
-    "/auth/refresh": {
-      "post": {
-        "summary": "Refresh access token",
-        "tags": ["Authentication"],
-        "security": []
-      }
-    },
-    "/auth/register": {
-      "post": {
-        "summary": "User registration",
-        "tags": ["Authentication"]
-      }
-    },
-    "/auth/profile": {
-      "get": {
-        "summary": "Get user profile",
-        "tags": ["Authentication"]
-      }
-    },
-    "/buses": {
-      "get": {
-        "summary": "Get all buses",
-        "tags": ["Buses"]
-      },
-      "post": {
-        "summary": "Create a new bus",
-        "tags": ["Buses"]
-      }
-    },
-    "/buses/{id}": {
-      "get": {
-        "summary": "Get bus by ID",
-        "tags": ["Buses"]
-      }
-    },
-    "/buses/{id}/position": {
-      "post": {
-        "summary": "Update bus position",
-        "tags": ["Buses"]
-      }
-    },
-    "/trips/{id}/start": {
-      "post": {
-        "summary": "Start a trip",
-        "tags": ["Trips"]
-      }
-    },
-    "/trips/{id}/end": {
-      "post": {
-        "summary": "End a trip",
-        "tags": ["Trips"]
-      }
-    },
-    "/routes": {
-      "get": {
-        "summary": "Get all routes",
-        "tags": ["Routes"]
-      }
-    },
-    "/routes/{id}/stops": {
-      "get": {
-        "summary": "Get route stops",
-        "tags": ["Routes"]
-      }
-    },
-    "/schedules": {
-      "post": {
-        "summary": "Create a new schedule",
-        "tags": ["Schedules"]
-      }
-    },
-    "/drivers": {
-      "get": {
-        "summary": "Get all drivers",
-        "tags": ["Drivers"]
-      }
-    },
-    "/students": {
-      "get": {
-        "summary": "Get all students",
-        "tags": ["Students"]
-      }
-    },
-    "/reports/buses/stats": {
-      "get": {
-        "summary": "Get bus statistics",
-        "tags": ["Reports"]
-      }
-    },
-    "/reports/trips/stats": {
-      "get": {
-        "summary": "Get trip statistics",
-        "tags": ["Reports"]
-      }
-    }
-  },
-  "mainSchemas": [
-    "User",
-    "Bus",
-    "BusStats",
-    "TripStats",
-    "EnvelopeOk",
-    "ErrorResponse",
-    "PaginationMeta"
-  ],
   "tags": [
     "Health",
     "Authentication",
@@ -152,9 +145,11 @@
     "Parents",
     "Notifications",
     "Reports",
-    "Admin"
-  ],
-  "totalPaths": 18,
-  "totalSchemas": 7
+    "Stats",
+    "Admin",
+    "Settings",
+    "Maps",
+    "Stops"
+  ]
 }
 

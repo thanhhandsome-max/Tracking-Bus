@@ -1,188 +1,143 @@
-# Project Tree - Smart School Bus Tracking System
+# Project Tree Structure
 
-**Generated:** 2025-11-11  
-**Max Depth:** 3 levels  
-**File Count by Extension:** See below
-
-## Directory Structure (3 levels)
-
+## Root Directory
 ```
 Smart_School_Bus_Tracking_System/
-├── components/
-│   └── tracking/
-│       └── MapView.tsx
-├── database/
-│   ├── 01_init_db_ver2.sql
-│   ├── 01_init_db.sql
-│   ├── 02_sample_data.sql
-│   ├── 03_create_trip_today_31oct.sql
-│   ├── check_trip_16.sql
-│   ├── create_today_trip.sql
-│   ├── SSB.sql
-│   └── test_delay_alert.sql
-├── docs/
-│   ├── openapi.yaml
-│   ├── postman_collection_backup.json
-│   ├── POSTMAN_GUIDE.md
-│   ├── SSB_Local_Environment.json
-│   ├── SSB_Postman_Collection.json
-│   └── ws_events.md
-├── env/
-│   ├── local.postman_environment.json
-│   └── postman_environment_v3.json
-├── lib/
-│   ├── api.ts
-│   ├── auth-context.tsx
-│   ├── guards/
-│   │   └── RequireAuth.tsx
-│   ├── services/
-│   │   ├── auth.service.ts
-│   │   └── bus.service.ts
-│   └── socket.ts
-├── plans/
-│   ├── be_hardening_plan.md
-│   └── fe_integration_plan.md
-├── reports/
-│   ├── mvp_blockers.csv
-│   ├── mvp_checklist_results.json
-│   ├── mvp_fix_verification_2025-11-11.md
-│   ├── mvp_progress_2025-11-11.md
-│   └── mvp_scorecard.csv
-├── ssb-backend/
-│   ├── dist/
-│   │   ├── config/
-│   │   ├── constants/
-│   │   ├── middlewares/
-│   │   ├── server.d.ts
-│   │   ├── server.d.ts.map
-│   │   ├── server.js
-│   │   └── server.js.map
-│   ├── docs/
-│   │   ├── backend_audit_v1_1.md
-│   │   ├── DAY2_COMPLETE_GUIDE.md
-│   │   ├── DAY3_SOCKET_IO_GUIDE.md
-│   │   ├── DAY4_COMPLETE_SUMMARY.md
-│   │   ├── openapi.yaml
-│   │   ├── postman_collection.json
-│   │   ├── REFACTOR_V1_1_SUMMARY.md
-│   │   └── ws_events.md
-│   ├── logs/
-│   │   ├── app-2025-10-23.log
-│   │   ├── database-2025-10-23.log
-│   │   └── system-2025-10-23.log
-│   ├── postman/
-│   │   ├── README_TESTING.md
-│   │   ├── SSB_API_Collection.postman_collection.json
-│   │   └── SSB_Local_Environment.postman_environment.json
-│   ├── reports/
-│   │   ├── backend_2025-11-09.md
-│   │   └── esmpurity_fix_result.md
-│   ├── scripts/
-│   │   ├── export-postman.js
-│   │   ├── init-database.js
-│   │   ├── rebuild-polyline.js
-│   │   ├── rebuild-polyline.ts
-│   │   ├── seed-data.js
-│   │   └── simple-init-db.js
-│   ├── src/
-│   │   ├── config/
-│   │   ├── constants/
-│   │   ├── controllers/
-│   │   ├── core/
-│   │   ├── middlewares/
-│   │   ├── models/
-│   │   ├── routes/
-│   │   ├── scripts/
-│   │   ├── services/
-│   │   ├── utils/
-│   │   ├── ws/
-│   │   ├── app.js
-│   │   ├── server.ts
-│   │   └── test_firebase.js
-│   ├── tests/
-│   │   └── controllers/
-│   └── tsconfig.json
-└── ssb-frontend/
-    ├── app/
-    │   ├── admin/
-    │   │   ├── buses/
-    │   │   ├── drivers/
-    │   │   ├── notifications/
-    │   │   ├── profile/
-    │   │   ├── reports/
-    │   │   ├── routes/
-    │   │   │   └── [id]/
-    │   │   ├── schedule/
-    │   │   ├── settings/
-    │   │   ├── students/
-    │   │   ├── tracking/
-    │   │   └── page.tsx
-    │   ├── driver/
-    │   │   ├── history/
-    │   │   ├── incidents/
-    │   │   ├── profile/
-    │   │   ├── settings/
-    │   │   ├── trip/
-    │   │   │   └── [id]/
-    │   │   └── page.tsx
-    │   ├── login/
-    │   ├── parent/
-    │   │   ├── history/
-    │   │   ├── notifications/
-    │   │   ├── profile/
-    │   │   └── settings/
-    │   ├── globals.css
-    │   ├── layout.tsx
-    │   └── page.tsx
-    ├── components/
-    │   ├── admin/
-    │   ├── driver/
-    │   ├── layout/
-    │   ├── map/
-    │   ├── parent/
-    │   └── ui/
-    ├── hooks/
-    ├── lib/
-    │   ├── hooks/
-    │   ├── maps/
-    │   ├── providers/
-    │   └── services/
-    ├── public/
-    ├── styles/
-    └── types/
+├── ssb-backend/          # Backend API (Node.js/Express)
+├── ssb-frontend/          # Frontend (Next.js 15)
+├── database/              # SQL scripts
+├── docs/                  # Documentation
+├── components/            # Shared components (legacy)
+├── lib/                   # Shared libraries (legacy)
+└── reports/               # Reports & analysis
+```
+
+## Directory Structure (Max 3 Levels)
+
+### ssb-backend/
+```
+ssb-backend/
+├── src/
+│   ├── app.js            # Express app setup
+│   ├── server.ts          # Server entry point
+│   ├── config/           # Configuration (env, db, cache, firebase)
+│   ├── constants/        # Constants (realtime events, etc.)
+│   ├── controllers/      # Route controllers (18 files)
+│   ├── core/             # Core utilities
+│   ├── middlewares/       # Express middlewares (10 files)
+│   ├── models/           # Database models (15 files)
+│   ├── routes/            # API routes (18 files)
+│   ├── services/          # Business logic (18 files)
+│   ├── utils/             # Utilities (7 files)
+│   └── ws/                # WebSocket handlers (1 file)
+├── dist/                  # Compiled TypeScript
+├── docs/                  # Backend documentation
+├── scripts/               # Utility scripts (14 files)
+├── tests/                 # Test files
+└── package.json
+```
+
+### ssb-frontend/
+```
+ssb-frontend/
+├── app/                   # Next.js App Router (52 files: 51 .tsx, 1 .css)
+│   ├── admin/             # Admin pages
+│   │   ├── routes/        # Route management
+│   │   │   ├── [id]/      # Route detail/edit
+│   │   │   └── page.tsx   # Routes list
+│   │   ├── buses/         # Bus management
+│   │   ├── drivers/       # Driver management
+│   │   ├── students/      # Student management
+│   │   ├── tracking/      # Real-time tracking
+│   │   ├── schedule/      # Schedule management
+│   │   ├── reports/       # Reports & analytics
+│   │   └── settings/      # System settings
+│   ├── driver/            # Driver pages
+│   │   ├── trip/[id]/     # Trip detail/control
+│   │   └── history/       # Trip history
+│   ├── parent/            # Parent pages
+│   │   ├── history/       # Trip history
+│   │   └── notifications/ # Notifications
+│   ├── login/             # Login page
+│   └── layout.tsx         # Root layout
+├── components/            # React components (50 .tsx files)
+│   ├── admin/             # Admin components
+│   ├── driver/             # Driver components
+│   ├── map/                # Map components
+│   └── ui/                 # UI primitives (shadcn/ui)
+├── lib/                   # Libraries (21 files: 16 .ts, 5 .tsx)
+│   ├── api-client.ts      # Axios client
+│   ├── auth-context.tsx   # Auth context
+│   ├── socket.ts           # Socket.IO client
+│   ├── hooks/              # Custom hooks (4 .ts)
+│   ├── services/           # Service layers
+│   └── maps/               # Google Maps utilities
+├── hooks/                 # Additional hooks (4 .ts)
+└── package.json
+```
+
+### database/
+```
+database/
+├── 01_init_db_ver2.sql    # Database schema
+├── 02_sample_data.sql     # Sample data
+├── 03_create_trip_today_31oct.sql
+├── 04_add_m1m3_indexes.sql
+└── SSB.sql                 # Main schema
+```
+
+### docs/
+```
+docs/
+├── openapi.yaml            # API specification
+├── GOOGLE_MAPS_API_SETUP.md
+├── POSTMAN_GUIDE.md
+├── reports/                # Progress reports
+└── ws_events.md            # WebSocket events doc
 ```
 
 ## File Count by Extension
 
-### TypeScript/JavaScript
-- `.ts`: ~50 files (TypeScript source)
-- `.tsx`: ~70 files (React components)
-- `.js`: ~80 files (JavaScript source)
-- `.mjs`: ~5 files (ES modules)
+### Backend (ssb-backend/)
+- **.js**: 89 files
+- **.ts**: 9 files
+- **.json**: 5 files
+- **.md**: 8 files
+- **.txt**: 4 files
+- **.yaml**: 1 file
+
+### Frontend (ssb-frontend/)
+- **.tsx**: 101 files (51 in app/, 50 in components/)
+- **.ts**: 20 files (16 in lib/, 4 in hooks/)
+- **.css**: 2 files
+- **.json**: 3 files
+- **.md**: 4 files
+
+### Root
+- **.md**: 10+ files
+- **.sql**: 8 files
+- **.json**: 3 files
+- **.txt**: 2 files
+- **.xml**: 1 file (ERD)
+
+## Key Files
+
+### Backend Entry Points
+- `ssb-backend/src/server.ts` - Main server
+- `ssb-backend/src/app.js` - Express app
+
+### Frontend Entry Points
+- `ssb-frontend/app/layout.tsx` - Root layout
+- `ssb-frontend/app/page.tsx` - Home (redirects to /login)
 
 ### Configuration
-- `.json`: ~30 files (package.json, configs, collections)
-- `.yaml`/`.yml`: ~3 files (OpenAPI specs)
-- `.md`: ~40 files (Documentation)
-- `.sql`: ~8 files (Database scripts)
+- `ssb-backend/src/config/env.ts` - Environment config
+- `ssb-frontend/next.config.mjs` - Next.js config
+- `ssb-backend/tsconfig.json` - TypeScript config (BE)
+- `ssb-frontend/tsconfig.json` - TypeScript config (FE)
 
-### Styles
-- `.css`: ~5 files (Global styles)
-- `.scss`/`.sass`: 0 files
+### API Documentation
+- `docs/openapi.yaml` - Main OpenAPI spec
+- `ssb-backend/docs/openapi.yaml` - Backend-specific spec
 
-### Other
-- `.xml`: 1 file (ERD diagram)
-- `.txt`: ~10 files (Notes, guides)
-- `.csv`: ~3 files (Reports)
-- `.log`: ~3 files (Logs)
-
-## Summary
-
-- **Total Directories:** ~100+
-- **Total Files:** ~300+
-- **Main Codebase:** 
-  - Backend: `ssb-backend/src/` (~150 files)
-  - Frontend: `ssb-frontend/` (~150 files)
-- **Documentation:** ~40 markdown files
-- **Database Scripts:** 8 SQL files
 
