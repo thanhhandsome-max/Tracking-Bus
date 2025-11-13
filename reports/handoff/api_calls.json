@@ -1,0 +1,298 @@
+{
+  "apiClient": {
+    "file": "ssb-frontend/lib/api-client.ts",
+    "baseURL": "process.env.NEXT_PUBLIC_API_BASE || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1'",
+    "methods": [
+      {
+        "method": "GET",
+        "path": "/routes",
+        "function": "getRoutes",
+        "usedIn": ["app/admin/routes/page.tsx", "lib/hooks/useRoutes.ts"]
+      },
+      {
+        "method": "GET",
+        "path": "/routes/{id}",
+        "function": "getRouteById",
+        "usedIn": ["app/admin/routes/[id]/page.tsx", "lib/hooks/useRoutes.ts"]
+      },
+      {
+        "method": "POST",
+        "path": "/routes",
+        "function": "createRoute",
+        "usedIn": ["components/admin/route-builder.tsx", "lib/hooks/useRoutes.ts"]
+      },
+      {
+        "method": "PUT",
+        "path": "/routes/{id}",
+        "function": "updateRoute",
+        "usedIn": ["components/admin/route-builder.tsx"]
+      },
+      {
+        "method": "DELETE",
+        "path": "/routes/{id}",
+        "function": "deleteRoute",
+        "usedIn": ["app/admin/routes/page.tsx", "lib/hooks/useRoutes.ts"]
+      },
+      {
+        "method": "GET",
+        "path": "/routes/{id}/stops",
+        "function": "getRouteStops",
+        "usedIn": ["app/admin/routes/[id]/page.tsx", "lib/hooks/useRoutes.ts"]
+      },
+      {
+        "method": "POST",
+        "path": "/routes/{id}/stops",
+        "function": "addStopToRoute",
+        "usedIn": ["components/admin/AddStopDialog.tsx", "components/admin/route-builder.tsx"]
+      },
+      {
+        "method": "PATCH",
+        "path": "/routes/{id}/stops/reorder",
+        "function": "reorderStops",
+        "usedIn": ["app/admin/routes/[id]/page.tsx", "components/admin/route-builder.tsx"]
+      },
+      {
+        "method": "DELETE",
+        "path": "/routes/{id}/stops/{stopId}",
+        "function": "removeStopFromRoute",
+        "usedIn": ["app/admin/routes/[id]/page.tsx"]
+      },
+      {
+        "method": "POST",
+        "path": "/routes/{id}/rebuild-polyline",
+        "function": "rebuildPolyline",
+        "usedIn": ["app/admin/routes/[id]/page.tsx"]
+      },
+      {
+        "method": "GET",
+        "path": "/stops",
+        "function": "getStops",
+        "usedIn": ["lib/hooks/useStops.ts"]
+      },
+      {
+        "method": "POST",
+        "path": "/stops",
+        "function": "createStop",
+        "usedIn": ["components/admin/AddStopDialog.tsx"]
+      },
+      {
+        "method": "PUT",
+        "path": "/stops/{id}",
+        "function": "updateStop",
+        "usedIn": ["lib/hooks/useStops.ts"]
+      },
+      {
+        "method": "DELETE",
+        "path": "/stops/{id}",
+        "function": "deleteStop",
+        "usedIn": ["lib/hooks/useStops.ts"]
+      },
+      {
+        "method": "POST",
+        "path": "/maps/directions",
+        "function": "getDirections",
+        "usedIn": ["lib/hooks/useMaps.ts", "components/admin/route-builder.tsx"]
+      },
+      {
+        "method": "POST",
+        "path": "/maps/distance-matrix",
+        "function": "getDistanceMatrix",
+        "usedIn": ["lib/hooks/useMaps.ts"]
+      },
+      {
+        "method": "POST",
+        "path": "/maps/geocode",
+        "function": "geocode",
+        "usedIn": ["lib/hooks/useMaps.ts"]
+      },
+      {
+        "method": "POST",
+        "path": "/maps/reverse-geocode",
+        "function": "reverseGeocode",
+        "usedIn": ["lib/hooks/useMaps.ts"]
+      },
+      {
+        "method": "POST",
+        "path": "/maps/roads/snap",
+        "function": "snapToRoads",
+        "usedIn": ["lib/hooks/useMaps.ts"]
+      }
+    ]
+  },
+  "api": {
+    "file": "ssb-frontend/lib/api.ts",
+    "baseURL": "process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1'",
+    "methods": [
+      {
+        "method": "POST",
+        "path": "/auth/login",
+        "function": "login",
+        "usedIn": ["lib/auth-context.tsx", "app/login/page.tsx"]
+      },
+      {
+        "method": "POST",
+        "path": "/auth/refresh",
+        "function": "refreshToken (internal)",
+        "usedIn": ["lib/api.ts (auto-refresh on 401)"]
+      },
+      {
+        "method": "GET",
+        "path": "/buses",
+        "function": "getBuses",
+        "usedIn": ["app/admin/buses/page.tsx"]
+      },
+      {
+        "method": "POST",
+        "path": "/buses",
+        "function": "createBus",
+        "usedIn": ["components/admin/bus-form.tsx"]
+      },
+      {
+        "method": "GET",
+        "path": "/buses/{id}",
+        "function": "getBusById",
+        "usedIn": ["app/admin/buses/page.tsx"]
+      },
+      {
+        "method": "PUT",
+        "path": "/buses/{id}",
+        "function": "updateBus",
+        "usedIn": ["components/admin/bus-form.tsx"]
+      },
+      {
+        "method": "DELETE",
+        "path": "/buses/{id}",
+        "function": "deleteBus",
+        "usedIn": ["app/admin/buses/page.tsx"]
+      },
+      {
+        "method": "GET",
+        "path": "/drivers",
+        "function": "getDrivers",
+        "usedIn": ["app/admin/drivers/page.tsx"]
+      },
+      {
+        "method": "POST",
+        "path": "/drivers",
+        "function": "createDriver",
+        "usedIn": ["components/admin/driver-form.tsx"]
+      },
+      {
+        "method": "GET",
+        "path": "/students",
+        "function": "getStudents",
+        "usedIn": ["app/admin/students/page.tsx"]
+      },
+      {
+        "method": "POST",
+        "path": "/students",
+        "function": "createStudent",
+        "usedIn": ["components/admin/student-form.tsx"]
+      },
+      {
+        "method": "GET",
+        "path": "/schedules",
+        "function": "getSchedules",
+        "usedIn": ["app/admin/schedule/page.tsx"]
+      },
+      {
+        "method": "POST",
+        "path": "/schedules",
+        "function": "createSchedule",
+        "usedIn": ["components/admin/schedule-form.tsx"]
+      },
+      {
+        "method": "GET",
+        "path": "/trips",
+        "function": "getTrips",
+        "usedIn": ["app/driver/page.tsx", "app/admin/tracking/page.tsx"]
+      },
+      {
+        "method": "GET",
+        "path": "/trips/{id}",
+        "function": "getTripById",
+        "usedIn": ["app/driver/trip/[id]/page.tsx"]
+      },
+      {
+        "method": "GET",
+        "path": "/trips/history",
+        "function": "getTripHistory",
+        "usedIn": ["app/parent/history/page.tsx", "app/driver/history/page.tsx"]
+      },
+      {
+        "method": "GET",
+        "path": "/drivers/{id}/history",
+        "function": "getDriverHistory",
+        "usedIn": ["app/driver/history/page.tsx"]
+      },
+      {
+        "method": "GET",
+        "path": "/students/by-parent",
+        "function": "getStudentsByParent",
+        "usedIn": ["app/parent/page.tsx"]
+      },
+      {
+        "method": "GET",
+        "path": "/notifications",
+        "function": "getNotifications",
+        "usedIn": ["app/parent/notifications/page.tsx", "app/admin/notifications/page.tsx"]
+      },
+      {
+        "method": "GET",
+        "path": "/notifications/unread-count",
+        "function": "getUnreadCount",
+        "usedIn": ["app/parent/page.tsx"]
+      },
+      {
+        "method": "PATCH",
+        "path": "/notifications/{id}/read",
+        "function": "markNotificationRead",
+        "usedIn": ["app/parent/notifications/page.tsx"]
+      },
+      {
+        "method": "GET",
+        "path": "/incidents",
+        "function": "getIncidents",
+        "usedIn": ["app/driver/incidents/page.tsx"]
+      },
+      {
+        "method": "POST",
+        "path": "/incidents",
+        "function": "createIncident",
+        "usedIn": ["components/driver/incident-form.tsx"]
+      },
+      {
+        "method": "GET",
+        "path": "/health",
+        "function": "getHealth",
+        "usedIn": ["lib/api.ts (health check)"]
+      }
+    ]
+  },
+  "tripService": {
+    "file": "ssb-frontend/lib/services/trip.service.ts",
+    "baseURL": "process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1'",
+    "methods": [
+      {
+        "method": "POST",
+        "path": "/trips/{id}/start",
+        "function": "startTripStrict",
+        "usedIn": ["app/driver/page.tsx", "app/driver/trip/[id]/page.tsx"]
+      },
+      {
+        "method": "POST",
+        "path": "/trips/{id}/end",
+        "function": "endTrip",
+        "usedIn": ["app/driver/trip/[id]/page.tsx"]
+      },
+      {
+        "method": "POST",
+        "path": "/trips/{id}/cancel",
+        "function": "cancelTrip",
+        "usedIn": ["app/driver/trip/[id]/page.tsx"]
+      }
+    ]
+  }
+}
+
+

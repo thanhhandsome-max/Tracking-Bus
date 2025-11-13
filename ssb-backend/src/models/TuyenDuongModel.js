@@ -1,15 +1,46 @@
 import pool from "../config/db.js";
 
 const TuyenDuongModel = {
-  // Lấy tất cả tuyến đường
-  async getAll() {
-    const [rows] = await pool.query(
-      `SELECT * FROM TuyenDuong WHERE trangThai = TRUE ORDER BY tenTuyen`
-    );
-    return rows;
+  // Lấy tất cả tuyến đường (bao gồm số điểm dừng)
+  async getAll(options = {}) {
+    const { search, trangThai } = options;
+    let query = `
+      SELECT 
+        t.*,
+        COUNT(DISTINCT rs.stop_id) as soDiemDung
+      FROM TuyenDuong t
+      LEFT JOIN route_stops rs ON t.maTuyen = rs.route_id
+    `;
+    const conditions = [];
+    const params = [];
+
+    if (trangThai !== undefined) {
+      conditions.push('t.trangThai = ?');
+      params.push(trangThai === 'true' || trangThai === true || trangThai === '1' || trangThai === 1);
+    }
+    // Nếu không có filter trangThai, lấy tất cả (không filter theo trangThai)
+
+    if (search) {
+      conditions.push('(t.tenTuyen LIKE ? OR t.diemBatDau LIKE ? OR t.diemKetThuc LIKE ?)');
+      const searchPattern = `%${search}%`;
+      params.push(searchPattern, searchPattern, searchPattern);
+    }
+
+    if (conditions.length > 0) {
+      query += ` WHERE ${conditions.join(' AND ')}`;
+    }
+
+    query += ` GROUP BY t.maTuyen ORDER BY t.tenTuyen`;
+
+    const [rows] = await pool.query(query, params);
+    // Convert MySQL TINYINT (0/1) to boolean
+    return rows.map(row => ({
+      ...row,
+      trangThai: row.trangThai === 1 || row.trangThai === true
+    }));
   },
 
-  // Lấy tuyến đường theo ID (bao gồm các điểm dừng)
+  // Lấy tuyến đường theo ID (không bao gồm stops - stops sẽ lấy riêng qua RouteStopModel)
   async getById(id) {
     const [tuyen] = await pool.query(
       `SELECT * FROM TuyenDuong WHERE maTuyen = ?`,
@@ -20,27 +51,65 @@ const TuyenDuongModel = {
       return null;
     }
 
-    // Lấy danh sách điểm dừng
-    const [diemDung] = await pool.query(
-      `SELECT * FROM DiemDung 
-       WHERE maTuyen = ? 
-       ORDER BY thuTu`,
-      [id]
-    );
-
+    // Convert MySQL TINYINT (0/1) to boolean
     return {
       ...tuyen[0],
-      diemDung: diemDung || [],
+      trangThai: tuyen[0].trangThai === 1 || tuyen[0].trangThai === true
+    };
+  },
+
+  // Lấy tuyến đường theo tên
+  async getByName(tenTuyen) {
+    const [tuyen] = await pool.query(
+      `SELECT * FROM TuyenDuong WHERE tenTuyen = ?`,
+      [tenTuyen]
+    );
+    if (tuyen.length === 0) {
+      return null;
+    }
+    // Convert MySQL TINYINT (0/1) to boolean
+    return {
+      ...tuyen[0],
+      trangThai: tuyen[0].trangThai === 1 || tuyen[0].trangThai === true
     };
   },
 
   // Tạo tuyến đường mới
   async create(data) {
-    const { tenTuyen, diemBatDau, diemKetThuc, thoiGianUocTinh } = data;
+    const {
+      tenTuyen,
+      diemBatDau,
+      diemKetThuc,
+      thoiGianUocTinh,
+      origin_lat,
+      origin_lng,
+      dest_lat,
+      dest_lng,
+      polyline,
+      trangThai,
+    } = data;
+    
+    // Đảm bảo trangThai mặc định là true (hoạt động) nếu không được cung cấp
+    // trangThai có thể là boolean true/false, hoặc undefined
+    const finalTrangThai = trangThai !== undefined ? (trangThai === true || trangThai === 1 || trangThai === 'true' || trangThai === '1') : true;
+    
     const [result] = await pool.query(
-      `INSERT INTO TuyenDuong (tenTuyen, diemBatDau, diemKetThuc, thoiGianUocTinh)
-       VALUES (?, ?, ?, ?)`,
-      [tenTuyen, diemBatDau, diemKetThuc, thoiGianUocTinh]
+      `INSERT INTO TuyenDuong 
+       (tenTuyen, diemBatDau, diemKetThuc, thoiGianUocTinh, 
+        origin_lat, origin_lng, dest_lat, dest_lng, polyline, trangThai)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        tenTuyen,
+        diemBatDau,
+        diemKetThuc,
+        thoiGianUocTinh,
+        origin_lat || null,
+        origin_lng || null,
+        dest_lat || null,
+        dest_lng || null,
+        polyline || null,
+        finalTrangThai,
+      ]
     );
     return result.insertId;
   },
@@ -65,6 +134,26 @@ const TuyenDuongModel = {
     if (data.thoiGianUocTinh !== undefined) {
       fields.push("thoiGianUocTinh = ?");
       values.push(data.thoiGianUocTinh);
+    }
+    if (data.origin_lat !== undefined) {
+      fields.push("origin_lat = ?");
+      values.push(data.origin_lat);
+    }
+    if (data.origin_lng !== undefined) {
+      fields.push("origin_lng = ?");
+      values.push(data.origin_lng);
+    }
+    if (data.dest_lat !== undefined) {
+      fields.push("dest_lat = ?");
+      values.push(data.dest_lat);
+    }
+    if (data.dest_lng !== undefined) {
+      fields.push("dest_lng = ?");
+      values.push(data.dest_lng);
+    }
+    if (data.polyline !== undefined) {
+      fields.push("polyline = ?");
+      values.push(data.polyline);
     }
     if (data.trangThai !== undefined) {
       fields.push("trangThai = ?");

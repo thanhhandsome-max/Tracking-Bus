@@ -1,57 +1,89 @@
 // DriverController - Controller chuyên nghiệp cho quản lý tài xế
+import DriverService from "../services/DriverService.js";
 import TaiXeModel from "../models/TaiXeModel.js";
 import NguoiDungModel from "../models/NguoiDungModel.js";
 import LichTrinhModel from "../models/LichTrinhModel.js";
 import ChuyenDiModel from "../models/ChuyenDiModel.js";
+import * as response from "../utils/response.js";
 
 class DriverController {
   // Lấy danh sách tất cả tài xế với thông tin người dùng
   static async getAll(req, res) {
     try {
-      const { page = 1, limit = 10, status, search } = req.query;
-      const offset = (page - 1) * limit;
+      const {
+        page = 1,
+        pageSize,
+        limit,
+        q, // search query
+        status,
+        sortBy = "maTaiXe",
+        sortOrder = "desc",
+      } = req.query;
 
-      let drivers = await TaiXeModel.getAll(); // getAll already joins with NguoiDung
-      let totalCount = drivers.length;
+      // Normalize query params - accept both pageSize and limit
+      const pageNum = Math.max(1, parseInt(page) || 1);
+      const pageSizeValue = pageSize || limit || 10;
+      const limitValue = Math.max(1, Math.min(200, parseInt(pageSizeValue) || 10));
+      const search = q || req.query.search;
+      const sortDir = sortOrder.toLowerCase() === "asc" ? "ASC" : "DESC";
 
-      // Lọc theo trạng thái
-      if (status) {
-        drivers = drivers.filter((driver) => driver.trangThai === status);
-        totalCount = drivers.length;
+      // Use service if available, otherwise fallback to model
+      let result;
+      if (DriverService && DriverService.list) {
+        result = await DriverService.list({
+          page: pageNum,
+          limit: limitValue,
+          search,
+          status,
+          sortBy,
+          sortDir,
+        });
+      } else {
+        // Fallback to direct model access
+        let drivers = await TaiXeModel.getAll();
+        let totalCount = drivers.length;
+
+        if (status) {
+          drivers = drivers.filter((d) => d.trangThai === status);
+          totalCount = drivers.length;
+        }
+
+        if (search) {
+          drivers = drivers.filter(
+            (d) =>
+              d.hoTen?.toLowerCase().includes(search.toLowerCase()) ||
+              d.email?.toLowerCase().includes(search.toLowerCase()) ||
+              d.soDienThoai?.includes(search)
+          );
+          totalCount = drivers.length;
+        }
+
+        const offset = (pageNum - 1) * limitValue;
+        const paginatedDrivers = drivers.slice(offset, offset + limitValue);
+
+        result = {
+          data: paginatedDrivers,
+          pagination: {
+            page: pageNum,
+            limit: limitValue,
+            total: totalCount,
+            totalPages: Math.ceil(totalCount / limitValue),
+          },
+        };
       }
 
-      // Tìm kiếm theo tên hoặc email
-      if (search) {
-        drivers = drivers.filter(
-          (driver) =>
-            driver.hoTen.toLowerCase().includes(search.toLowerCase()) ||
-            driver.email.toLowerCase().includes(search.toLowerCase()) ||
-            driver.soDienThoai.includes(search)
-        );
-        totalCount = drivers.length;
-      }
-
-      // Phân trang
-      const paginatedDrivers = drivers.slice(offset, offset + parseInt(limit));
-
-      res.status(200).json({
-        success: true,
-        data: paginatedDrivers,
-        pagination: {
-          currentPage: parseInt(page),
-          totalPages: Math.ceil(totalCount / limit),
-          totalItems: totalCount,
-          itemsPerPage: parseInt(limit),
-        },
-        message: "Lấy danh sách tài xế thành công",
+      return response.ok(res, result.data, {
+        page: pageNum,
+        pageSize: limitValue,
+        total: result.pagination.total,
+        totalPages: result.pagination.totalPages,
+        sortBy,
+        sortOrder: sortOrder.toLowerCase(),
+        q: search || null,
       });
     } catch (error) {
       console.error("Error in DriverController.getAll:", error);
-      res.status(500).json({
-        success: false,
-        message: "Lỗi server khi lấy danh sách tài xế",
-        error: error.message,
-      });
+      return response.serverError(res, "Lỗi server khi lấy danh sách tài xế", error);
     }
   }
 
@@ -61,19 +93,15 @@ class DriverController {
       const { id } = req.params;
 
       if (!id) {
-        return res.status(400).json({
-          success: false,
-          message: "Mã tài xế là bắt buộc",
-        });
+        return response.validationError(res, "Mã tài xế là bắt buộc", [
+          { field: "id", message: "Mã tài xế không được để trống" }
+        ]);
       }
 
       const driver = await TaiXeModel.getById(id);
 
       if (!driver) {
-        return res.status(404).json({
-          success: false,
-          message: "Không tìm thấy tài xế",
-        });
+        return response.notFound(res, "Không tìm thấy tài xế");
       }
 
       // Lấy thông tin người dùng
@@ -85,23 +113,15 @@ class DriverController {
       // Lấy lịch sử chuyến đi
       const tripHistory = await ChuyenDiModel.getByDriverId(id);
 
-      res.status(200).json({
-        success: true,
-        data: {
-          ...driver,
-          userInfo,
-          currentSchedules,
-          tripHistory,
-        },
-        message: "Lấy thông tin tài xế thành công",
+      return response.ok(res, {
+        ...driver,
+        userInfo,
+        currentSchedules,
+        tripHistory,
       });
     } catch (error) {
       console.error("Error in DriverController.getById:", error);
-      res.status(500).json({
-        success: false,
-        message: "Lỗi server khi lấy thông tin tài xế",
-        error: error.message,
-      });
+      return response.serverError(res, "Lỗi server khi lấy thông tin tài xế", error);
     }
   }
 

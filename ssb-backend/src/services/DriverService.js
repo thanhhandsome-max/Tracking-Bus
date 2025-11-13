@@ -1,19 +1,69 @@
 import TaiXeModel from "../models/TaiXeModel.js";
 import NguoiDungModel from "../models/NguoiDungModel.js";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 
 class DriverService {
   static async list(options = {}) {
-    const { page = 1, limit = 10 } = options;
-    const data = await TaiXeModel.getAll(options);
-    const total = await TaiXeModel.count(options);
+    const { 
+      page = 1, 
+      limit = 10, 
+      search, 
+      status, 
+      sortBy = "maTaiXe", 
+      sortDir = "DESC" 
+    } = options;
+    
+    // Get all drivers (model doesn't support filtering yet)
+    let drivers = await TaiXeModel.getAll();
+    let totalCount = drivers.length;
+
+    // Filter by status
+    if (status) {
+      drivers = drivers.filter((d) => d.trangThai === status);
+      totalCount = drivers.length;
+    }
+
+    // Filter by search
+    if (search) {
+      drivers = drivers.filter(
+        (d) =>
+          d.hoTen?.toLowerCase().includes(search.toLowerCase()) ||
+          d.email?.toLowerCase().includes(search.toLowerCase()) ||
+          d.soDienThoai?.includes(search)
+      );
+      totalCount = drivers.length;
+    }
+
+    // Sort
+    if (sortBy === "hoTen") {
+      drivers.sort((a, b) => {
+        const aVal = a.hoTen || "";
+        const bVal = b.hoTen || "";
+        return sortDir === "ASC" 
+          ? aVal.localeCompare(bVal) 
+          : bVal.localeCompare(aVal);
+      });
+    } else if (sortBy === "maTaiXe") {
+      drivers.sort((a, b) => {
+        const aVal = a.maTaiXe || 0;
+        const bVal = b.maTaiXe || 0;
+        return sortDir === "ASC" ? aVal - bVal : bVal - aVal;
+      });
+    }
+
+    // Paginate
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitValue = Math.max(1, Math.min(200, parseInt(limit) || 10));
+    const offset = (pageNum - 1) * limitValue;
+    const paginatedDrivers = drivers.slice(offset, offset + limitValue);
+
     return {
-      data,
+      data: paginatedDrivers,
       pagination: {
-        page: +page,
-        limit: +limit,
-        total,
-        totalPages: Math.ceil(total / limit),
+        page: pageNum,
+        limit: limitValue,
+        total: totalCount,
+        totalPages: Math.ceil(totalCount / limitValue),
       },
     };
   }

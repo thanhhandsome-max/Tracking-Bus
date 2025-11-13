@@ -23,11 +23,12 @@ import { haversine, inGeofence } from "../utils/geo.js";
 import ChuyenDiModel from "../models/ChuyenDiModel.js";
 import LichTrinhModel from "../models/LichTrinhModel.js";
 import TuyenDuongModel from "../models/TuyenDuongModel.js";
-import DiemDungModel from "../models/DiemDungModel.js";
+import RouteStopModel from "../models/RouteStopModel.js"; // Updated: Use RouteStopModel instead of DiemDungModel
 import HocSinhModel from "../models/HocSinhModel.js";
 import NguoiDungModel from "../models/NguoiDungModel.js";
 import { syncBusLocation } from "./firebaseSync.service.js"; // 🔥 Day 5: Firebase sync
 import { notifyApproachStop, notifyDelay } from "./firebaseNotify.service.js"; // 🔥 Day 5: Push Notifications
+import SettingsService from "./settingsService.js"; // M8: Runtime settings
 
 /**
  * 🗺️ IN-MEMORY CACHE - Lưu vị trí xe bus
@@ -67,10 +68,42 @@ const busPositions = new Map();
 const lastUpdateTime = new Map();
 
 /**
+ * 🚏 EMITTED STOPS CACHE - Anti-spam cho approach_stop events
+ *
+ * Structure: Map<tripId, Set<stopId>>
+ * Ví dụ: Map { 16 => Set(3, 7, 12), 22 => Set(5) }
+ *
+ * Dùng để:
+ * - Chỉ emit approach_stop một lần cho mỗi stop trong mỗi trip
+ * - Tránh spam khi bus dừng tại stop (có thể ở trong geofence 30s+)
+ * - Clear khi trip hoàn thành hoặc hủy
+ */
+const emittedStops = new Map();
+
+/**
  * ⏱️ RATE LIMIT - Thời gian tối thiểu giữa 2 lần cập nhật
  * 2000ms = 2 giây
  */
 const RATE_LIMIT_MS = 2000;
+
+/**
+ * Lấy rate limit (ms) cho GPS updates
+ * Có thể lấy từ SettingsService hoặc dùng giá trị mặc định
+ * @returns {number} Rate limit in milliseconds
+ */
+function getRateLimitMs() {
+  try {
+    // Có thể lấy từ SettingsService nếu có
+    const settings = SettingsService.getSettings();
+    if (settings.realtimeThrottleSeconds) {
+      return settings.realtimeThrottleSeconds * 1000; // Convert to ms
+    }
+  } catch (error) {
+    // Nếu có lỗi, dùng giá trị mặc định
+    console.warn('⚠️ Could not get rate limit from SettingsService, using default:', error.message);
+  }
+  return RATE_LIMIT_MS;
+}
 
 /**
  * 📍 GEOFENCE RADIUS - Bán kính phát hiện "gần điểm dừng"
@@ -139,6 +172,37 @@ async function getParentTokensForTrip(tripId) {
 
 class TelemetryService {
   /**
+   * 🧹 CLEAR TRIP DATA - Xóa cache khi trip kết thúc
+   *
+   * @param {number} tripId - ID chuyến đi
+   * @param {number} busId - ID xe bus
+   * 
+   * Gọi hàm này khi:
+   * - Trip completed (trangThai = 'hoan_thanh')
+   * - Trip cancelled (trangThai = 'huy')
+   */
+  static clearTripData(tripId, busId) {
+    // Clear bus position
+    if (busId) {
+      busPositions.delete(`bus-${busId}`);
+      lastUpdateTime.delete(`bus-${busId}`);
+      console.log(`🧹 Cleared position cache for bus-${busId}`);
+    }
+    
+    // Clear emitted stops for this trip
+    if (emittedStops.has(tripId)) {
+      emittedStops.delete(tripId);
+      console.log(`🧹 Cleared emitted stops cache for trip-${tripId}`);
+    }
+    
+    // Clear delay alert cache
+    if (delayAlertLastSent.has(tripId)) {
+      delayAlertLastSent.delete(tripId);
+      console.log(`🧹 Cleared delay alert cache for trip-${tripId}`);
+    }
+  }
+
+  /**
    * 📥 CẬP NHẬT VỊ TRÍ XE BUS
    *
    * @param {number} tripId - ID chuyến đi
@@ -190,8 +254,9 @@ class TelemetryService {
       const now = Date.now();
       const lastUpdate = lastUpdateTime.get(`bus-${busId}`);
 
-      if (lastUpdate && now - lastUpdate < RATE_LIMIT_MS) {
-        const waitTime = Math.ceil((RATE_LIMIT_MS - (now - lastUpdate)) / 1000);
+      const rateLimitMs = getRateLimitMs();
+      if (lastUpdate && now - lastUpdate < rateLimitMs) {
+        const waitTime = Math.ceil((rateLimitMs - (now - lastUpdate)) / 1000);
         throw new Error(
           `Vui lòng đợi ${waitTime}s trước khi gửi vị trí tiếp theo`
         );
@@ -211,8 +276,8 @@ class TelemetryService {
       busPositions.set(`bus-${busId}`, position);
       lastUpdateTime.set(`bus-${busId}`, now);
 
-      // 📡 Emit bus_position_update
-      io.to(`trip-${tripId}`).emit("bus_position_update", {
+      // M4-M6: Broadcast bus_position_update to multiple rooms
+      const positionUpdate = {
         busId,
         tripId,
         lat,
@@ -220,7 +285,16 @@ class TelemetryService {
         speed: speed || 0,
         heading: heading || 0,
         timestamp: position.timestamp,
-      });
+      };
+
+      // Emit to trip room (parents + admin subscribed)
+      io.to(`trip-${tripId}`).emit("bus_position_update", positionUpdate);
+      
+      // M4-M6: Also emit to bus room
+      io.to(`bus-${busId}`).emit("bus_position_update", positionUpdate);
+      
+      // M4-M6: Emit to role-admin for monitoring
+      io.to("role-quan_tri").emit("bus_position_update", positionUpdate);
 
       const events = ["bus_position_update"];
 
@@ -293,7 +367,8 @@ class TelemetryService {
       const route = await TuyenDuongModel.getById(schedule.maTuyen);
       if (!route) return false;
 
-      const stops = await DiemDungModel.getByRouteId(schedule.maTuyen);
+      // Get stops for route using RouteStopModel
+      const stops = await RouteStopModel.getByRouteId(schedule.maTuyen);
       if (!stops || stops.length === 0) return false;
 
       // Tìm điểm dừng tiếp theo (điểm gần nhất chưa qua)
@@ -308,7 +383,19 @@ class TelemetryService {
         );
 
         // Nếu trong vòng 60m → Emit event
-        if (distance <= GEOFENCE_RADIUS) {
+        const geofenceRadius = getGeofenceRadius();
+        if (distance <= geofenceRadius) {
+          // 🚏 Anti-spam: Check if this stop has already been emitted for this trip
+          const tripEmittedStops = emittedStops.get(tripId) || new Set();
+          
+          if (tripEmittedStops.has(stop.maDiem)) {
+            // Already emitted for this stop, skip
+            console.log(
+              `⏭️  Skipping approach_stop for ${stop.tenDiem} (already emitted for trip ${tripId})`
+            );
+            continue; // Check next stop
+          }
+
           console.log(
             `📍 Xe gần điểm dừng ${stop.tenDiem} (${Math.round(distance)}m)`
           );
@@ -324,6 +411,10 @@ class TelemetryService {
           // Emit WebSocket event
           console.log(`📡 emit: approach_stop to trip-${tripId}`, eventData);
           io.to(`trip-${tripId}`).emit("approach_stop", eventData);
+          
+          // 🚏 Mark this stop as emitted for this trip
+          tripEmittedStops.add(stop.maDiem);
+          emittedStops.set(tripId, tripEmittedStops);
 
           // 🔥 Day 5: Send Push Notification to parents
           try {
@@ -399,7 +490,8 @@ class TelemetryService {
       console.log(`   - Delay: ${Math.round(delayMin)} phút`);
 
       // Nếu trễ > 5 phút → Emit event (gửi lại sau mỗi 3 phút)
-      if (delayMin > DELAY_THRESHOLD_MIN) {
+      const delayThreshold = getDelayThresholdMin();
+      if (delayMin > delayThreshold) {
         // 🚨 Kiểm tra lần gửi cuối cùng
         const lastSent = delayAlertLastSent.get(tripId);
         const now = Date.now();

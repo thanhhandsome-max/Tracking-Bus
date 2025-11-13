@@ -40,20 +40,110 @@ export default function DriverDashboard() {
     async function load() {
       try {
         const driverIdNum = Number(user!.id)
+        if (!driverIdNum || isNaN(driverIdNum)) {
+          console.error('Invalid driver ID:', user!.id)
+          setTrips([])
+          return
+        }
+
         // Chỉ lấy TRIPS hôm nay của tài xế, lọc trạng thái 'chua_khoi_hanh' | 'dang_chay'
         const today = new Date()
         const yyyy = today.getFullYear()
         const mm = String(today.getMonth() + 1).padStart(2, '0')
         const dd = String(today.getDate()).padStart(2, '0')
         const todayStr = `${yyyy}-${mm}-${dd}`
+        
         let normalized: any[] = []
         try {
-          const rTrips = await apiClient.getTrips({ ngayChay: todayStr })
-          const tripsRaw: any[] = Array.isArray(rTrips?.data) ? rTrips.data : []
-          const tripsMine = tripsRaw.filter((t: any) => Number(t?.maTaiXe) === driverIdNum)
-          const tripsActive = tripsMine.filter((t: any) => t?.trangThai === 'chua_khoi_hanh' || t?.trangThai === 'dang_chay')
-          normalized = tripsActive
-        } catch {
+          // Truyền maTaiXe vào API để lọc ở backend thay vì lọc ở frontend
+          console.log('🔍 Loading trips for driver:', {
+            driverId: driverIdNum,
+            today: todayStr,
+            user: user
+          })
+          
+          const rTrips = await apiClient.getTrips({ 
+            ngayChay: todayStr,
+            maTaiXe: driverIdNum
+          })
+          
+          console.log('📦 API Response:', rTrips)
+          
+          // Xử lý response structure
+          const tripsRaw: any[] = Array.isArray(rTrips?.data) 
+            ? rTrips.data 
+            : (Array.isArray(rTrips) ? rTrips : [])
+          
+          console.log('📋 Raw trips from API:', {
+            count: tripsRaw.length,
+            trips: tripsRaw.map((t: any) => ({
+              maChuyen: t.maChuyen,
+              trangThai: t.trangThai,
+              ngayChay: t.ngayChay,
+              maTaiXe: t.maTaiXe,
+              tenTuyen: t.tenTuyen
+            }))
+          })
+          
+          // Tạm thời hiển thị TẤT CẢ chuyến đi để debug (sau đó sẽ lọc lại)
+          // Lọc chỉ các chuyến có trạng thái chưa khởi hành hoặc đang chạy
+          const tripsActive = tripsRaw.filter((t: any) => 
+            t?.trangThai === 'chua_khoi_hanh' || t?.trangThai === 'dang_chay'
+          )
+          
+          // Nếu không có chuyến active, hiển thị tất cả để debug
+          if (tripsActive.length === 0 && tripsRaw.length > 0) {
+            console.warn('⚠️ No active trips, showing all trips for debugging:', tripsRaw)
+            normalized = tripsRaw // Hiển thị tất cả để debug
+          } else {
+            normalized = tripsActive
+          }
+          
+          // Log để debug
+          console.log('✅ Filtered active trips:', {
+            total: normalized.length,
+            trips: normalized.map((t: any) => ({
+              maChuyen: t.maChuyen,
+              trangThai: t.trangThai,
+              tenTuyen: t.tenTuyen,
+              loaiChuyen: t.loaiChuyen
+            }))
+          })
+          
+          if (normalized.length === 0 && tripsRaw.length > 0) {
+            console.warn('⚠️ Found trips but none are active:', {
+              driverId: driverIdNum,
+              today: todayStr,
+              totalTripsFromAPI: tripsRaw.length,
+              allStatuses: tripsRaw.map((t: any) => t?.trangThai),
+              allTrips: tripsRaw
+            })
+          } else if (normalized.length === 0) {
+            console.warn('⚠️ No trips found for driver:', {
+              driverId: driverIdNum,
+              today: todayStr,
+              totalTripsFromAPI: tripsRaw.length
+            })
+          }
+        } catch (error: any) {
+          console.error('Error loading trips:', error)
+          
+          // Handle rate limit errors specifically
+          if (error?.status === 429 || error?.message?.includes('Too many requests')) {
+            const retryAfter = error?.retryAfter || 60
+            toast({
+              title: 'Quá nhiều yêu cầu',
+              description: `Vui lòng đợi ${retryAfter} giây trước khi thử lại.`,
+              variant: 'destructive'
+            })
+          } else {
+            const errorMessage = error?.message || error?.response?.message || 'Không thể tải danh sách chuyến đi'
+            toast({
+              title: 'Lỗi',
+              description: errorMessage,
+              variant: 'destructive'
+            })
+          }
           normalized = []
         }
 
@@ -82,7 +172,7 @@ export default function DriverDashboard() {
     }
 
     load()
-  }, [user])
+  }, [user, toast])
 
   if (!user || user.role?.toLowerCase() !== "driver") {
     return null
@@ -129,9 +219,28 @@ export default function DriverDashboard() {
         <div className={stops.length > 0 ? "grid grid-cols-1 lg:grid-cols-3 gap-6" : "space-y-5"}>
           <div className={stops.length > 0 ? "lg:col-span-1 space-y-5" : "space-y-5"}>
             <h2 className="text-xl font-semibold text-foreground">Chuyến đi hôm nay</h2>
-            {trips.map((trip: any, idx: number) => {
+            {trips.length === 0 ? (
+              <Card className="border-border/50">
+                <CardContent className="p-6">
+                  <div className="text-center space-y-2">
+                    <p className="text-muted-foreground">
+                      Không có chuyến đi nào hôm nay
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Vui lòng kiểm tra console (F12) để xem chi tiết
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              trips.map((trip: any, idx: number) => {
               const tripId = trip.maChuyen || trip.maChuyenDi || trip.id || idx
-              const title = trip.tenTuyen || trip.route || trip.moTa || trip.loai || `Chuyến ${tripId}`
+              const baseTitle = trip.tenTuyen || trip.route || trip.moTa || trip.loai || `Chuyến ${tripId}`
+              // Add trip type indicator if not already in name
+              const loaiChuyen = trip.loaiChuyen || '';
+              const title = baseTitle.includes('Đi') || baseTitle.includes('Về')
+                ? baseTitle
+                : `${baseTitle} ${loaiChuyen === 'don_sang' ? '(Đi)' : loaiChuyen === 'tra_chieu' ? '(Về)' : ''}`
               const isNotStarted = trip.trangThai === 'chua_khoi_hanh'
               const isRunning = trip.trangThai === 'dang_chay'
               return (
@@ -158,8 +267,23 @@ export default function DriverDashboard() {
                           </div>
                         </div>
                       </div>
-                      <Badge variant="outline" className="border-primary text-primary">
-                        {trip.trangThai || trip.status || (trip.dangApDung ? 'Đang áp dụng' : 'Đã lên lịch')}
+                      <Badge 
+                        variant="outline" 
+                        className={
+                          trip.trangThai === 'dang_chay' 
+                            ? "border-green-500 text-green-500" 
+                            : trip.trangThai === 'chua_khoi_hanh'
+                            ? "border-blue-500 text-blue-500"
+                            : trip.trangThai === 'hoan_thanh' || trip.trangThai === 'da_hoan_thanh'
+                            ? "border-gray-500 text-gray-500"
+                            : "border-primary text-primary"
+                        }
+                      >
+                        {trip.trangThai === 'chua_khoi_hanh' ? 'Chưa khởi hành' :
+                         trip.trangThai === 'dang_chay' ? 'Đang chạy' :
+                         trip.trangThai === 'hoan_thanh' || trip.trangThai === 'da_hoan_thanh' ? 'Hoàn thành' :
+                         trip.trangThai === 'huy' || trip.trangThai === 'bi_huy' ? 'Đã hủy' :
+                         trip.trangThai || trip.status || 'N/A'}
                       </Badge>
                     </div>
 
@@ -193,7 +317,8 @@ export default function DriverDashboard() {
                   </CardContent>
                 </Card>
               )
-            })}
+            })
+            )}
           </div>
 
           {stops.length > 0 && (

@@ -9,6 +9,8 @@ import busRoutes from "./routes/api/bus.js";
 import driverRoutes from "./routes/api/driver.js";
 import studentRoutes from "./routes/api/student.js";
 import routeRoutes from "./routes/api/route.js";
+import stopRoutes from "./routes/api/stop.js"; // NEW: Stops routes
+import mapsRoutes from "./routes/api/maps.js"; // NEW: Maps API proxy routes
 import scheduleRoutes from "./routes/api/schedule.js";
 import authRouters from "./routes/api/auth.route.js";
 import reportsRoutes from "./routes/api/reports.js"; // Reports routes
@@ -55,6 +57,8 @@ app.use("/api/v1/buses", busRoutes);
 app.use("/api/v1/drivers", driverRoutes);
 app.use("/api/v1/students", studentRoutes);
 app.use("/api/v1/routes", routeRoutes);
+app.use("/api/v1/stops", stopRoutes); // NEW: Stops routes
+app.use("/api/v1/maps", mapsRoutes); // NEW: Maps API proxy routes
 app.use("/api/v1/schedules", scheduleRoutes);
 app.use("/api/v1/trips", tripRoutes);
 app.use("/api/v1/reports", reportsRoutes);

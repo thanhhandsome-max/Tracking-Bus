@@ -1,7 +1,8 @@
 import { Server } from "socket.io";
 import { verifyWsJWT } from "../utils/wsAuth.js";
 import TelemetryService from "../services/telemetryService.js";
-
+import ChuyenDiModel from "../models/ChuyenDiModel.js";
+import LichTrinhModel from "../models/LichTrinhModel.js";
 import config from "../config/env.js";
 
 export function initSocketIO(httpServer) {
@@ -78,6 +79,11 @@ export function initSocketIO(httpServer) {
     socket.join(userRoom);
     console.log(`  ✅ Joined room: ${userRoom}`);
 
+    // M0: Auto join role-based room
+    const roleRoom = `role-${user.vaiTro}`;
+    socket.join(roleRoom);
+    console.log(`  ✅ Joined role room: ${roleRoom}`);
+
     socket.on("ping", () => {
       socket.emit("pong", { timestamp: Date.now() });
       console.log(`  🏓 Ping/pong with ${user.email}`);
@@ -95,6 +101,21 @@ export function initSocketIO(httpServer) {
       socket.leave(tripRoom);
       console.log(`  ❌ ${user.email} left ${tripRoom}`);
       socket.emit("trip_left", { tripId, room: tripRoom });
+    });
+
+    // P2 Fix: Join/Leave route room for route_updated events
+    socket.on("join_route", (routeId) => {
+      const routeRoom = `route:${routeId}`;
+      socket.join(routeRoom);
+      console.log(`  ✅ ${user.email} joined ${routeRoom}`);
+      socket.emit("route_joined", { routeId, room: routeRoom });
+    });
+
+    socket.on("leave_route", (routeId) => {
+      const routeRoom = `route:${routeId}`;
+      socket.leave(routeRoom);
+      console.log(`  ❌ ${user.email} left ${routeRoom}`);
+      socket.emit("route_left", { routeId, room: routeRoom });
     });
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -119,23 +140,58 @@ export function initSocketIO(httpServer) {
     });
 
     // ═══════════════════════════════════════════════════════════════════════
-    // 📡 SỰ KIỆN: driver_gps (Nhiệm vụ Ngày 4)
+    // 📡 SỰ KIỆN: driver_gps & gps:update (M4-M6: Standardized event name)
     // ═══════════════════════════════════════════════════════════════════════
     // Tài xế gửi vị trí GPS → Server xử lý geofence & delay → Emit events
-    socket.on("driver_gps", async (data) => {
+    // M4-M6: Support both "driver_gps" (legacy) and "gps:update" (standard)
+    const handleGPSUpdate = async (data) => {
       try {
-        const { tripId, lat, lng, speed, heading } = data;
+        const { tripId, lat, lng, speed, speedKph, heading, tsClient } = data;
+
+        // M4-M6: Normalize field names (support both formats)
+        const normalizedSpeed = speedKph || speed || 0;
+        const normalizedHeading = heading || 0;
+        const clientTimestamp = tsClient || new Date().toISOString();
+
+        // M4-M6: Verify driver owns this trip
+        const trip = await ChuyenDiModel.getById(tripId);
+        if (!trip) {
+          throw new Error("Trip not found");
+        }
+
+        const schedule = await LichTrinhModel.getById(trip.maLichTrinh);
+        if (!schedule) {
+          throw new Error("Schedule not found");
+        }
+
+        // M4-M6: Only driver assigned to trip can send GPS
+        if (user.vaiTro !== "tai_xe" || schedule.maTaiXe !== user.userId) {
+          throw new Error("Only assigned driver can send GPS updates");
+        }
 
         console.log(
-          `  📡 [driver_gps] ${user.email}: Trip ${tripId} @ (${lat}, ${lng})`
+          `  📡 [gps:update] ${user.email}: Trip ${tripId} @ (${lat}, ${lng}) Speed: ${normalizedSpeed} km/h`
         );
 
         // Gọi TelemetryService để xử lý
         const result = await TelemetryService.updatePosition(
           tripId,
-          { lat, lng, speed, heading },
+          { lat, lng, speed: normalizedSpeed, heading: normalizedHeading },
           io
         );
+
+        // M4-M6: Broadcast to bus-{busId} room as well
+        if (schedule.maXe) {
+          io.to(`bus-${schedule.maXe}`).emit("bus_position_update", {
+            busId: schedule.maXe,
+            tripId,
+            lat,
+            lng,
+            speed: normalizedSpeed,
+            heading: normalizedHeading,
+            timestamp: result.position.timestamp,
+          });
+        }
 
         // Gửi ACK về driver
         socket.emit("gps_ack", {
@@ -144,13 +200,17 @@ export function initSocketIO(httpServer) {
           events: result.events,
         });
       } catch (error) {
-        console.error(`  ❌ [driver_gps] Error:`, error.message);
+        console.error(`  ❌ [gps:update] Error:`, error.message);
         socket.emit("gps_ack", {
           success: false,
           error: error.message,
         });
       }
-    });
+    };
+
+    // Support both event names
+    socket.on("driver_gps", handleGPSUpdate); // Legacy
+    socket.on("gps:update", handleGPSUpdate); // M4-M6: Standardized
 
     socket.on("disconnect", (reason) => {
       console.log(
@@ -164,6 +224,21 @@ export function initSocketIO(httpServer) {
       role: user.vaiTro,
       rooms: Array.from(socket.rooms),
       timestamp: new Date().toISOString(),
+    });
+
+    // M0: auth/hello event để test ACL
+    socket.on("auth/hello", () => {
+      const helloData = {
+        userId: user.userId,
+        email: user.email,
+        role: user.vaiTro,
+        timestamp: new Date().toISOString(),
+        message: `Hello from server! You are authenticated as ${user.email}`,
+      };
+      // Emit về user room và current socket
+      io.to(`user-${user.userId}`).emit("auth/hello", helloData);
+      socket.emit("auth/hello", helloData);
+      console.log(`  👋 [auth/hello] Sent to user-${user.userId}`);
     });
   });
 

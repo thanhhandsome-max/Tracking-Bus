@@ -1,0 +1,155 @@
+{
+  "version": "3.0.0",
+  "title": "SSB 1.0 API",
+  "apiVersion": "1.0.0",
+  "servers": [
+    {
+      "url": "http://localhost:4000/api/v1",
+      "description": "Development server"
+    },
+    {
+      "url": "https://api.ssb.com/v1",
+      "description": "Production server"
+    }
+  ],
+  "lastModified": "2025-11-11",
+  "totalPaths": 45,
+  "paths": {
+    "auth": [
+      "/auth/login",
+      "/auth/refresh",
+      "/auth/register",
+      "/auth/profile"
+    ],
+    "buses": [
+      "/buses",
+      "/buses/{id}",
+      "/buses/{id}/position",
+      "/reports/buses/stats"
+    ],
+    "trips": [
+      "/trips",
+      "/trips/{id}",
+      "/trips/{id}/start",
+      "/trips/{id}/end",
+      "/trips/{id}/cancel",
+      "/trips/{id}/position",
+      "/trips/{id}/students/{studentId}/checkin",
+      "/trips/{id}/students/{studentId}/checkout"
+    ],
+    "routes": [
+      "/routes",
+      "/routes/{id}",
+      "/routes/{id}/stops",
+      "/routes/{id}/stops/reorder",
+      "/routes/{id}/stops/{stopId}",
+      "/routes/{id}/rebuild-polyline"
+    ],
+    "stops": [
+      "/stops",
+      "/stops/{id}"
+    ],
+    "maps": [
+      "/maps/directions",
+      "/maps/distance-matrix",
+      "/maps/geocode",
+      "/maps/reverse-geocode",
+      "/maps/roads/snap"
+    ],
+    "stats": [
+      "/stats/overview",
+      "/stats/trips-by-day",
+      "/stats/driver-performance",
+      "/stats/bus-utilization",
+      "/stats/route-punctuality"
+    ],
+    "settings": [
+      "/settings"
+    ],
+    "schedules": [
+      "/schedules"
+    ],
+    "drivers": [
+      "/drivers"
+    ],
+    "students": [
+      "/students"
+    ],
+    "reports": [
+      "/reports/trips/stats"
+    ],
+    "health": [
+      "/health"
+    ]
+  },
+  "mainSchemas": [
+    "User",
+    "Bus",
+    "Trip",
+    "TripDetail",
+    "TripPosition",
+    "TripPositionUpdate",
+    "TripEvent",
+    "StudentTripStatus",
+    "Route",
+    "RouteDetail",
+    "Stop",
+    "RouteStopDetail",
+    "CreateRoutePayload",
+    "UpdateRoutePayload",
+    "CreateStopPayload",
+    "UpdateStopPayload",
+    "ReorderStopsPayload",
+    "DirectionsRequest",
+    "DirectionsResponse",
+    "DistanceMatrixRequest",
+    "DistanceMatrixResponse",
+    "GeocodeRequest",
+    "GeocodeResponse",
+    "RoadsSnapRequest",
+    "RoadsSnapResponse",
+    "LoginRequest",
+    "LoginResponse",
+    "RefreshResponse",
+    "ProfileResponse",
+    "ErrorResponse",
+    "PaginationMeta",
+    "EnvelopeOk",
+    "CreateTripRequest",
+    "StatsOverview",
+    "TripsByDay",
+    "DriverPerformance",
+    "BusUtilization",
+    "RoutePunctuality",
+    "SystemSettings",
+    "UpdateSettingsRequest",
+    "BusStats",
+    "TripStats"
+  ],
+  "securitySchemes": {
+    "bearerAuth": {
+      "type": "http",
+      "scheme": "bearer",
+      "bearerFormat": "JWT"
+    }
+  },
+  "tags": [
+    "Health",
+    "Authentication",
+    "Buses",
+    "Drivers",
+    "Routes",
+    "Schedules",
+    "Trips",
+    "Students",
+    "Parents",
+    "Notifications",
+    "Reports",
+    "Stats",
+    "Admin",
+    "Settings",
+    "Maps",
+    "Stops"
+  ]
+}
+

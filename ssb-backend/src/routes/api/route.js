@@ -81,17 +81,17 @@ router.post(
   AuthMiddleware.authenticate,
   AuthMiddleware.authorize("quan_tri"),
   ValidationMiddleware.validateId,
-  ValidationMiddleware.validateStop,
+  ValidationMiddleware.validateRouteStop,
   RouteController.addStopToRoute
 );
 
-// PUT /api/v1/routes/:id/stops/:stopId - Cập nhật điểm dừng
+// PUT /api/v1/routes/:id/stops/:stopId - Cập nhật điểm dừng trong tuyến đường
 router.put(
   "/:id/stops/:stopId",
   AuthMiddleware.authenticate,
   AuthMiddleware.authorize("quan_tri"),
   ValidationMiddleware.validateId,
-  RouteController.updateStop
+  RouteController.updateStopInRoute
 );
 
 // DELETE /api/v1/routes/:id/stops/:stopId - Xóa điểm dừng khỏi tuyến đường
@@ -101,6 +101,24 @@ router.delete(
   AuthMiddleware.authorize("quan_tri"),
   ValidationMiddleware.validateId,
   RouteController.removeStopFromRoute
+);
+
+// PATCH /api/v1/routes/:id/stops/reorder - Sắp xếp lại thứ tự stops
+router.patch(
+  "/:id/stops/reorder",
+  AuthMiddleware.authenticate,
+  AuthMiddleware.authorize("quan_tri"),
+  ValidationMiddleware.validateId,
+  RouteController.reorderStops
+);
+
+// POST /api/v1/routes/:id/rebuild-polyline - Rebuild polyline cho route
+router.post(
+  "/:id/rebuild-polyline",
+  AuthMiddleware.authenticate,
+  AuthMiddleware.authorize("quan_tri"),
+  ValidationMiddleware.validateId,
+  RouteController.rebuildPolyline
 );
 
 export default router;

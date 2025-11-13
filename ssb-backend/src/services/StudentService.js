@@ -3,16 +3,65 @@ import NguoiDungModel from "../models/NguoiDungModel.js";
 
 class StudentService {
   static async list(options = {}) {
-    const { page = 1, limit = 10 } = options;
-    const data = await HocSinhModel.getAll(options);
-    const total = await HocSinhModel.count(options);
+    const { 
+      page = 1, 
+      limit = 10, 
+      search, 
+      lop, 
+      sortBy = "maHocSinh", 
+      sortDir = "DESC" 
+    } = options;
+    
+    // Get all students (model doesn't support filtering yet)
+    let students = await HocSinhModel.getWithParentInfo();
+    let totalCount = students.length;
+
+    // Filter by search
+    if (search) {
+      students = students.filter(
+        (s) =>
+          s.hoTen?.toLowerCase().includes(search.toLowerCase()) ||
+          s.maHocSinh?.toString().includes(search.toLowerCase())
+      );
+      totalCount = students.length;
+    }
+
+    // Filter by class
+    if (lop) {
+      students = students.filter((s) => s.lop === lop);
+      totalCount = students.length;
+    }
+
+    // Sort
+    if (sortBy === "hoTen") {
+      students.sort((a, b) => {
+        const aVal = a.hoTen || "";
+        const bVal = b.hoTen || "";
+        return sortDir === "ASC" 
+          ? aVal.localeCompare(bVal) 
+          : bVal.localeCompare(aVal);
+      });
+    } else if (sortBy === "maHocSinh") {
+      students.sort((a, b) => {
+        const aVal = a.maHocSinh || 0;
+        const bVal = b.maHocSinh || 0;
+        return sortDir === "ASC" ? aVal - bVal : bVal - aVal;
+      });
+    }
+
+    // Paginate
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitValue = Math.max(1, Math.min(200, parseInt(limit) || 10));
+    const offset = (pageNum - 1) * limitValue;
+    const paginatedStudents = students.slice(offset, offset + limitValue);
+
     return {
-      data,
+      data: paginatedStudents,
       pagination: {
-        page: +page,
-        limit: +limit,
-        total,
-        totalPages: Math.ceil(total / limit),
+        page: pageNum,
+        limit: limitValue,
+        total: totalCount,
+        totalPages: Math.ceil(totalCount / limitValue),
       },
     };
   }

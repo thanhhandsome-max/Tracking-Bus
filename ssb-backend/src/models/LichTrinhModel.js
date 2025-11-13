@@ -1,11 +1,20 @@
 import pool from "../config/db.js";
 
 const LichTrinhModel = {
-  // Lấy tất cả lịch trình
-  async getAll() {
-    const [rows] = await pool.query(
-      `SELECT 
-        lt.*,
+  // Lấy tất cả lịch trình với filters
+  async getAll(filters = {}) {
+    let query = `
+      SELECT 
+        lt.maLichTrinh,
+        lt.maTuyen,
+        lt.maXe,
+        lt.maTaiXe,
+        lt.loaiChuyen,
+        lt.gioKhoiHanh,
+        DATE_FORMAT(lt.ngayChay, '%Y-%m-%d') as ngayChay,
+        lt.dangApDung,
+        lt.ngayTao,
+        lt.ngayCapNhat,
         td.tenTuyen,
         xb.bienSoXe,
         xb.dongXe,
@@ -14,9 +23,38 @@ const LichTrinhModel = {
        INNER JOIN TuyenDuong td ON lt.maTuyen = td.maTuyen
        INNER JOIN XeBuyt xb ON lt.maXe = xb.maXe
        INNER JOIN NguoiDung nd ON lt.maTaiXe = nd.maNguoiDung
-       WHERE lt.dangApDung = TRUE
-       ORDER BY lt.gioKhoiHanh`
-    );
+       WHERE 1=1
+    `;
+    const params = [];
+    
+    // Apply filters
+    if (filters.maTuyen) {
+      query += " AND lt.maTuyen = ?";
+      params.push(filters.maTuyen);
+    }
+    if (filters.maXe) {
+      query += " AND lt.maXe = ?";
+      params.push(filters.maXe);
+    }
+    if (filters.maTaiXe) {
+      query += " AND lt.maTaiXe = ?";
+      params.push(filters.maTaiXe);
+    }
+    if (filters.loaiChuyen) {
+      query += " AND lt.loaiChuyen = ?";
+      params.push(filters.loaiChuyen);
+    }
+    if (filters.dangApDung !== undefined) {
+      query += " AND lt.dangApDung = ?";
+      params.push(filters.dangApDung ? 1 : 0);
+    } else {
+      // Default: only active schedules
+      query += " AND lt.dangApDung = TRUE";
+    }
+    
+    query += " ORDER BY lt.ngayChay DESC, lt.gioKhoiHanh";
+    
+    const [rows] = await pool.query(query, params);
     return rows;
   },
 
@@ -24,7 +62,16 @@ const LichTrinhModel = {
   async getById(id) {
     const [rows] = await pool.query(
       `SELECT 
-        lt.*,
+        lt.maLichTrinh,
+        lt.maTuyen,
+        lt.maXe,
+        lt.maTaiXe,
+        lt.loaiChuyen,
+        lt.gioKhoiHanh,
+        DATE_FORMAT(lt.ngayChay, '%Y-%m-%d') as ngayChay,
+        lt.dangApDung,
+        lt.ngayTao,
+        lt.ngayCapNhat,
         td.tenTuyen,
         td.diemBatDau,
         td.diemKetThuc,
@@ -57,6 +104,31 @@ const LichTrinhModel = {
        WHERE lt.maTuyen = ? AND lt.dangApDung = TRUE
        ORDER BY lt.gioKhoiHanh`,
       [maTuyen]
+    );
+    return rows;
+  },
+
+  // Alias for getByRoute (used by RouteController)
+  async getByRouteId(maTuyen) {
+    return this.getByRoute(maTuyen);
+  },
+
+  // Lấy lịch trình theo tuyến và loại chuyến (don_sang/tra_chieu)
+  async getByRouteAndType(maTuyen, loaiChuyen) {
+    const [rows] = await pool.query(
+      `SELECT 
+        lt.*,
+        td.tenTuyen,
+        xb.bienSoXe,
+        xb.dongXe,
+        nd.hoTen as tenTaiXe
+       FROM LichTrinh lt
+       INNER JOIN TuyenDuong td ON lt.maTuyen = td.maTuyen
+       INNER JOIN XeBuyt xb ON lt.maXe = xb.maXe
+       INNER JOIN NguoiDung nd ON lt.maTaiXe = nd.maNguoiDung
+       WHERE lt.maTuyen = ? AND lt.loaiChuyen = ? AND lt.dangApDung = TRUE
+       ORDER BY lt.gioKhoiHanh`,
+      [maTuyen, loaiChuyen]
     );
     return rows;
   },
@@ -98,12 +170,12 @@ const LichTrinhModel = {
 
   // Tạo lịch trình mới
   async create(data) {
-    const { maTuyen, maXe, maTaiXe, loaiChuyen, gioKhoiHanh, dangApDung } =
+    const { maTuyen, maXe, maTaiXe, loaiChuyen, gioKhoiHanh, ngayChay, dangApDung } =
       data;
     const [result] = await pool.query(
-      `INSERT INTO LichTrinh (maTuyen, maXe, maTaiXe, loaiChuyen, gioKhoiHanh, dangApDung)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [maTuyen, maXe, maTaiXe, loaiChuyen, gioKhoiHanh, dangApDung !== false]
+      `INSERT INTO LichTrinh (maTuyen, maXe, maTaiXe, loaiChuyen, gioKhoiHanh, ngayChay, dangApDung)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [maTuyen, maXe, maTaiXe, loaiChuyen, gioKhoiHanh, ngayChay, dangApDung !== false]
     );
     return result.insertId;
   },
@@ -132,6 +204,10 @@ const LichTrinhModel = {
     if (data.gioKhoiHanh !== undefined) {
       fields.push("gioKhoiHanh = ?");
       values.push(data.gioKhoiHanh);
+    }
+    if (data.ngayChay !== undefined) {
+      fields.push("ngayChay = ?");
+      values.push(data.ngayChay);
     }
     if (data.dangApDung !== undefined) {
       fields.push("dangApDung = ?");
@@ -175,25 +251,43 @@ const LichTrinhModel = {
     maTaiXe,
     gioKhoiHanh,
     loaiChuyen,
+    ngayChay,
     excludeId = null
   ) {
+    // M1-M3: Trả về chi tiết conflict thay vì chỉ boolean
     let query = `
-      SELECT COUNT(*) as count
-      FROM LichTrinh
-      WHERE (maXe = ? OR maTaiXe = ?)
-      AND gioKhoiHanh = ?
-      AND loaiChuyen = ?
-      AND dangApDung = TRUE
+      SELECT 
+        lt.maLichTrinh,
+        lt.maXe,
+        lt.maTaiXe,
+        lt.gioKhoiHanh,
+        lt.loaiChuyen,
+        lt.ngayChay,
+        xb.bienSoXe,
+        nd.hoTen as tenTaiXe,
+        CASE 
+          WHEN lt.maXe = ? THEN 'bus'
+          WHEN lt.maTaiXe = ? THEN 'driver'
+          ELSE 'both'
+        END as conflictType
+      FROM LichTrinh lt
+      INNER JOIN XeBuyt xb ON lt.maXe = xb.maXe
+      INNER JOIN NguoiDung nd ON lt.maTaiXe = nd.maNguoiDung
+      WHERE (lt.maXe = ? OR lt.maTaiXe = ?)
+      AND lt.gioKhoiHanh = ?
+      AND lt.loaiChuyen = ?
+      AND DATE(lt.ngayChay) = DATE(?)
+      AND lt.dangApDung = TRUE
     `;
-    const params = [maXe, maTaiXe, gioKhoiHanh, loaiChuyen];
+    const params = [maXe, maTaiXe, maXe, maTaiXe, gioKhoiHanh, loaiChuyen, ngayChay];
 
     if (excludeId) {
-      query += " AND maLichTrinh != ?";
+      query += " AND lt.maLichTrinh != ?";
       params.push(excludeId);
     }
 
     const [rows] = await pool.query(query, params);
-    return rows[0].count > 0;
+    return rows.length > 0 ? rows : null;
   },
 
   // Thống kê lịch trình
@@ -253,6 +347,7 @@ const LichTrinhModel = {
        INNER JOIN XeBuyt xb ON lt.maXe = xb.maXe
        INNER JOIN NguoiDung nd ON lt.maTaiXe = nd.maNguoiDung
        WHERE lt.dangApDung = TRUE
+         AND DATE(lt.ngayChay) = DATE(?)
        ORDER BY lt.gioKhoiHanh`,
       [date]
     );

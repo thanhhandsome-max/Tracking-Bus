@@ -1,0 +1,293 @@
+{
+  "backend": {
+    "file": "ssb-backend/src/ws/index.js",
+    "events": {
+      "received": [
+        {
+          "event": "ping",
+          "handler": "socket.on('ping')",
+          "description": "Client ping for connection test"
+        },
+        {
+          "event": "join_trip",
+          "handler": "socket.on('join_trip')",
+          "description": "Client joins trip room",
+          "payload": "tripId (number)"
+        },
+        {
+          "event": "leave_trip",
+          "handler": "socket.on('leave_trip')",
+          "description": "Client leaves trip room",
+          "payload": "tripId (number)"
+        },
+        {
+          "event": "join_route",
+          "handler": "socket.on('join_route')",
+          "description": "Client joins route room",
+          "payload": "routeId (number)"
+        },
+        {
+          "event": "leave_route",
+          "handler": "socket.on('leave_route')",
+          "description": "Client leaves route room",
+          "payload": "routeId (number)"
+        },
+        {
+          "event": "driver_gps",
+          "handler": "socket.on('driver_gps')",
+          "description": "Driver sends GPS position (legacy)",
+          "payload": "{ tripId, lat, lng, speed?, heading? }"
+        },
+        {
+          "event": "gps:update",
+          "handler": "socket.on('gps:update')",
+          "description": "Driver sends GPS position (standardized)",
+          "payload": "{ tripId, lat, lng, speedKph?, speed?, heading?, tsClient? }"
+        },
+        {
+          "event": "bus_position_update",
+          "handler": "socket.on('bus_position_update')",
+          "description": "Legacy bus position update",
+          "payload": "{ tripId, busId, lat, lng, speed }"
+        },
+        {
+          "event": "auth/hello",
+          "handler": "socket.on('auth/hello')",
+          "description": "Test authentication",
+          "payload": "none"
+        }
+      ],
+      "emitted": [
+        {
+          "event": "pong",
+          "target": "socket.emit",
+          "description": "Response to ping",
+          "payload": "{ timestamp }"
+        },
+        {
+          "event": "trip_joined",
+          "target": "socket.emit",
+          "description": "Confirmation of joining trip room",
+          "payload": "{ tripId, room }"
+        },
+        {
+          "event": "trip_left",
+          "target": "socket.emit",
+          "description": "Confirmation of leaving trip room",
+          "payload": "{ tripId, room }"
+        },
+        {
+          "event": "route_joined",
+          "target": "socket.emit",
+          "description": "Confirmation of joining route room",
+          "payload": "{ routeId, room }"
+        },
+        {
+          "event": "route_left",
+          "target": "socket.emit",
+          "description": "Confirmation of leaving route room",
+          "payload": "{ routeId, room }"
+        },
+        {
+          "event": "welcome",
+          "target": "socket.emit",
+          "description": "Welcome message on connection",
+          "payload": "{ message, userId, role, rooms, timestamp }"
+        },
+        {
+          "event": "gps_ack",
+          "target": "socket.emit",
+          "description": "GPS update acknowledgment",
+          "payload": "{ success, timestamp?, events?, error? }"
+        },
+        {
+          "event": "bus_position_update",
+          "target": "io.to('trip-{tripId}').emit, io.to('bus-{busId}').emit",
+          "description": "Broadcast bus position to trip/bus rooms",
+          "payload": "{ busId, tripId, lat, lng, speed, heading, timestamp }"
+        },
+        {
+          "event": "approach_stop",
+          "target": "io.to('trip-{tripId}').emit",
+          "description": "Bus approaching stop (geofence)",
+          "source": "TelemetryService.checkGeofence",
+          "payload": "{ tripId, stopId, stopName, distance, eta }"
+        },
+        {
+          "event": "delay_alert",
+          "target": "io.to('trip-{tripId}').emit",
+          "description": "Trip delay alert",
+          "source": "TelemetryService.checkDelay",
+          "payload": "{ tripId, delayMinutes, scheduledTime, currentTime }"
+        },
+        {
+          "event": "trip_started",
+          "target": "io.to('trip-{tripId}').emit",
+          "description": "Trip started",
+          "source": "TripController.startTrip",
+          "payload": "{ tripId, timestamp }"
+        },
+        {
+          "event": "trip_completed",
+          "target": "io.to('trip-{tripId}').emit",
+          "description": "Trip completed",
+          "source": "TripController.endTrip",
+          "payload": "{ tripId, timestamp }"
+        },
+        {
+          "event": "trip_cancelled",
+          "target": "io.to('trip-{tripId}').emit",
+          "description": "Trip cancelled",
+          "source": "TripController.cancelTrip",
+          "payload": "{ tripId, timestamp }"
+        },
+        {
+          "event": "pickup_status_update",
+          "target": "io.to('trip-{tripId}').emit",
+          "description": "Student pickup/dropoff status",
+          "source": "TripController.checkin/checkout",
+          "payload": "{ tripId, studentId, status: 'onboard'|'dropped', timestamp }"
+        },
+        {
+          "event": "route_updated",
+          "target": "io.to('route:{routeId}').emit",
+          "description": "Route updated",
+          "source": "RouteController.update",
+          "payload": "{ routeId, changes }"
+        },
+        {
+          "event": "auth/hello",
+          "target": "io.to('user-{userId}').emit, socket.emit",
+          "description": "Authentication test response",
+          "payload": "{ userId, email, role, timestamp, message }"
+        }
+      ]
+    },
+    "rooms": [
+      "user-{userId}",
+      "role-{vaiTro}",
+      "trip-{tripId}",
+      "bus-{busId}",
+      "route:{routeId}"
+    ]
+  },
+  "frontend": {
+    "file": "ssb-frontend/lib/socket.ts",
+    "events": {
+      "emitted": [
+        {
+          "event": "ping",
+          "function": "socket.emit('ping')",
+          "description": "Test connection"
+        },
+        {
+          "event": "join_trip",
+          "function": "joinTrip(tripId)",
+          "description": "Join trip room",
+          "usedIn": ["hooks/use-socket.ts", "app/driver/trip/[id]/page.tsx"]
+        },
+        {
+          "event": "leave_trip",
+          "function": "leaveTrip(tripId)",
+          "description": "Leave trip room",
+          "usedIn": ["hooks/use-socket.ts"]
+        },
+        {
+          "event": "join_route",
+          "function": "joinRoute(routeId)",
+          "description": "Join route room",
+          "usedIn": ["components/admin/route-builder.tsx"]
+        },
+        {
+          "event": "leave_route",
+          "function": "leaveRoute(routeId)",
+          "description": "Leave route room",
+          "usedIn": ["components/admin/route-builder.tsx"]
+        },
+        {
+          "event": "driver_gps",
+          "function": "sendDriverGPS(data)",
+          "description": "Send GPS position",
+          "usedIn": ["hooks/use-gps.ts", "app/driver/trip/[id]/page.tsx"]
+        }
+      ],
+      "listened": [
+        {
+          "event": "connect",
+          "handler": "socket.on('connect')",
+          "description": "Connection established"
+        },
+        {
+          "event": "disconnect",
+          "handler": "socket.on('disconnect')",
+          "description": "Connection lost"
+        },
+        {
+          "event": "welcome",
+          "handler": "socket.on('welcome')",
+          "description": "Welcome message"
+        },
+        {
+          "event": "pong",
+          "handler": "socket.on('pong')",
+          "description": "Ping response"
+        },
+        {
+          "event": "trip_joined",
+          "handler": "socket.on('trip_joined')",
+          "description": "Trip room joined confirmation"
+        },
+        {
+          "event": "bus_position_update",
+          "handler": "socket.on('bus_position_update')",
+          "description": "Real-time bus position",
+          "usedIn": ["hooks/use-socket.ts", "app/admin/tracking/page.tsx", "app/parent/page.tsx"]
+        },
+        {
+          "event": "approach_stop",
+          "handler": "socket.on('approach_stop')",
+          "description": "Bus approaching stop",
+          "usedIn": ["hooks/use-socket.ts", "app/admin/tracking/page.tsx", "app/parent/page.tsx"]
+        },
+        {
+          "event": "delay_alert",
+          "handler": "socket.on('delay_alert')",
+          "description": "Trip delay alert",
+          "usedIn": ["hooks/use-socket.ts", "app/admin/tracking/page.tsx", "app/parent/page.tsx"]
+        },
+        {
+          "event": "trip_started",
+          "handler": "socket.on('trip_started')",
+          "description": "Trip started",
+          "usedIn": ["hooks/use-socket.ts"]
+        },
+        {
+          "event": "trip_completed",
+          "handler": "socket.on('trip_completed')",
+          "description": "Trip completed",
+          "usedIn": ["hooks/use-socket.ts"]
+        },
+        {
+          "event": "pickup_status_update",
+          "handler": "socket.on('pickup_status_update')",
+          "description": "Student status update",
+          "usedIn": ["hooks/use-socket.ts"]
+        },
+        {
+          "event": "route_updated",
+          "handler": "socket.on('route_updated')",
+          "description": "Route updated",
+          "usedIn": ["components/admin/route-builder.tsx"]
+        },
+        {
+          "event": "gps_ack",
+          "handler": "socket.on('gps_ack')",
+          "description": "GPS update acknowledgment",
+          "usedIn": ["hooks/use-gps.ts"]
+        }
+      ]
+    }
+  }
+}
+
+

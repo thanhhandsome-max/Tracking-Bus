@@ -1,0 +1,178 @@
+{
+  "P0": [
+    {
+      "risk": "JWT_SECRET not set or weak",
+      "file": "ssb-backend/src/config/env.ts:95",
+      "line": 95,
+      "impact": "Security breach - tokens can be forged",
+      "mitigation": "Use strong random secret, never commit to git"
+    },
+    {
+      "risk": "DB_PASSWORD empty in production",
+      "file": "ssb-backend/src/config/db.js:11",
+      "line": 11,
+      "impact": "Database exposed without authentication",
+      "mitigation": "Require DB_PASSWORD in production env"
+    },
+    {
+      "risk": "CORS misconfiguration allows unauthorized origins",
+      "file": "ssb-backend/src/config/env.ts:104",
+      "line": 104,
+      "impact": "CSRF attacks, data theft",
+      "mitigation": "Validate FE_ORIGIN, use whitelist in production"
+    },
+    {
+      "risk": "MAPS_API_KEY exposed in frontend",
+      "file": "ssb-frontend/lib/maps/googleLoader.ts:17",
+      "line": 17,
+      "impact": "API key abuse, quota exhaustion, billing",
+      "mitigation": "Restrict API key to specific domains/IPs in Google Cloud Console"
+    },
+    {
+      "risk": "No rate limiting on trip start/end endpoints",
+      "file": "ssb-backend/src/controllers/TripController.js:594",
+      "line": 594,
+      "impact": "DoS, trip state manipulation",
+      "mitigation": "Add rate limiting middleware"
+    },
+    {
+      "risk": "GPS updates not validated for trip ownership",
+      "file": "ssb-backend/src/ws/index.js:168",
+      "line": 168,
+      "impact": "Driver can send GPS for any trip",
+      "mitigation": "Already implemented, but verify in all paths"
+    }
+  ],
+  "P1": [
+    {
+      "risk": "Redis connection failure causes cache fallback to memory",
+      "file": "ssb-backend/src/core/cacheProvider.js:7",
+      "line": 7,
+      "impact": "Cache lost on restart, no shared cache across instances",
+      "mitigation": "Monitor Redis health, alert on fallback"
+    },
+    {
+      "risk": "No transaction rollback on route stop reorder failure",
+      "file": "ssb-backend/src/controllers/RouteController.js",
+      "line": "~600",
+      "impact": "Partial updates, data inconsistency",
+      "mitigation": "Use database transactions"
+    },
+    {
+      "risk": "Token refresh race condition",
+      "file": "ssb-frontend/lib/api-client.ts:81",
+      "line": 81,
+      "impact": "Multiple refresh requests, token invalidation",
+      "mitigation": "Already has isRefreshing flag, verify it works"
+    },
+    {
+      "risk": "Socket.IO reconnection floods server",
+      "file": "ssb-frontend/lib/socket.ts:25",
+      "line": 25,
+      "impact": "Server overload on network issues",
+      "mitigation": "Add exponential backoff, max reconnection attempts"
+    },
+    {
+      "risk": "Geofence proximity check runs on every GPS update",
+      "file": "ssb-backend/src/services/telemetryService.js:345",
+      "line": 345,
+      "impact": "Performance degradation with many stops",
+      "mitigation": "Optimize with spatial indexing, batch checks"
+    },
+    {
+      "risk": "Delay alert calculation doesn't account for ETA",
+      "file": "ssb-backend/src/services/telemetryService.js:444",
+      "line": 444,
+      "impact": "False alerts, user annoyance",
+      "mitigation": "Implement EMA-based ETA calculation (noted as P1 enhancement)"
+    },
+    {
+      "risk": "No validation on stop coordinates range",
+      "file": "ssb-frontend/components/admin/AddStopDialog.tsx",
+      "line": "~50",
+      "impact": "Invalid coordinates break map rendering",
+      "mitigation": "Validate lat (-90 to 90), lng (-180 to 180)"
+    },
+    {
+      "risk": "Polyline rebuild can fail silently",
+      "file": "ssb-backend/src/controllers/RouteController.js",
+      "line": "~800",
+      "impact": "Routes show without path on map",
+      "mitigation": "Add error handling, retry logic"
+    }
+  ],
+  "P2": [
+    {
+      "risk": "Multiple API base URL env vars cause confusion",
+      "file": "ssb-frontend/lib/api-client.ts:3",
+      "line": 3,
+      "impact": "Configuration errors, hard to debug",
+      "mitigation": "Standardize on NEXT_PUBLIC_API_BASE_URL"
+    },
+    {
+      "risk": "No request timeout on Maps API calls",
+      "file": "ssb-backend/src/services/MapsService.js:66",
+      "line": 66,
+      "impact": "Hanging requests, resource exhaustion",
+      "mitigation": "Add timeout to fetch calls"
+    },
+    {
+      "risk": "Socket.IO rooms not cleaned up on disconnect",
+      "file": "ssb-backend/src/ws/index.js:215",
+      "line": 215,
+      "impact": "Memory leak over time",
+      "mitigation": "Explicit cleanup in disconnect handler"
+    },
+    {
+      "risk": "No pagination limit on trips query",
+      "file": "ssb-frontend/app/driver/page.tsx:36",
+      "line": 36,
+      "impact": "Large payloads, slow rendering",
+      "mitigation": "Add pagination, limit default to 20"
+    },
+    {
+      "risk": "Error messages expose stack traces in production",
+      "file": "ssb-backend/src/middlewares/ErrorHandler.js:137",
+      "line": 137,
+      "impact": "Information disclosure",
+      "mitigation": "Already checks NODE_ENV, verify all error paths"
+    },
+    {
+      "risk": "No CSRF protection on state-changing operations",
+      "file": "ssb-backend/src/middlewares",
+      "line": "N/A",
+      "impact": "CSRF attacks",
+      "mitigation": "Add CSRF tokens for POST/PUT/DELETE"
+    },
+    {
+      "risk": "Places Autocomplete not debounced",
+      "file": "ssb-frontend/components/admin/route-builder.tsx",
+      "line": "~200",
+      "impact": "Excessive API calls, quota waste",
+      "mitigation": "Add debounce to input handler"
+    },
+    {
+      "risk": "No validation on trip date format",
+      "file": "ssb-backend/src/controllers/TripController.js",
+      "line": "~530",
+      "impact": "Invalid dates cause errors",
+      "mitigation": "Validate YYYY-MM-DD format"
+    },
+    {
+      "risk": "Student checkin/checkout doesn't verify trip status",
+      "file": "ssb-backend/src/controllers/TripController.js",
+      "line": "~850",
+      "impact": "Can checkin on completed trip",
+      "mitigation": "Add status check: only allow on 'dang_chay'"
+    },
+    {
+      "risk": "No retry logic on Maps API failures",
+      "file": "ssb-backend/src/services/MapsService.js:66",
+      "line": 66,
+      "impact": "Temporary network issues break route building",
+      "mitigation": "Add exponential backoff retry"
+    }
+  ]
+}
+
+

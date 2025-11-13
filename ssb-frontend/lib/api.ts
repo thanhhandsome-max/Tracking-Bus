@@ -84,9 +84,17 @@ class ApiClient {
     }
 
     const doFetch = async (): Promise<{ ok: boolean; status: number; json: any }> => {
-      const resp = await fetch(url, { ...options, headers });
-      const json = await resp.json().catch(() => ({}));
-      return { ok: resp.ok, status: resp.status, json };
+      try {
+        const resp = await fetch(url, { ...options, headers });
+        const json = await resp.json().catch(() => ({}));
+        return { ok: resp.ok, status: resp.status, json };
+      } catch (fetchError: any) {
+        // Handle network errors (Failed to fetch, CORS, etc.)
+        if (fetchError.name === 'TypeError' && fetchError.message.includes('fetch')) {
+          throw new Error(`Không thể kết nối đến server. Vui lòng kiểm tra:\n- Backend server có đang chạy không?\n- URL: ${url}\n- CORS settings`);
+        }
+        throw fetchError;
+      }
     };
 
     try {
@@ -126,12 +134,46 @@ class ApiClient {
         }
       }
 
-      if (!ok) {
-        throw new Error(json?.message || "API request failed");
+      // Handle rate limit errors (429)
+      if (status === 429) {
+        const retryAfter = json?.retryAfter || 60; // Default 60 seconds
+        const errorMessage = json?.message || "Too many requests from this IP, please try again later.";
+        const error = new Error(errorMessage);
+        (error as any).status = 429;
+        (error as any).code = json?.code || 'RATE_LIMIT_EXCEEDED';
+        (error as any).retryAfter = retryAfter;
+        (error as any).response = json;
+        console.warn(`[API] Rate limit exceeded. Retry after ${retryAfter}s`);
+        throw error;
+      }
+
+      // Check for error response (either HTTP error or success: false)
+      if (!ok || json?.success === false) {
+        const errorMessage = json?.message || json?.error || "API request failed";
+        const error = new Error(errorMessage);
+        // Attach additional error info for debugging
+        (error as any).status = status;
+        (error as any).code = json?.code;
+        (error as any).response = json;
+        throw error;
       }
 
       return json;
-    } catch (error) {
+    } catch (error: any) {
+      // Improve error messages for common issues
+      if (error.message && error.message.includes('Không thể kết nối đến server')) {
+        console.error("API connection error:", error);
+        throw error;
+      }
+      
+      // Handle network errors
+      if (error.name === 'TypeError' && (error.message.includes('fetch') || error.message.includes('Failed to fetch'))) {
+        const friendlyError = new Error(`Không thể kết nối đến server tại ${this.baseURL}. Vui lòng kiểm tra:\n- Backend server có đang chạy không?\n- Network connection\n- CORS settings`);
+        (friendlyError as any).originalError = error;
+        console.error("API network error:", error);
+        throw friendlyError;
+      }
+      
       console.warn("API request warning:", error);
       throw error;
     }
@@ -156,6 +198,13 @@ class ApiClient {
     return this.request("/auth/register", {
       method: "POST",
       body: JSON.stringify(userData),
+    });
+  }
+
+  async forgotPassword(email?: string, soDienThoai?: string) {
+    return this.request("/auth/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ email, soDienThoai }),
     });
   }
 
@@ -255,7 +304,11 @@ class ApiClient {
   }) {
     const queryParams = new URLSearchParams();
     if (params?.page) queryParams.append("page", params.page.toString());
-    if (params?.limit) queryParams.append("limit", params.limit.toString());
+    // Backend expects pageSize, but also accepts limit
+    if (params?.limit) {
+      queryParams.append("pageSize", params.limit.toString());
+      queryParams.append("limit", params.limit.toString()); // Also send limit for compatibility
+    }
     if (params?.status) queryParams.append("status", params.status);
     if (params?.search) queryParams.append("search", params.search);
 
@@ -296,7 +349,11 @@ class ApiClient {
   }) {
     const queryParams = new URLSearchParams();
     if (params?.page) queryParams.append("page", params.page.toString());
-    if (params?.limit) queryParams.append("limit", params.limit.toString());
+    // Backend expects pageSize, but also accepts limit
+    if (params?.limit) {
+      queryParams.append("pageSize", params.limit.toString());
+      queryParams.append("limit", params.limit.toString()); // Also send limit for compatibility
+    }
     if (params?.lop) queryParams.append("lop", params.lop);
     if (params?.search) queryParams.append("search", params.search);
 
@@ -326,6 +383,14 @@ class ApiClient {
     return this.request(`/students/${id}`, {
       method: "DELETE",
     });
+  }
+
+  async getStudentStats() {
+    return this.request("/students/stats");
+  }
+
+  async findParentByPhone(phone: string) {
+    return this.request(`/students/parent/by-phone/${phone}`);
   }
 
   // Route endpoints
@@ -380,6 +445,21 @@ class ApiClient {
     });
   }
 
+  async updateRouteStop(routeId: string | number, stopId: string | number, updateData: {
+    sequence?: number;
+    dwell_seconds?: number;
+    tenDiem?: string;
+    viDo?: number;
+    kinhDo?: number;
+    address?: string;
+    scheduled_time?: string;
+  }) {
+    return this.request(`/routes/${routeId}/stops/${stopId}`, {
+      method: "PUT",
+      body: JSON.stringify(updateData),
+    });
+  }
+
   // Schedule endpoints
   async getSchedules(params?: {
     maTuyen?: number;
@@ -404,17 +484,43 @@ class ApiClient {
   }
 
   async createSchedule(scheduleData: any) {
-    return this.request("/schedules", {
-      method: "POST",
-      body: JSON.stringify(scheduleData),
-    });
+    try {
+      return await this.request("/schedules", {
+        method: "POST",
+        body: JSON.stringify(scheduleData),
+      });
+    } catch (error: any) {
+      // M1-M3: Re-throw with conflict details for 409
+      if (error?.status === 409 || error?.response?.status === 409) {
+        const conflictData = error?.response?.data || error?.data || {};
+        throw {
+          ...error,
+          conflict: conflictData.details?.conflicts || conflictData.conflicts || [],
+          message: conflictData.message || "Xung đột lịch trình",
+        };
+      }
+      throw error;
+    }
   }
 
   async updateSchedule(id: string | number, scheduleData: any) {
-    return this.request(`/schedules/${id}`, {
-      method: "PUT",
-      body: JSON.stringify(scheduleData),
-    });
+    try {
+      return await this.request(`/schedules/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(scheduleData),
+      });
+    } catch (error: any) {
+      // M1-M3: Re-throw with conflict details for 409
+      if (error?.status === 409 || error?.response?.status === 409) {
+        const conflictData = error?.response?.data || error?.data || {};
+        throw {
+          ...error,
+          conflict: conflictData.details?.conflicts || conflictData.conflicts || [],
+          message: conflictData.message || "Xung đột lịch trình",
+        };
+      }
+      throw error;
+    }
   }
 
   async deleteSchedule(id: string | number) {

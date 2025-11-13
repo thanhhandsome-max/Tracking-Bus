@@ -79,3 +79,17 @@ export async function endTrip(tripId: number | string) {
   } catch {}
   return { ok: true }
 }
+
+export async function cancelTrip(tripId: number | string, lyDoHuy?: string) {
+  if (API_BASE) {
+    try {
+      return await postJSON(`${API_BASE}/trips/${tripId}/cancel`, { lyDoHuy })
+    } catch (err: any) {
+      throw err
+    }
+  }
+  try {
+    window.dispatchEvent(new CustomEvent('tripCancelled', { detail: { tripId, lyDoHuy } }))
+  } catch {}
+  return { ok: true }
+}

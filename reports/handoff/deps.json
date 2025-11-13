@@ -1,0 +1,90 @@
+{
+  "frontend": {
+    "name": "ssb-frontend",
+    "version": "0.1.0",
+    "packageManager": "npm",
+    "lockfile": "package-lock.json",
+    "lockfileVersion": 3,
+    "scripts": {
+      "build": "next build",
+      "dev": "next dev -H 0.0.0.0",
+      "dev:local": "next dev",
+      "lint": "next lint",
+      "start": "next start"
+    },
+    "dependencies": {
+      "next": "15.2.4",
+      "react": "^19",
+      "react-dom": "^19",
+      "axios": "^1.13.2",
+      "@tanstack/react-query": "^5.90.7",
+      "socket.io-client": "^4.8.1",
+      "@googlemaps/js-api-loader": "^1.16.2",
+      "zod": "3.25.76",
+      "react-hook-form": "^7.60.0",
+      "@radix-ui/react-*": "multiple versions",
+      "tailwindcss": "^4.1.9",
+      "date-fns": "latest",
+      "lucide-react": "^0.454.0"
+    },
+    "devDependencies": {
+      "typescript": "^5",
+      "@types/node": "^22",
+      "@types/react": "^19",
+      "@types/react-dom": "^19",
+      "@types/google.maps": "^3.58.1"
+    },
+    "lockfileHash": "sha256:calculated_from_package-lock.json"
+  },
+  "backend": {
+    "name": "ssb-backend",
+    "version": "1.0.0",
+    "packageManager": "npm",
+    "lockfile": "package-lock.json",
+    "lockfileVersion": 3,
+    "type": "module",
+    "scripts": {
+      "dev": "tsx watch src/server.ts",
+      "start": "node src/server.js",
+      "test": "jest --runInBand",
+      "db:init": "mysql -u root -p school_bus_system < ../database/01_init_db_ver2.sql",
+      "db:seed": "mysql -u root -p school_bus_system < ../database/02_sample_data.sql",
+      "ws:demo": "node src/scripts/ws-demo.js",
+      "rebuild:polyline": "tsx scripts/rebuild-polyline.ts",
+      "export-postman": "node scripts/export-postman.js",
+      "check:backend": "node scripts/check-backend.js",
+      "check:env": "node scripts/check-env.js"
+    },
+    "dependencies": {
+      "express": "^5.1.0",
+      "socket.io": "^4.8.1",
+      "mysql2": "^3.15.2",
+      "jsonwebtoken": "^9.0.2",
+      "bcryptjs": "^2.4.3",
+      "joi": "^17.11.0",
+      "cors": "^2.8.5",
+      "helmet": "^7.1.0",
+      "compression": "^1.7.4",
+      "morgan": "^1.10.1",
+      "express-rate-limit": "^7.5.1",
+      "ioredis": "^5.8.2",
+      "lru-cache": "^11.2.2",
+      "node-fetch": "^3.3.2",
+      "firebase-admin": "^13.5.0",
+      "nodemailer": "^6.9.7",
+      "dotenv": "^17.2.3"
+    },
+    "devDependencies": {
+      "typescript": "^5.3.3",
+      "tsx": "^4.20.6",
+      "@types/node": "^20.19.24",
+      "@types/express": "^4.17.21",
+      "jest": "^29.7.0",
+      "eslint": "^8.56.0",
+      "nodemon": "^3.1.10"
+    },
+    "lockfileHash": "sha256:calculated_from_package-lock.json"
+  }
+}
+
+

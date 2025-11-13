@@ -23,7 +23,10 @@ export default function AdminDashboard() {
   const [tripStats, setTripStats] = useState<any | null>(null)
   const todayRange = useMemo(() => {
     const d = new Date();
-    const iso = d.toISOString().slice(0,10)
+    const yyyy = d.getFullYear()
+    const mm = `${d.getMonth() + 1}`.padStart(2, '0')
+    const dd = `${d.getDate()}`.padStart(2, '0')
+    const iso = `${yyyy}-${mm}-${dd}`
     return { from: iso, to: iso }
   }, [])
 
@@ -155,22 +158,10 @@ export default function AdminDashboard() {
                 </div>
               </CardHeader>
                 <CardContent>
-                  {/* MapView đồng bộ với Parent/Driver: chỉ 1 chấm ở Hà Nội */}
+                  {/* Real-time tracking map with active trips */}
                   <MapView
-                    buses={[
-                      {
-                        id: 'demo',
-                        plateNumber: '29B-TEST',
-                        route: 'Demo',
-                        status: 'running',
-                        lat: 21.0285,
-                        lng: 105.8542,
-                        speed: 0,
-                        students: 0,
-                      },
-                    ] as any}
+                    buses={[]}
                     height="480px"
-                    followFirstMarker
                     autoFitOnUpdate
                   />
                 </CardContent>

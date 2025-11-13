@@ -7,11 +7,33 @@ const VALID_LOAI_CHUYEN = ["don_sang", "tra_chieu"];
 
 class ScheduleService {
   static async list(options = {}) {
-    const { page = 1, limit = 10 } = options;
-    const data = await LichTrinhModel.getAll(options);
-    const total = await LichTrinhModel.count(options);
+    const { 
+      page = 1, 
+      limit = 10,
+      maTuyen,
+      maXe,
+      maTaiXe,
+      loaiChuyen,
+      dangApDung,
+    } = options;
+    
+    // Build filter conditions
+    const filters = {};
+    if (maTuyen) filters.maTuyen = maTuyen;
+    if (maXe) filters.maXe = maXe;
+    if (maTaiXe) filters.maTaiXe = maTaiXe;
+    if (loaiChuyen) filters.loaiChuyen = loaiChuyen;
+    if (dangApDung !== undefined) filters.dangApDung = dangApDung;
+    
+    const data = await LichTrinhModel.getAll(filters);
+    const total = data.length; // TODO: Implement proper count with filters
+    
+    // Apply pagination
+    const offset = (page - 1) * limit;
+    const paginatedData = data.slice(offset, offset + limit);
+    
     return {
-      data,
+      data: paginatedData,
       pagination: {
         page: +page,
         limit: +limit,
@@ -28,8 +50,8 @@ class ScheduleService {
   }
 
   static async create(payload) {
-    const { maTuyen, maXe, maTaiXe, loaiChuyen, gioKhoiHanh } = payload;
-    if (!maTuyen || !maXe || !maTaiXe || !loaiChuyen || !gioKhoiHanh)
+    const { maTuyen, maXe, maTaiXe, loaiChuyen, gioKhoiHanh, ngayChay } = payload;
+    if (!maTuyen || !maXe || !maTaiXe || !loaiChuyen || !gioKhoiHanh || !ngayChay)
       throw new Error("MISSING_REQUIRED_FIELDS");
     if (!VALID_LOAI_CHUYEN.includes(loaiChuyen))
       throw new Error("INVALID_TRIP_TYPE");
@@ -41,13 +63,18 @@ class ScheduleService {
     const driver = await TaiXeModel.getById(maTaiXe);
     if (!driver) throw new Error("DRIVER_NOT_FOUND");
 
-    const conflict = await LichTrinhModel.checkConflict(
+    const conflicts = await LichTrinhModel.checkConflict(
       maXe,
       maTaiXe,
       gioKhoiHanh,
-      loaiChuyen
+      loaiChuyen,
+      ngayChay
     );
-    if (conflict) throw new Error("SCHEDULE_CONFLICT");
+    if (conflicts && conflicts.length > 0) {
+      const error = new Error("SCHEDULE_CONFLICT");
+      error.conflicts = conflicts; // Attach conflict details
+      throw error;
+    }
 
     const id = await LichTrinhModel.create({
       maTuyen,
@@ -55,6 +82,7 @@ class ScheduleService {
       maTaiXe,
       loaiChuyen,
       gioKhoiHanh,
+      ngayChay,
       dangApDung: true,
     });
     return await LichTrinhModel.getById(id);
@@ -84,14 +112,20 @@ class ScheduleService {
     const checkMaTaiXe = data.maTaiXe || existing.maTaiXe;
     const checkGio = data.gioKhoiHanh || existing.gioKhoiHanh;
     const checkLoai = data.loaiChuyen || existing.loaiChuyen;
-    const conflict = await LichTrinhModel.checkConflict(
+    const checkNgay = data.ngayChay || existing.ngayChay;
+    const conflicts = await LichTrinhModel.checkConflict(
       checkMaXe,
       checkMaTaiXe,
       checkGio,
       checkLoai,
+      checkNgay,
       id
     );
-    if (conflict) throw new Error("SCHEDULE_CONFLICT");
+    if (conflicts && conflicts.length > 0) {
+      const error = new Error("SCHEDULE_CONFLICT");
+      error.conflicts = conflicts; // Attach conflict details
+      throw error;
+    }
 
     await LichTrinhModel.update(id, data);
     return await LichTrinhModel.getById(id);

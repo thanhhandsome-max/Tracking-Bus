@@ -1,57 +1,88 @@
 // StudentController - Controller chuyên nghiệp cho quản lý học sinh
+import StudentService from "../services/StudentService.js";
 import HocSinhModel from "../models/HocSinhModel.js";
 import NguoiDungModel from "../models/NguoiDungModel.js";
+import EmailService from "../services/EmailService.js";
+import * as response from "../utils/response.js";
+import bcrypt from "bcryptjs";
 
 class StudentController {
   // Lấy danh sách tất cả học sinh
   static async getAll(req, res) {
     try {
-      const { page = 1, limit = 10, search, lop } = req.query;
-      const offset = (page - 1) * limit;
+      const {
+        page = 1,
+        pageSize,
+        limit,
+        q, // search query
+        lop,
+        sortBy = "maHocSinh",
+        sortOrder = "desc",
+      } = req.query;
 
-      let students = await HocSinhModel.getWithParentInfo();
-      let totalCount = students.length;
+      // Normalize query params - accept both pageSize and limit
+      const pageNum = Math.max(1, parseInt(page) || 1);
+      const pageSizeValue = pageSize || limit || 10;
+      const limitValue = Math.max(1, Math.min(200, parseInt(pageSizeValue) || 10));
+      const search = q || req.query.search;
+      const sortDir = sortOrder.toLowerCase() === "asc" ? "ASC" : "DESC";
 
-      // Tìm kiếm theo tên hoặc mã học sinh
-      if (search) {
-        students = students.filter(
-          (student) =>
-            student.hoTen.toLowerCase().includes(search.toLowerCase()) ||
-            student.maHocSinh.toString().includes(search.toLowerCase())
-        );
-        totalCount = students.length;
+      // Use service if available
+      let result;
+      if (StudentService && StudentService.list) {
+        result = await StudentService.list({
+          page: pageNum,
+          limit: limitValue,
+          search,
+          lop,
+          sortBy,
+          sortDir,
+        });
+      } else {
+        // Fallback to direct model access
+        let students = await HocSinhModel.getWithParentInfo();
+        let totalCount = students.length;
+
+        if (search) {
+          students = students.filter(
+            (s) =>
+              s.hoTen?.toLowerCase().includes(search.toLowerCase()) ||
+              s.maHocSinh?.toString().includes(search.toLowerCase())
+          );
+          totalCount = students.length;
+        }
+
+        if (lop) {
+          students = students.filter((s) => s.lop === lop);
+          totalCount = students.length;
+        }
+
+        const offset = (pageNum - 1) * limitValue;
+        const paginatedStudents = students.slice(offset, offset + limitValue);
+
+        result = {
+          data: paginatedStudents,
+          pagination: {
+            page: pageNum,
+            limit: limitValue,
+            total: totalCount,
+            totalPages: Math.ceil(totalCount / limitValue),
+          },
+        };
       }
 
-      // Lọc theo lớp
-      if (lop) {
-        students = students.filter((student) => student.lop === lop);
-        totalCount = students.length;
-      }
-
-      // Phân trang
-      const paginatedStudents = students.slice(
-        offset,
-        offset + parseInt(limit)
-      );
-
-      res.status(200).json({
-        success: true,
-        data: paginatedStudents,
-        pagination: {
-          currentPage: parseInt(page),
-          totalPages: Math.ceil(totalCount / limit),
-          totalItems: totalCount,
-          itemsPerPage: parseInt(limit),
-        },
-        message: "Lấy danh sách học sinh thành công",
+      return response.ok(res, result.data, {
+        page: pageNum,
+        pageSize: limitValue,
+        total: result.pagination.total,
+        totalPages: result.pagination.totalPages,
+        sortBy,
+        sortOrder: sortOrder.toLowerCase(),
+        q: search || null,
       });
     } catch (error) {
       console.error("Error in StudentController.getAll:", error);
-      res.status(500).json({
-        success: false,
-        message: "Lỗi server khi lấy danh sách học sinh",
-        error: error.message,
-      });
+      return response.serverError(res, "Lỗi server khi lấy danh sách học sinh", error);
     }
   }
 
@@ -61,19 +92,17 @@ class StudentController {
       const { id } = req.params;
 
       if (!id) {
-        return res.status(400).json({
-          success: false,
-          message: "Mã học sinh là bắt buộc",
-        });
+        return response.validationError(res, "Mã học sinh là bắt buộc", [
+          { field: "id", message: "Mã học sinh không được để trống" }
+        ]);
       }
 
-      const student = await HocSinhModel.getById(id);
+      const student = await (StudentService && StudentService.getById 
+        ? StudentService.getById(id)
+        : HocSinhModel.getById(id));
 
       if (!student) {
-        return res.status(404).json({
-          success: false,
-          message: "Không tìm thấy học sinh",
-        });
+        return response.notFound(res, "Không tìm thấy học sinh");
       }
 
       // Lấy thông tin phụ huynh nếu có
@@ -82,28 +111,31 @@ class StudentController {
         parentInfo = await NguoiDungModel.getById(student.maPhuHuynh);
       }
 
-      res.status(200).json({
-        success: true,
-        data: {
-          ...student,
-          parentInfo,
-        },
-        message: "Lấy thông tin học sinh thành công",
+      return response.ok(res, {
+        ...student,
+        parentInfo,
       });
     } catch (error) {
       console.error("Error in StudentController.getById:", error);
-      res.status(500).json({
-        success: false,
-        message: "Lỗi server khi lấy thông tin học sinh",
-        error: error.message,
-      });
+      return response.serverError(res, "Lỗi server khi lấy thông tin học sinh", error);
     }
   }
 
   // Tạo học sinh mới
   static async create(req, res) {
     try {
-      const { hoTen, ngaySinh, lop, maPhuHuynh, diaChi, anhDaiDien } = req.body;
+      const { 
+        hoTen, 
+        ngaySinh, 
+        lop, 
+        maPhuHuynh, 
+        diaChi, 
+        anhDaiDien,
+        // Thông tin phụ huynh để tự động tạo tài khoản
+        tenPhuHuynh,
+        emailPhuHuynh,
+        sdtPhuHuynh
+      } = req.body;
 
       // Validation dữ liệu bắt buộc
       if (!hoTen || !ngaySinh || !lop) {
@@ -124,9 +156,88 @@ class StudentController {
         });
       }
 
+      let finalMaPhuHuynh = maPhuHuynh || null;
+
+      // Tự động tạo tài khoản phụ huynh nếu có email hoặc SĐT
+      if (!finalMaPhuHuynh && (emailPhuHuynh || sdtPhuHuynh)) {
+        if (!tenPhuHuynh) {
+          return res.status(400).json({
+            success: false,
+            message: "Tên phụ huynh là bắt buộc khi tạo tài khoản mới",
+          });
+        }
+
+        if (!emailPhuHuynh) {
+          return res.status(400).json({
+            success: false,
+            message: "Email phụ huynh là bắt buộc để tạo tài khoản",
+          });
+        }
+
+        // Kiểm tra email đã tồn tại chưa
+        const existingUser = await NguoiDungModel.getByEmail(emailPhuHuynh);
+        if (existingUser) {
+          // Nếu đã tồn tại, sử dụng tài khoản đó
+          if (existingUser.vaiTro === 'phu_huynh') {
+            finalMaPhuHuynh = existingUser.maNguoiDung;
+          } else {
+            return res.status(409).json({
+              success: false,
+              message: "Email này đã được sử dụng bởi tài khoản khác",
+            });
+          }
+        } else {
+          // Kiểm tra SĐT đã tồn tại chưa (nếu có)
+          if (sdtPhuHuynh) {
+            const existingPhone = await NguoiDungModel.getByPhone(sdtPhuHuynh);
+            if (existingPhone) {
+              if (existingPhone.vaiTro === 'phu_huynh') {
+                finalMaPhuHuynh = existingPhone.maNguoiDung;
+              } else {
+                return res.status(409).json({
+                  success: false,
+                  message: "Số điện thoại này đã được sử dụng bởi tài khoản khác",
+                });
+              }
+            }
+          }
+
+          // Tạo tài khoản phụ huynh mới
+          if (!finalMaPhuHuynh) {
+            // Tạo mật khẩu mặc định từ email
+            const defaultPassword = emailPhuHuynh.split('@')[0] + '123456';
+            const hashedPassword = await bcrypt.hash(defaultPassword, 10);
+
+            const parentData = {
+              hoTen: tenPhuHuynh,
+              email: emailPhuHuynh,
+              matKhau: hashedPassword,
+              soDienThoai: sdtPhuHuynh || null,
+              vaiTro: 'phu_huynh',
+            };
+
+            finalMaPhuHuynh = await NguoiDungModel.create(parentData);
+
+            // Gửi email thông tin tài khoản (không chặn nếu lỗi)
+            try {
+              await EmailService.sendParentAccountInfo(
+                emailPhuHuynh,
+                tenPhuHuynh,
+                emailPhuHuynh,
+                defaultPassword,
+                sdtPhuHuynh || ''
+              );
+            } catch (emailError) {
+              console.error("Error sending email (non-blocking):", emailError);
+              // Không throw error, chỉ log
+            }
+          }
+        }
+      }
+
       // Kiểm tra phụ huynh có tồn tại không (nếu có)
-      if (maPhuHuynh) {
-        const parent = await NguoiDungModel.getById(maPhuHuynh);
+      if (finalMaPhuHuynh) {
+        const parent = await NguoiDungModel.getById(finalMaPhuHuynh);
         if (!parent) {
           return res.status(404).json({
             success: false,
@@ -139,7 +250,7 @@ class StudentController {
         hoTen,
         ngaySinh,
         lop,
-        maPhuHuynh: maPhuHuynh || null,
+        maPhuHuynh: finalMaPhuHuynh,
         diaChi: diaChi || null,
         anhDaiDien: anhDaiDien || null,
       };
@@ -150,7 +261,9 @@ class StudentController {
       res.status(201).json({
         success: true,
         data: newStudent,
-        message: "Tạo học sinh mới thành công",
+        message: finalMaPhuHuynh && !maPhuHuynh 
+          ? "Tạo học sinh và tài khoản phụ huynh thành công" 
+          : "Tạo học sinh mới thành công",
       });
     } catch (error) {
       console.error("Error in StudentController.create:", error);
@@ -166,7 +279,18 @@ class StudentController {
   static async update(req, res) {
     try {
       const { id } = req.params;
-      const { hoTen, ngaySinh, lop, maPhuHuynh, diaChi, anhDaiDien } = req.body;
+      const { 
+        hoTen, 
+        ngaySinh, 
+        lop, 
+        maPhuHuynh, 
+        diaChi, 
+        anhDaiDien,
+        // Thông tin phụ huynh để tự động tạo tài khoản
+        tenPhuHuynh,
+        emailPhuHuynh,
+        sdtPhuHuynh
+      } = req.body;
 
       if (!id) {
         return res.status(400).json({
@@ -197,9 +321,90 @@ class StudentController {
         }
       }
 
-      // Kiểm tra phụ huynh có tồn tại không (nếu có thay đổi)
-      if (maPhuHuynh) {
-        const parent = await NguoiDungModel.getById(maPhuHuynh);
+      let finalMaPhuHuynh = maPhuHuynh !== undefined ? maPhuHuynh : existingStudent.maPhuHuynh;
+
+      // Lấy thông tin phụ huynh hiện tại để so sánh SĐT
+      let currentParentPhone = null;
+      if (existingStudent.maPhuHuynh) {
+        const currentParent = await NguoiDungModel.getById(existingStudent.maPhuHuynh);
+        if (currentParent) {
+          currentParentPhone = currentParent.soDienThoai;
+        }
+      }
+
+      // Xử lý thay đổi phụ huynh qua SĐT (tương tự như create)
+      if (sdtPhuHuynh && sdtPhuHuynh !== currentParentPhone) {
+        if (!tenPhuHuynh) {
+          return res.status(400).json({
+            success: false,
+            message: "Tên phụ huynh là bắt buộc khi thay đổi phụ huynh",
+          });
+        }
+
+        if (!emailPhuHuynh) {
+          return res.status(400).json({
+            success: false,
+            message: "Email phụ huynh là bắt buộc để tạo tài khoản",
+          });
+        }
+
+        // Kiểm tra email đã tồn tại chưa
+        const existingUser = await NguoiDungModel.getByEmail(emailPhuHuynh);
+        if (existingUser) {
+          if (existingUser.vaiTro === 'phu_huynh') {
+            finalMaPhuHuynh = existingUser.maNguoiDung;
+          } else {
+            return res.status(409).json({
+              success: false,
+              message: "Email này đã được sử dụng bởi tài khoản khác",
+            });
+          }
+        } else {
+          // Kiểm tra SĐT đã tồn tại chưa
+          const existingPhone = await NguoiDungModel.getByPhone(sdtPhuHuynh);
+          if (existingPhone) {
+            if (existingPhone.vaiTro === 'phu_huynh') {
+              finalMaPhuHuynh = existingPhone.maNguoiDung;
+            } else {
+              return res.status(409).json({
+                success: false,
+                message: "Số điện thoại này đã được sử dụng bởi tài khoản khác",
+              });
+            }
+          } else {
+            // Tạo tài khoản phụ huynh mới
+            const defaultPassword = emailPhuHuynh.split('@')[0] + '123456';
+            const hashedPassword = await bcrypt.hash(defaultPassword, 10);
+
+            const parentData = {
+              hoTen: tenPhuHuynh,
+              email: emailPhuHuynh,
+              matKhau: hashedPassword,
+              soDienThoai: sdtPhuHuynh || null,
+              vaiTro: 'phu_huynh',
+            };
+
+            finalMaPhuHuynh = await NguoiDungModel.create(parentData);
+
+            // Gửi email thông tin tài khoản
+            try {
+              await EmailService.sendParentAccountInfo(
+                emailPhuHuynh,
+                tenPhuHuynh,
+                emailPhuHuynh,
+                defaultPassword,
+                sdtPhuHuynh || ''
+              );
+            } catch (emailError) {
+              console.error("Error sending email (non-blocking):", emailError);
+            }
+          }
+        }
+      }
+
+      // Kiểm tra phụ huynh có tồn tại không (nếu có)
+      if (finalMaPhuHuynh) {
+        const parent = await NguoiDungModel.getById(finalMaPhuHuynh);
         if (!parent) {
           return res.status(404).json({
             success: false,
@@ -212,7 +417,7 @@ class StudentController {
       if (hoTen !== undefined) updateData.hoTen = hoTen;
       if (ngaySinh !== undefined) updateData.ngaySinh = ngaySinh;
       if (lop !== undefined) updateData.lop = lop;
-      if (maPhuHuynh !== undefined) updateData.maPhuHuynh = maPhuHuynh;
+      if (finalMaPhuHuynh !== undefined) updateData.maPhuHuynh = finalMaPhuHuynh;
       if (diaChi !== undefined) updateData.diaChi = diaChi;
       if (anhDaiDien !== undefined) updateData.anhDaiDien = anhDaiDien;
 
@@ -377,6 +582,75 @@ class StudentController {
       res.status(500).json({
         success: false,
         message: "Lỗi server khi lấy danh sách học sinh theo lớp",
+        error: error.message,
+      });
+    }
+  }
+
+  // Tìm phụ huynh theo số điện thoại
+  static async findParentByPhone(req, res) {
+    try {
+      const { phone } = req.params;
+
+      if (!phone) {
+        return res.status(400).json({
+          success: false,
+          message: "Số điện thoại là bắt buộc",
+        });
+      }
+
+      // Kiểm tra format SĐT (10-11 chữ số)
+      const phoneRegex = /^[0-9]{10,11}$/;
+      if (!phoneRegex.test(phone)) {
+        return res.status(400).json({
+          success: false,
+          message: "Số điện thoại không hợp lệ (phải có 10-11 chữ số)",
+        });
+      }
+
+      // Tìm phụ huynh theo SĐT
+      const parent = await NguoiDungModel.getByPhone(phone);
+
+      if (!parent) {
+        return res.status(200).json({
+          success: true,
+          data: null,
+          message: "Số điện thoại chưa được sử dụng",
+        });
+      }
+
+      // Kiểm tra xem có phải là phụ huynh không
+      if (parent.vaiTro !== 'phu_huynh') {
+        return res.status(409).json({
+          success: false,
+          message: "Số điện thoại này đã được sử dụng bởi tài khoản khác (không phải phụ huynh)",
+          data: {
+            existingUser: {
+              hoTen: parent.hoTen,
+              email: parent.email,
+              vaiTro: parent.vaiTro,
+            },
+          },
+        });
+      }
+
+      // Trả về thông tin phụ huynh
+      return res.status(200).json({
+        success: true,
+        data: {
+          maNguoiDung: parent.maNguoiDung,
+          hoTen: parent.hoTen,
+          email: parent.email,
+          soDienThoai: parent.soDienThoai,
+          vaiTro: parent.vaiTro,
+        },
+        message: "Tìm thấy phụ huynh",
+      });
+    } catch (error) {
+      console.error("Error in StudentController.findParentByPhone:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Lỗi server khi tìm phụ huynh",
         error: error.message,
       });
     }

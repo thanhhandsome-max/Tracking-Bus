@@ -1,55 +1,50 @@
-// RouteController - Controller chuyên nghiệp cho quản lý tuyến đường và điểm dừng
+// RouteController - Controller refactored for v1.1 (normalized stops + route_stops)
+import RouteService from "../services/RouteService.js";
 import TuyenDuongModel from "../models/TuyenDuongModel.js";
-import DiemDungModel from "../models/DiemDungModel.js";
 import LichTrinhModel from "../models/LichTrinhModel.js";
+import MapsService from "../services/MapsService.js";
+import * as response from "../utils/response.js";
 
 class RouteController {
   // Lấy danh sách tất cả tuyến đường
   static async getAllRoutes(req, res) {
     try {
-      const { page = 1, limit = 10, search, trangThai } = req.query;
-      const offset = (page - 1) * limit;
+      const {
+        page = 1,
+        pageSize = 10,
+        q, // search query
+        trangThai,
+        sortBy = "maTuyen",
+        sortOrder = "desc",
+      } = req.query;
 
-      let routes = await TuyenDuongModel.getAll();
-      let totalCount = routes.length;
+      // Normalize query params
+      const pageNum = Math.max(1, parseInt(page) || 1);
+      const limit = Math.max(1, Math.min(200, parseInt(pageSize) || 10));
+      const search = q || req.query.search;
+      const sortDir = sortOrder.toLowerCase() === "asc" ? "ASC" : "DESC";
 
-      // Tìm kiếm theo tên tuyến
-      if (search) {
-        routes = routes.filter(
-          (route) =>
-            route.tenTuyen.toLowerCase().includes(search.toLowerCase()) ||
-            route.moTa?.toLowerCase().includes(search.toLowerCase())
-        );
-        totalCount = routes.length;
-      }
+      const result = await RouteService.list({ 
+        page: pageNum, 
+        limit, 
+        search, 
+        trangThai,
+        sortBy,
+        sortDir,
+      });
 
-      // Lọc theo trạng thái
-      if (trangThai) {
-        routes = routes.filter((route) => route.trangThai === trangThai);
-        totalCount = routes.length;
-      }
-
-      // Phân trang
-      const paginatedRoutes = routes.slice(offset, offset + parseInt(limit));
-
-      res.status(200).json({
-        success: true,
-        data: paginatedRoutes,
-        pagination: {
-          currentPage: parseInt(page),
-          totalPages: Math.ceil(totalCount / limit),
-          totalItems: totalCount,
-          itemsPerPage: parseInt(limit),
-        },
-        message: "Lấy danh sách tuyến đường thành công",
+      return response.ok(res, result.data, {
+        page: pageNum,
+        pageSize: limit,
+        total: result.pagination.total,
+        totalPages: result.pagination.totalPages,
+        sortBy,
+        sortOrder: sortOrder.toLowerCase(),
+        q: search || null,
       });
     } catch (error) {
       console.error("Error in RouteController.getAllRoutes:", error);
-      res.status(500).json({
-        success: false,
-        message: "Lỗi server khi lấy danh sách tuyến đường",
-        error: error.message,
-      });
+      return response.serverError(res, "Lỗi server khi lấy danh sách tuyến đường", error);
     }
   }
 
@@ -59,43 +54,32 @@ class RouteController {
       const { id } = req.params;
 
       if (!id) {
-        return res.status(400).json({
-          success: false,
-          message: "Mã tuyến đường là bắt buộc",
-        });
+        return response.validationError(res, "Mã tuyến đường là bắt buộc", [
+          { field: "id", message: "Mã tuyến đường không được để trống" }
+        ]);
       }
 
-      const route = await TuyenDuongModel.getById(id);
+      const route = await RouteService.getById(id);
 
-      if (!route) {
-        return res.status(404).json({
-          success: false,
-          message: "Không tìm thấy tuyến đường",
-        });
+      // Lấy lịch trình của tuyến đường (nếu cần)
+      let schedules = [];
+      try {
+        schedules = await LichTrinhModel.getByRouteId(id);
+      } catch (scheduleError) {
+        console.error("Error fetching schedules:", scheduleError);
       }
 
-      // Lấy danh sách điểm dừng của tuyến đường
-      const stops = await DiemDungModel.getByRouteId(id);
-
-      // Lấy lịch trình của tuyến đường
-      const schedules = await LichTrinhModel.getByRouteId(id);
-
-      res.status(200).json({
-        success: true,
-        data: {
-          ...route,
-          stops,
-          schedules,
-        },
-        message: "Lấy thông tin tuyến đường thành công",
+      return response.ok(res, {
+        ...route,
+        schedules: schedules || [],
       });
     } catch (error) {
+      if (error.message === "ROUTE_NOT_FOUND") {
+        return response.notFound(res, "Không tìm thấy tuyến đường");
+      }
+
       console.error("Error in RouteController.getRouteById:", error);
-      res.status(500).json({
-        success: false,
-        message: "Lỗi server khi lấy thông tin tuyến đường",
-        error: error.message,
-      });
+      return response.serverError(res, "Lỗi server khi lấy thông tin tuyến đường", error);
     }
   }
 
@@ -104,19 +88,25 @@ class RouteController {
     try {
       const {
         tenTuyen,
-        moTa,
         diemBatDau,
         diemKetThuc,
-        khoangCach,
-        thoiGianDuKien,
+        thoiGianUocTinh,
+        origin_lat,
+        origin_lng,
+        dest_lat,
+        dest_lng,
+        polyline,
         trangThai,
       } = req.body;
 
-      // Validation dữ liệu bắt buộc
+      // Validation
       if (!tenTuyen || !diemBatDau || !diemKetThuc) {
         return res.status(400).json({
           success: false,
-          message: "Tên tuyến, điểm bắt đầu và điểm kết thúc là bắt buộc",
+          error: {
+            code: "MISSING_REQUIRED_FIELDS",
+            message: "Tên tuyến, điểm bắt đầu và điểm kết thúc là bắt buộc",
+          },
         });
       }
 
@@ -125,38 +115,27 @@ class RouteController {
       if (existingRoute) {
         return res.status(409).json({
           success: false,
-          message: "Tên tuyến đường đã tồn tại trong hệ thống",
-        });
-      }
-
-      // Validation khoảng cách
-      if (khoangCach && (khoangCach < 0 || khoangCach > 1000)) {
-        return res.status(400).json({
-          success: false,
-          message: "Khoảng cách phải từ 0 đến 1000 km",
-        });
-      }
-
-      // Validation thời gian dự kiến
-      if (thoiGianDuKien && (thoiGianDuKien < 0 || thoiGianDuKien > 480)) {
-        return res.status(400).json({
-          success: false,
-          message: "Thời gian dự kiến phải từ 0 đến 480 phút",
+          error: {
+            code: "DUPLICATE_ROUTE_NAME",
+            message: "Tên tuyến đường đã tồn tại trong hệ thống",
+          },
         });
       }
 
       const routeData = {
         tenTuyen,
-        moTa: moTa || null,
         diemBatDau,
         diemKetThuc,
-        khoangCach: khoangCach ? parseFloat(khoangCach) : null,
-        thoiGianDuKien: thoiGianDuKien ? parseInt(thoiGianDuKien) : null,
-        trangThai: trangThai || "hoat_dong",
+        thoiGianUocTinh,
+        origin_lat,
+        origin_lng,
+        dest_lat,
+        dest_lng,
+        polyline,
+        trangThai: trangThai !== undefined ? trangThai : true,
       };
 
-      const newRouteId = await TuyenDuongModel.create(routeData);
-      const newRoute = await TuyenDuongModel.getById(newRouteId);
+      const newRoute = await RouteService.create(routeData);
 
       res.status(201).json({
         success: true,
@@ -167,8 +146,10 @@ class RouteController {
       console.error("Error in RouteController.createRoute:", error);
       res.status(500).json({
         success: false,
-        message: "Lỗi server khi tạo tuyến đường mới",
-        error: error.message,
+        error: {
+          code: "INTERNAL_ERROR",
+          message: "Lỗi server khi tạo tuyến đường mới",
+        },
       });
     }
   }
@@ -179,81 +160,57 @@ class RouteController {
       const { id } = req.params;
       const {
         tenTuyen,
-        moTa,
         diemBatDau,
         diemKetThuc,
-        khoangCach,
-        thoiGianDuKien,
+        thoiGianUocTinh,
+        origin_lat,
+        origin_lng,
+        dest_lat,
+        dest_lng,
+        polyline,
         trangThai,
       } = req.body;
 
       if (!id) {
         return res.status(400).json({
           success: false,
-          message: "Mã tuyến đường là bắt buộc",
-        });
-      }
-
-      // Kiểm tra tuyến đường có tồn tại không
-      const existingRoute = await TuyenDuongModel.getById(id);
-      if (!existingRoute) {
-        return res.status(404).json({
-          success: false,
-          message: "Không tìm thấy tuyến đường",
+          error: {
+            code: "MISSING_PARAMS",
+            message: "Mã tuyến đường là bắt buộc",
+          },
         });
       }
 
       // Kiểm tra tên tuyến trùng lặp (nếu có thay đổi)
-      if (tenTuyen && tenTuyen !== existingRoute.tenTuyen) {
-        const duplicateRoute = await TuyenDuongModel.getByName(tenTuyen);
-        if (duplicateRoute) {
-          return res.status(409).json({
-            success: false,
-            message: "Tên tuyến đường đã tồn tại trong hệ thống",
-          });
+      if (tenTuyen) {
+        const existingRoute = await TuyenDuongModel.getById(id);
+        if (existingRoute && existingRoute.tenTuyen !== tenTuyen) {
+          const duplicateRoute = await TuyenDuongModel.getByName(tenTuyen);
+          if (duplicateRoute) {
+            return res.status(409).json({
+              success: false,
+              error: {
+                code: "DUPLICATE_ROUTE_NAME",
+                message: "Tên tuyến đường đã tồn tại trong hệ thống",
+              },
+            });
+          }
         }
-      }
-
-      // Validation khoảng cách
-      if (khoangCach !== undefined && (khoangCach < 0 || khoangCach > 1000)) {
-        return res.status(400).json({
-          success: false,
-          message: "Khoảng cách phải từ 0 đến 1000 km",
-        });
-      }
-
-      // Validation thời gian dự kiến
-      if (
-        thoiGianDuKien !== undefined &&
-        (thoiGianDuKien < 0 || thoiGianDuKien > 480)
-      ) {
-        return res.status(400).json({
-          success: false,
-          message: "Thời gian dự kiến phải từ 0 đến 480 phút",
-        });
       }
 
       const updateData = {};
       if (tenTuyen !== undefined) updateData.tenTuyen = tenTuyen;
-      if (moTa !== undefined) updateData.moTa = moTa;
       if (diemBatDau !== undefined) updateData.diemBatDau = diemBatDau;
       if (diemKetThuc !== undefined) updateData.diemKetThuc = diemKetThuc;
-      if (khoangCach !== undefined)
-        updateData.khoangCach = parseFloat(khoangCach);
-      if (thoiGianDuKien !== undefined)
-        updateData.thoiGianDuKien = parseInt(thoiGianDuKien);
+      if (thoiGianUocTinh !== undefined) updateData.thoiGianUocTinh = thoiGianUocTinh;
+      if (origin_lat !== undefined) updateData.origin_lat = origin_lat;
+      if (origin_lng !== undefined) updateData.origin_lng = origin_lng;
+      if (dest_lat !== undefined) updateData.dest_lat = dest_lat;
+      if (dest_lng !== undefined) updateData.dest_lng = dest_lng;
+      if (polyline !== undefined) updateData.polyline = polyline;
       if (trangThai !== undefined) updateData.trangThai = trangThai;
 
-      const isUpdated = await TuyenDuongModel.update(id, updateData);
-
-      if (!isUpdated) {
-        return res.status(400).json({
-          success: false,
-          message: "Không thể cập nhật tuyến đường",
-        });
-      }
-
-      const updatedRoute = await TuyenDuongModel.getById(id);
+      const updatedRoute = await RouteService.update(id, updateData);
 
       res.status(200).json({
         success: true,
@@ -261,11 +218,23 @@ class RouteController {
         message: "Cập nhật tuyến đường thành công",
       });
     } catch (error) {
+      if (error.message === "ROUTE_NOT_FOUND") {
+        return res.status(404).json({
+          success: false,
+          error: {
+            code: "ROUTE_NOT_FOUND",
+            message: "Không tìm thấy tuyến đường",
+          },
+        });
+      }
+
       console.error("Error in RouteController.updateRoute:", error);
       res.status(500).json({
         success: false,
-        message: "Lỗi server khi cập nhật tuyến đường",
-        error: error.message,
+        error: {
+          code: "INTERNAL_ERROR",
+          message: "Lỗi server khi cập nhật tuyến đường",
+        },
       });
     }
   }
@@ -278,16 +247,10 @@ class RouteController {
       if (!id) {
         return res.status(400).json({
           success: false,
-          message: "Mã tuyến đường là bắt buộc",
-        });
-      }
-
-      // Kiểm tra tuyến đường có tồn tại không
-      const existingRoute = await TuyenDuongModel.getById(id);
-      if (!existingRoute) {
-        return res.status(404).json({
-          success: false,
-          message: "Không tìm thấy tuyến đường",
+          error: {
+            code: "MISSING_PARAMS",
+            message: "Mã tuyến đường là bắt buộc",
+          },
         });
       }
 
@@ -296,31 +259,38 @@ class RouteController {
       if (schedules.length > 0) {
         return res.status(409).json({
           success: false,
-          message:
-            "Không thể xóa tuyến đường đang được sử dụng trong lịch trình",
+          error: {
+            code: "ROUTE_IN_USE",
+            message: "Không thể xóa tuyến đường đang được sử dụng trong lịch trình",
+          },
           data: { schedulesCount: schedules.length },
         });
       }
 
-      const isDeleted = await TuyenDuongModel.delete(id);
-
-      if (!isDeleted) {
-        return res.status(400).json({
-          success: false,
-          message: "Không thể xóa tuyến đường",
-        });
-      }
+      await RouteService.delete(id);
 
       res.status(200).json({
         success: true,
         message: "Xóa tuyến đường thành công",
       });
     } catch (error) {
+      if (error.message === "ROUTE_NOT_FOUND") {
+        return res.status(404).json({
+          success: false,
+          error: {
+            code: "ROUTE_NOT_FOUND",
+            message: "Không tìm thấy tuyến đường",
+          },
+        });
+      }
+
       console.error("Error in RouteController.deleteRoute:", error);
       res.status(500).json({
         success: false,
-        message: "Lỗi server khi xóa tuyến đường",
-        error: error.message,
+        error: {
+          code: "INTERNAL_ERROR",
+          message: "Lỗi server khi xóa tuyến đường",
+        },
       });
     }
   }
@@ -329,32 +299,18 @@ class RouteController {
   static async getRouteStops(req, res) {
     try {
       const { id } = req.params;
-      const { sortBy = "thuTu" } = req.query;
 
       if (!id) {
         return res.status(400).json({
           success: false,
-          message: "Mã tuyến đường là bắt buộc",
+          error: {
+            code: "MISSING_PARAMS",
+            message: "Mã tuyến đường là bắt buộc",
+          },
         });
       }
 
-      // Kiểm tra tuyến đường có tồn tại không
-      const route = await TuyenDuongModel.getById(id);
-      if (!route) {
-        return res.status(404).json({
-          success: false,
-          message: "Không tìm thấy tuyến đường",
-        });
-      }
-
-      let stops = await DiemDungModel.getByRouteId(id);
-
-      // Sắp xếp theo thứ tự
-      if (sortBy === "thuTu") {
-        stops = stops.sort((a, b) => a.thuTu - b.thuTu);
-      } else if (sortBy === "tenDiem") {
-        stops = stops.sort((a, b) => a.tenDiem.localeCompare(b.tenDiem));
-      }
+      const stops = await RouteService.getStops(id);
 
       res.status(200).json({
         success: true,
@@ -362,11 +318,23 @@ class RouteController {
         message: "Lấy danh sách điểm dừng thành công",
       });
     } catch (error) {
+      if (error.message === "ROUTE_NOT_FOUND") {
+        return res.status(404).json({
+          success: false,
+          error: {
+            code: "ROUTE_NOT_FOUND",
+            message: "Không tìm thấy tuyến đường",
+          },
+        });
+      }
+
       console.error("Error in RouteController.getRouteStops:", error);
       res.status(500).json({
         success: false,
-        message: "Lỗi server khi lấy danh sách điểm dừng",
-        error: error.message,
+        error: {
+          code: "INTERNAL_ERROR",
+          message: "Lỗi server khi lấy danh sách điểm dừng",
+        },
       });
     }
   }
@@ -375,207 +343,188 @@ class RouteController {
   static async addStopToRoute(req, res) {
     try {
       const { id } = req.params;
-      const { tenDiem, diaChi, viDo, kinhDo, thuTu, thoiGianDung, moTa } =
-        req.body;
+      const { stop_id, sequence, dwell_seconds, tenDiem, viDo, kinhDo, address, scheduled_time } = req.body;
 
       if (!id) {
         return res.status(400).json({
           success: false,
-          message: "Mã tuyến đường là bắt buộc",
+          error: {
+            code: "MISSING_PARAMS",
+            message: "Mã tuyến đường là bắt buộc",
+          },
         });
       }
 
-      // Validation dữ liệu bắt buộc
-      if (!tenDiem || !diaChi || !viDo || !kinhDo || !thuTu) {
-        return res.status(400).json({
-          success: false,
-          message: "Tên điểm, địa chỉ, vĩ độ, kinh độ và thứ tự là bắt buộc",
-        });
-      }
-
-      // Kiểm tra tuyến đường có tồn tại không
-      const route = await TuyenDuongModel.getById(id);
-      if (!route) {
-        return res.status(404).json({
-          success: false,
-          message: "Không tìm thấy tuyến đường",
-        });
-      }
-
-      // Validation tọa độ
-      if (viDo < -90 || viDo > 90) {
-        return res.status(400).json({
-          success: false,
-          message: "Vĩ độ phải từ -90 đến 90",
-        });
-      }
-
-      if (kinhDo < -180 || kinhDo > 180) {
-        return res.status(400).json({
-          success: false,
-          message: "Kinh độ phải từ -180 đến 180",
-        });
-      }
-
-      // Validation thứ tự
-      if (thuTu < 1) {
-        return res.status(400).json({
-          success: false,
-          message: "Thứ tự phải lớn hơn 0",
-        });
-      }
-
-      // Kiểm tra thứ tự đã tồn tại chưa
-      const existingOrder = await DiemDungModel.getByRouteAndOrder(id, thuTu);
-      if (existingOrder) {
-        return res.status(409).json({
-          success: false,
-          message: "Thứ tự này đã tồn tại trong tuyến đường",
-        });
+      // Nếu không có stop_id, cần tạo stop mới (cần tenDiem, viDo, kinhDo)
+      if (!stop_id) {
+        if (!tenDiem || viDo === undefined || kinhDo === undefined) {
+          return res.status(400).json({
+            success: false,
+            error: {
+              code: "MISSING_REQUIRED_FIELDS",
+              message: "stop_id hoặc (tenDiem, viDo, kinhDo) là bắt buộc",
+            },
+          });
+        }
       }
 
       const stopData = {
-        maTuyen: id,
+        stop_id,
+        sequence,
+        dwell_seconds,
         tenDiem,
-        diaChi,
-        viDo: parseFloat(viDo),
-        kinhDo: parseFloat(kinhDo),
-        thuTu: parseInt(thuTu),
-        thoiGianDung: thoiGianDung ? parseInt(thoiGianDung) : 0,
-        moTa: moTa || null,
-        trangThai: "hoat_dong",
+        viDo,
+        kinhDo,
+        address,
+        scheduled_time,
       };
 
-      const newStopId = await DiemDungModel.create(stopData);
-      const newStop = await DiemDungModel.getById(newStopId);
+      const stops = await RouteService.addStopToRoute(id, stopData);
 
       res.status(201).json({
         success: true,
-        data: newStop,
-        message: "Thêm điểm dừng thành công",
+        data: stops,
+        message: "Thêm điểm dừng vào tuyến đường thành công",
       });
     } catch (error) {
+      if (error.message === "ROUTE_NOT_FOUND") {
+        return res.status(404).json({
+          success: false,
+          error: {
+            code: "ROUTE_NOT_FOUND",
+            message: "Không tìm thấy tuyến đường",
+          },
+        });
+      }
+
+      if (error.message === "STOP_ALREADY_IN_ROUTE") {
+        return res.status(409).json({
+          success: false,
+          error: {
+            code: "STOP_ALREADY_IN_ROUTE",
+            message: "Điểm dừng đã tồn tại trong tuyến đường",
+          },
+        });
+      }
+
+      if (error.message === "SEQUENCE_ALREADY_EXISTS") {
+        return res.status(409).json({
+          success: false,
+          error: {
+            code: "SEQUENCE_ALREADY_EXISTS",
+            message: "Thứ tự này đã tồn tại trong tuyến đường",
+          },
+        });
+      }
+
+      if (error.message === "MISSING_REQUIRED_FIELDS") {
+        return res.status(400).json({
+          success: false,
+          error: {
+            code: "MISSING_REQUIRED_FIELDS",
+            message: "Thiếu các trường bắt buộc: tenDiem, viDo, kinhDo",
+          },
+        });
+      }
+
+      if (error.message === "INVALID_LATITUDE" || error.message === "INVALID_LONGITUDE") {
+        return res.status(400).json({
+          success: false,
+          error: {
+            code: error.message,
+            message: error.message === "INVALID_LATITUDE" 
+              ? "Vĩ độ không hợp lệ (phải từ -90 đến 90)"
+              : "Kinh độ không hợp lệ (phải từ -180 đến 180)",
+          },
+        });
+      }
+
+      // Xử lý lỗi duplicate entry từ database
+      if (error.code === 'ER_DUP_ENTRY' || error.message?.includes('Duplicate entry')) {
+        return res.status(409).json({
+          success: false,
+          error: {
+            code: "DUPLICATE_STOP",
+            message: "Điểm dừng với cùng tên và tọa độ đã tồn tại trong hệ thống",
+          },
+        });
+      }
+
       console.error("Error in RouteController.addStopToRoute:", error);
+      console.error("Error stack:", error.stack);
+      console.error("Request body:", req.body);
+      console.error("Route ID:", req.params.id);
+      
       res.status(500).json({
         success: false,
-        message: "Lỗi server khi thêm điểm dừng",
-        error: error.message,
+        error: {
+          code: "INTERNAL_ERROR",
+          message: error.message || "Lỗi server khi thêm điểm dừng vào tuyến đường",
+          details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+        },
       });
     }
   }
 
-  // Cập nhật điểm dừng
-  static async updateStop(req, res) {
+  // Cập nhật điểm dừng trong tuyến đường
+  static async updateStopInRoute(req, res) {
     try {
       const { id, stopId } = req.params;
-      const {
-        tenDiem,
-        diaChi,
-        viDo,
-        kinhDo,
-        thuTu,
-        thoiGianDung,
-        moTa,
-        trangThai,
-      } = req.body;
+      const { sequence, dwell_seconds, tenDiem, viDo, kinhDo, address, scheduled_time } = req.body;
 
       if (!id || !stopId) {
-        return res.status(400).json({
-          success: false,
-          message: "Mã tuyến đường và mã điểm dừng là bắt buộc",
-        });
-      }
-
-      // Kiểm tra điểm dừng có tồn tại không
-      const existingStop = await DiemDungModel.getById(stopId);
-      if (!existingStop) {
-        return res.status(404).json({
-          success: false,
-          message: "Không tìm thấy điểm dừng",
-        });
-      }
-
-      // Kiểm tra điểm dừng có thuộc tuyến đường không
-      if (existingStop.maTuyen !== id) {
-        return res.status(400).json({
-          success: false,
-          message: "Điểm dừng không thuộc tuyến đường này",
-        });
-      }
-
-      // Validation tọa độ nếu có thay đổi
-      if (viDo !== undefined && (viDo < -90 || viDo > 90)) {
-        return res.status(400).json({
-          success: false,
-          message: "Vĩ độ phải từ -90 đến 90",
-        });
-      }
-
-      if (kinhDo !== undefined && (kinhDo < -180 || kinhDo > 180)) {
-        return res.status(400).json({
-          success: false,
-          message: "Kinh độ phải từ -180 đến 180",
-        });
-      }
-
-      // Validation thứ tự nếu có thay đổi
-      if (thuTu !== undefined) {
-        if (thuTu < 1) {
-          return res.status(400).json({
-            success: false,
-            message: "Thứ tự phải lớn hơn 0",
-          });
-        }
-
-        // Kiểm tra thứ tự trùng lặp
-        if (thuTu !== existingStop.thuTu) {
-          const existingOrder = await DiemDungModel.getByRouteAndOrder(
-            id,
-            thuTu
-          );
-          if (existingOrder) {
-            return res.status(409).json({
-              success: false,
-              message: "Thứ tự này đã tồn tại trong tuyến đường",
-            });
-          }
-        }
+        return response.validationError(res, "Mã tuyến đường và mã điểm dừng là bắt buộc", [
+          { field: "id", message: "Mã tuyến đường không được để trống" },
+          { field: "stopId", message: "Mã điểm dừng không được để trống" }
+        ]);
       }
 
       const updateData = {};
+      if (sequence !== undefined) updateData.sequence = sequence;
+      if (dwell_seconds !== undefined) updateData.dwell_seconds = dwell_seconds;
       if (tenDiem !== undefined) updateData.tenDiem = tenDiem;
-      if (diaChi !== undefined) updateData.diaChi = diaChi;
-      if (viDo !== undefined) updateData.viDo = parseFloat(viDo);
-      if (kinhDo !== undefined) updateData.kinhDo = parseFloat(kinhDo);
-      if (thuTu !== undefined) updateData.thuTu = parseInt(thuTu);
-      if (thoiGianDung !== undefined)
-        updateData.thoiGianDung = parseInt(thoiGianDung);
-      if (moTa !== undefined) updateData.moTa = moTa;
-      if (trangThai !== undefined) updateData.trangThai = trangThai;
+      if (viDo !== undefined) updateData.viDo = viDo;
+      if (kinhDo !== undefined) updateData.kinhDo = kinhDo;
+      if (address !== undefined) updateData.address = address;
+      if (scheduled_time !== undefined) updateData.scheduled_time = scheduled_time;
 
-      const isUpdated = await DiemDungModel.update(stopId, updateData);
-
-      if (!isUpdated) {
-        return res.status(400).json({
-          success: false,
-          message: "Không thể cập nhật điểm dừng",
-        });
+      if (Object.keys(updateData).length === 0) {
+        return response.validationError(res, "Phải có ít nhất một trường để cập nhật", [
+          { field: "body", message: "Cần có sequence, dwell_seconds, tenDiem, viDo, kinhDo, address, hoặc scheduled_time" }
+        ]);
       }
 
-      const updatedStop = await DiemDungModel.getById(stopId);
+      const stops = await RouteService.updateStopInRoute(id, stopId, updateData);
 
-      res.status(200).json({
-        success: true,
-        data: updatedStop,
-        message: "Cập nhật điểm dừng thành công",
-      });
+      return response.ok(res, stops, null, "Cập nhật điểm dừng thành công");
     } catch (error) {
-      console.error("Error in RouteController.updateStop:", error);
-      res.status(500).json({
-        success: false,
-        message: "Lỗi server khi cập nhật điểm dừng",
-        error: error.message,
-      });
+      if (error.message === "ROUTE_NOT_FOUND") {
+        return response.notFound(res, "Không tìm thấy tuyến đường");
+      }
+
+      if (error.message === "STOP_NOT_IN_ROUTE") {
+        return response.notFound(res, "Điểm dừng không thuộc tuyến đường này");
+      }
+
+      if (error.message === "SEQUENCE_ALREADY_EXISTS") {
+        return response.validationError(res, "Thứ tự này đã tồn tại trong tuyến đường", [
+          { field: "sequence", message: "Thứ tự đã được sử dụng bởi điểm dừng khác" }
+        ]);
+      }
+
+      if (error.message === "INVALID_LATITUDE" || error.message === "INVALID_LONGITUDE") {
+        return response.validationError(res, "Tọa độ không hợp lệ", [
+          { 
+            field: error.message === "INVALID_LATITUDE" ? "viDo" : "kinhDo", 
+            message: error.message === "INVALID_LATITUDE" 
+              ? "Vĩ độ phải từ -90 đến 90" 
+              : "Kinh độ phải từ -180 đến 180" 
+          }
+        ]);
+      }
+
+      console.error("Error in RouteController.updateStopInRoute:", error);
+      return response.serverError(res, "Lỗi server khi cập nhật điểm dừng", error);
     }
   }
 
@@ -587,46 +536,195 @@ class RouteController {
       if (!id || !stopId) {
         return res.status(400).json({
           success: false,
-          message: "Mã tuyến đường và mã điểm dừng là bắt buộc",
+          error: {
+            code: "MISSING_PARAMS",
+            message: "Mã tuyến đường và mã điểm dừng là bắt buộc",
+          },
         });
       }
 
-      // Kiểm tra điểm dừng có tồn tại không
-      const existingStop = await DiemDungModel.getById(stopId);
-      if (!existingStop) {
+      await RouteService.removeStopFromRoute(id, stopId);
+
+      res.status(200).json({
+        success: true,
+        message: "Xóa điểm dừng khỏi tuyến đường thành công",
+      });
+    } catch (error) {
+      if (error.message === "ROUTE_NOT_FOUND") {
         return res.status(404).json({
           success: false,
-          message: "Không tìm thấy điểm dừng",
+          error: {
+            code: "ROUTE_NOT_FOUND",
+            message: "Không tìm thấy tuyến đường",
+          },
         });
       }
 
-      // Kiểm tra điểm dừng có thuộc tuyến đường không
-      if (existingStop.maTuyen !== id) {
-        return res.status(400).json({
+      if (error.message === "STOP_NOT_IN_ROUTE") {
+        return res.status(404).json({
           success: false,
-          message: "Điểm dừng không thuộc tuyến đường này",
+          error: {
+            code: "STOP_NOT_IN_ROUTE",
+            message: "Điểm dừng không thuộc tuyến đường này",
+          },
         });
       }
 
-      const isDeleted = await DiemDungModel.delete(stopId);
+      console.error("Error in RouteController.removeStopFromRoute:", error);
+      res.status(500).json({
+        success: false,
+        error: {
+          code: "INTERNAL_ERROR",
+          message: "Lỗi server khi xóa điểm dừng khỏi tuyến đường",
+        },
+      });
+    }
+  }
 
-      if (!isDeleted) {
+  // Sắp xếp lại thứ tự stops trong route (M1-M3: Atomic transaction)
+  static async reorderStops(req, res) {
+    try {
+      const { id } = req.params;
+      const { items } = req.body;
+
+      if (!id) {
+        return response.validationError(res, "Mã tuyến đường là bắt buộc", [
+          { field: "id", message: "Mã tuyến đường không được để trống" }
+        ]);
+      }
+
+      if (!items || !Array.isArray(items) || items.length === 0) {
+        return response.validationError(res, "items (mảng {stopId, order}) là bắt buộc", [
+          { field: "items", message: "Phải là mảng không rỗng chứa {stopId, order}" }
+        ]);
+      }
+
+      // Validate items format
+      for (const item of items) {
+        if (!item.stopId || item.order === undefined) {
+          return response.validationError(res, "Mỗi item phải có stopId và order", [
+            { field: "items", message: "Format: [{stopId: number, order: number}, ...]" }
+          ]);
+        }
+      }
+
+      const stops = await RouteService.reorderStops(id, items);
+
+      return response.ok(res, stops);
+    } catch (error) {
+      if (error.message === "ROUTE_NOT_FOUND") {
+        return response.notFound(res, "Không tìm thấy tuyến đường");
+      }
+
+      if (error.message === "DUPLICATE_SEQUENCE" || error.message === "INVALID_STOP_ID") {
+        return response.validationError(res, "Dữ liệu không hợp lệ", [
+          { field: "items", message: error.message }
+        ]);
+      }
+
+      console.error("Error in RouteController.reorderStops:", error);
+      return response.serverError(res, "Lỗi server khi sắp xếp lại thứ tự stops", error);
+    }
+  }
+
+  // Rebuild polyline cho route
+  static async rebuildPolyline(req, res) {
+    try {
+      const { id } = req.params;
+
+      if (!id) {
         return res.status(400).json({
           success: false,
-          message: "Không thể xóa điểm dừng",
+          error: {
+            code: "MISSING_PARAMS",
+            message: "Mã tuyến đường là bắt buộc",
+          },
         });
+      }
+
+      const result = await RouteService.rebuildPolyline(id, MapsService);
+
+      // P2 Fix: Emit socket event route-updated after successful rebuild
+      const io = req.app.get("io");
+      if (io && result.polyline) {
+        io.to(`route:${id}`).emit("route_updated", {
+          routeId: parseInt(id),
+          polyline: result.polyline,
+          updatedAt: Date.now(),
+        });
+        console.log(`📡 [RouteController] Emitted route_updated event for route ${id}`);
       }
 
       res.status(200).json({
         success: true,
-        message: "Xóa điểm dừng thành công",
+        data: result,
+        message: "Rebuild polyline thành công",
       });
     } catch (error) {
-      console.error("Error in RouteController.removeStopFromRoute:", error);
+      if (error.message === "ROUTE_NOT_FOUND") {
+        return res.status(404).json({
+          success: false,
+          error: {
+            code: "ROUTE_NOT_FOUND",
+            message: "Không tìm thấy tuyến đường",
+          },
+        });
+      }
+
+      if (error.message === "INSUFFICIENT_STOPS") {
+        return res.status(400).json({
+          success: false,
+          error: {
+            code: "INSUFFICIENT_STOPS",
+            message: "Tuyến đường cần ít nhất 2 điểm dừng để rebuild polyline",
+          },
+        });
+      }
+
+      // Handle Maps API errors
+      if (error.message === "MAPS_API_KEY not configured" || 
+          error.message.includes("Maps API") ||
+          error.message.includes("Maps API error") ||
+          error.message.includes("Maps API request timeout") ||
+          error.message.includes("Maps API HTTP error")) {
+        console.error("[RouteController] Maps API error:", {
+          message: error.message,
+          routeId: id,
+        });
+        return res.status(503).json({
+          success: false,
+          error: {
+            code: "MAPS_API_ERROR",
+            message: error.message || "Lỗi khi gọi Maps API. Vui lòng kiểm tra MAPS_API_KEY và API quota.",
+            details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+          },
+        });
+      }
+
+      // Handle MAPS_API_ERROR from RouteService
+      if (error.message === "MAPS_API_ERROR") {
+        return res.status(503).json({
+          success: false,
+          error: {
+            code: "MAPS_API_ERROR",
+            message: "Không thể lấy polyline từ Maps API. Vui lòng thử lại sau.",
+          },
+        });
+      }
+
+      console.error("[RouteController] Error in rebuildPolyline:", {
+        message: error.message,
+        stack: error.stack,
+        routeId: id,
+      });
+      
       res.status(500).json({
         success: false,
-        message: "Lỗi server khi xóa điểm dừng",
-        error: error.message,
+        error: {
+          code: "INTERNAL_ERROR",
+          message: "Lỗi server khi rebuild polyline",
+          details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+        },
       });
     }
   }
@@ -634,34 +732,7 @@ class RouteController {
   // Lấy thống kê tuyến đường
   static async getRouteStats(req, res) {
     try {
-      const allRoutes = await TuyenDuongModel.getAll();
-
-      const stats = {
-        total: allRoutes.length,
-        active: allRoutes.filter((route) => route.trangThai === "hoat_dong")
-          .length,
-        inactive: allRoutes.filter(
-          (route) => route.trangThai === "ngung_hoat_dong"
-        ).length,
-        totalDistance: allRoutes.reduce(
-          (sum, route) => sum + (route.khoangCach || 0),
-          0
-        ),
-        averageDistance: Math.round(
-          allRoutes.reduce((sum, route) => sum + (route.khoangCach || 0), 0) /
-            allRoutes.length
-        ),
-        totalStops: 0,
-        averageStops: 0,
-      };
-
-      // Tính tổng số điểm dừng
-      for (const route of allRoutes) {
-        const stops = await DiemDungModel.getByRouteId(route.maTuyen);
-        stats.totalStops += stops.length;
-      }
-
-      stats.averageStops = Math.round(stats.totalStops / allRoutes.length);
+      const stats = await TuyenDuongModel.getStats();
 
       res.status(200).json({
         success: true,
@@ -672,11 +743,14 @@ class RouteController {
       console.error("Error in RouteController.getRouteStats:", error);
       res.status(500).json({
         success: false,
-        message: "Lỗi server khi lấy thống kê tuyến đường",
-        error: error.message,
+        error: {
+          code: "INTERNAL_ERROR",
+          message: "Lỗi server khi lấy thống kê tuyến đường",
+        },
       });
     }
   }
 }
 
 export default RouteController;
+

@@ -30,6 +30,9 @@ interface Config {
   socket: {
     corsOrigin: string;
   };
+  websocket: {
+    enabled: boolean;
+  };
   api: {
     prefix: string;
   };
@@ -93,6 +96,9 @@ const config: Config = {
     refreshSecret: process.env["JWT_REFRESH_SECRET"]!,
     expiresIn: process.env["JWT_EXPIRES_IN"] || "15m",
     refreshExpiresIn: process.env["JWT_REFRESH_EXPIRES_IN"] || "7d",
+  },
+  websocket: {
+    enabled: process.env["WS_ENABLED"] !== "false", // Default true
   },
   frontend: {
     origin: process.env["FE_ORIGIN"]!.split(",").map((o) => o.trim()), // Hỗ trợ nhiều origins

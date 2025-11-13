@@ -7,8 +7,9 @@ import { Button } from '@/components/ui/button'
 import { MapPin } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { useTripBusPosition } from '@/hooks/use-socket'
+import type { StopDTO, BusMarker } from '@/components/map/SSBMap'
 
-const LeafletMap = dynamic(() => import('@/components/map/leaflet-map'), { ssr: false })
+const SSBMap = dynamic(() => import('@/components/map/SSBMap'), { ssr: false })
 
 interface Bus {
   id: string
@@ -21,9 +22,17 @@ interface Bus {
   students: number
 }
 
+type RouteInfo = {
+  routeId: number
+  routeName: string
+  polyline: string | null
+  color: string
+}
+
 interface MapViewProps {
   buses: Bus[]
   stops?: { id: string; lat: number; lng: number; label?: string }[]
+  routes?: RouteInfo[]
   selectedBus?: Bus
   onSelectBus?: (bus: Bus) => void
   className?: string
@@ -37,6 +46,7 @@ interface MapViewProps {
 export function MapView({
   buses,
   stops,
+  routes = [],
   selectedBus,
   onSelectBus,
   className = '',
@@ -44,58 +54,50 @@ export function MapView({
   followFirstMarker = false,
   autoFitOnUpdate = false,
 }: MapViewProps) {
-  // local markers state so we can update positions in realtime when socket events arrive
-  const [markers, setMarkers] = useState(() => {
-    const busMarkers = buses.map((b) => ({ id: b.id, lat: b.lat, lng: b.lng, label: `${b.plateNumber} · ${b.route}`, type: 'bus' as const, status: b.status }))
-    const stopMarkers = (stops || []).map((s) => ({ id: s.id, lat: s.lat, lng: s.lng, label: s.label, type: 'stop' as const }))
-    return [...busMarkers, ...stopMarkers]
-  })
+  // Convert buses to BusMarker format
+  const busMarkers: BusMarker[] = buses.map((b) => ({
+    id: b.id,
+    lat: b.lat,
+    lng: b.lng,
+    label: `${b.plateNumber} · ${b.route}`,
+    status: b.status as 'running' | 'idle' | 'late',
+  }))
 
-  // update markers when buses or stops prop change (initial or external updates)
+  // Convert stops to StopDTO format (if needed)
+  const stopMarkers: StopDTO[] = (stops || []).map((s, idx) => ({
+    maDiem: parseInt(s.id) || idx + 1,
+    tenDiem: s.label || `Stop ${idx + 1}`,
+    viDo: s.lat,
+    kinhDo: s.lng,
+    sequence: idx + 1,
+  }))
+
+  // Throttle bus position updates (max 1 update per second)
+  const [throttledBuses, setThrottledBuses] = useState(busMarkers)
+  const lastUpdateRef = React.useRef<number>(0)
+
   useEffect(() => {
-    const busMarkers = buses.map((b) => ({ id: b.id, lat: b.lat, lng: b.lng, label: `${b.plateNumber} · ${b.route}`, type: 'bus' as const, status: b.status }))
-    const stopMarkers = (stops || []).map((s) => ({ id: s.id, lat: s.lat, lng: s.lng, label: s.label, type: 'stop' as const }))
-    setMarkers([...busMarkers, ...stopMarkers])
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(buses), JSON.stringify(stops || [])])
-
-  useEffect(() => {
-    function handleEvent(e: Event) {
-      const payload = (e as CustomEvent).detail
-      console.log('[MapView] Incoming bus update:', payload)
-
-      if (!payload) return
-
-      // try to find id and coords from payload
-      const id = payload.id || payload.busId || payload.vehicleId || (payload.bus && payload.bus.id)
-      const lat = payload.lat || payload.latitude || payload.latLng?.lat || payload.coords?.lat
-      const lng = payload.lng || payload.longitude || payload.latLng?.lng || payload.coords?.lng || payload.lon
-      const status = payload.status || payload.state || (payload.bus && payload.bus.status)
-      console.log('[MapView] event', { id, lat, lng, raw: payload })
-      if (!id || (typeof lat !== 'number' && typeof lng !== 'number')) return
-
-      setMarkers((prev) => {
-        const exist = prev.find((m) => m.id + '' === id + '')
-        if (exist) {
-          // update position and status if it's a bus
-          return prev.map((m) => (m.id + '' === id + '' ? { ...m, lat, lng, ...(m.type === 'bus' ? { status } : {}) } : m))
-        }
-        // if not exist, add new marker (assume bus)
-        return [...prev, { id: id + '', lat, lng, label: payload.label || payload.title || '', type: 'bus', status }]
-      })
+    const now = Date.now()
+    if (now - lastUpdateRef.current >= 1000) {
+      setThrottledBuses(busMarkers)
+      lastUpdateRef.current = now
     }
+  }, [busMarkers])
 
-    window.addEventListener('busLocationUpdate', handleEvent as EventListener)
-    window.addEventListener('busPositionUpdate', handleEvent as EventListener)
-
-    return () => {
-      window.removeEventListener('busLocationUpdate', handleEvent as EventListener)
-      window.removeEventListener('busPositionUpdate', handleEvent as EventListener)
+  // Calculate center from buses or stops
+  const center = React.useMemo(() => {
+    if (throttledBuses.length > 0) {
+      const avgLat = throttledBuses.reduce((sum, b) => sum + b.lat, 0) / throttledBuses.length
+      const avgLng = throttledBuses.reduce((sum, b) => sum + b.lng, 0) / throttledBuses.length
+      return { lat: avgLat, lng: avgLng }
     }
-  }, [])
-  useEffect(() => {
-  console.log('[MapView] Markers updated:', markers)
-}, [markers])
+    if (stopMarkers.length > 0) {
+      const avgLat = stopMarkers.reduce((sum, s) => sum + s.viDo, 0) / stopMarkers.length
+      const avgLng = stopMarkers.reduce((sum, s) => sum + s.kinhDo, 0) / stopMarkers.length
+      return { lat: avgLat, lng: avgLng }
+    }
+    return { lat: 10.77653, lng: 106.700981 }
+  }, [throttledBuses, stopMarkers])
 
   return (
     <Card className={className}>
@@ -114,35 +116,45 @@ export function MapView({
       </CardHeader>
       <CardContent>
         <div className="relative">
-          <LeafletMap
+          <SSBMap
             height={height}
-            markers={markers}
-            followFirstMarker={followFirstMarker}
-            autoFitOnUpdate={autoFitOnUpdate}
-            selectedId={selectedBus ? String(selectedBus.id) : undefined}
-            onMarkerClick={(id) => {
-              if (!onSelectBus) return
-              const b = buses.find((x) => String(x.id) === String(id))
-              if (b) onSelectBus(b as any)
+            center={center}
+            zoom={13}
+            buses={throttledBuses}
+            stops={stopMarkers}
+            routes={routes.map(r => ({
+              routeId: r.routeId,
+              routeName: r.routeName,
+              polyline: r.polyline,
+              color: r.color
+            }))}
+            onBusClick={(bus) => {
+              if (onSelectBus) {
+                const b = buses.find((x) => String(x.id) === String(bus.id))
+                if (b) onSelectBus(b as any)
+              }
+            }}
+            onStopClick={(stop) => {
+              // Handle stop click if needed
             }}
           />
           <div className="absolute bottom-4 left-4 bg-card/90 backdrop-blur-sm border border-border rounded-lg p-3 shadow-lg pointer-events-none"
                style={{ zIndex: 99999 }}>
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-green-500" />
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#22c55e' }} />
                 <span className="text-xs text-foreground">Đang chạy</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-gray-500" />
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#6b7280' }} />
                 <span className="text-xs text-foreground">Đứng yên</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-yellow-500" />
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#eab308' }} />
                 <span className="text-xs text-foreground">Trễ</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-red-500" />
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#ef4444' }} />
                 <span className="text-xs text-foreground">Sự cố</span>
               </div>
             </div>
