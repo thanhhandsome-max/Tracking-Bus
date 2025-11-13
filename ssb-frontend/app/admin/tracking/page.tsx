@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { AdminSidebar } from "@/components/admin/admin-sidebar"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,46 +12,61 @@ import { MapView } from "@/components/tracking/MapView"
 import { apiClient } from "@/lib/api"
 import { socketService } from "@/lib/socket"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { useSearchParams } from "next/navigation"
+import { useTripBusPosition } from "@/hooks/use-socket"
 
 type Bus = { id: string; plateNumber: string; route: string; driver?: string; driverPhone?: string; status: 'running'|'late'|'incident'|string; speed?: number; students?: number; currentStop?: string; nextStop?: string; eta?: string; progress?: number; lat: number; lng: number }
 
 export default function TrackingPage() {
-  const [buses, setBuses] = useState<Bus[]>([])
+  const searchParams = useSearchParams()
+  // Khởi tạo đồng nhất: 1 chấm mặc định ở Hà Nội
+  const [buses, setBuses] = useState<Bus[]>([{
+    id: 'demo',
+    plateNumber: '29B-TEST',
+    route: 'Demo',
+    status: 'running',
+    speed: 0,
+    students: 0,
+    progress: 0,
+    lat: 21.0285,
+    lng: 105.8542,
+  }])
   const [selectedBus, setSelectedBus] = useState<Bus | null>(null)
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const res = await apiClient.getBuses()
-        const list: any[] = Array.isArray(res?.data) ? res.data : []
-        const mapped: Bus[] = list.map((b: any) => ({
-          id: (b.maXe || b.id) + '',
-          plateNumber: b.bienSoXe || b.plateNumber || '',
-          route: b.tenTuyen || b.route || '-',
-          speed: Number(b.tocDo ?? b.speed ?? 0),
-          status: (Number(b.tocDo ?? b.speed ?? 0) > 0)
-            ? 'running'
-            : ((b.trangThai === 'su_co' || b.status === 'incident') ? 'incident' : 'idle'),
-          lat: Number(b.viDo ?? b.lat ?? 10.762622),
-          lng: Number(b.kinhDo ?? b.lng ?? 106.660172),
-          students: Number(b.soHocSinh || b.students || 0),
-          progress: Number(b.tienDo || b.progress || 0),
-        }))
-        setBuses(mapped)
-        setSelectedBus(mapped[0] || null)
+  // testTrip override để nhận toạ độ realtime từ script/socket, cập nhật marker 'demo'
+  const testTripFromQuery = searchParams?.get('testTrip') || searchParams?.get('testTripId') || undefined
+  const testTripId = useMemo(() => {
+    const v = testTripFromQuery ? Number(testTripFromQuery) : undefined
+    return (typeof v === 'number' && Number.isFinite(v)) ? v : undefined
+  }, [testTripFromQuery])
+  const { busPosition } = useTripBusPosition(testTripId)
 
-        // Join all running trip rooms to receive realtime updates (best effort)
-        try {
-          const trips = await apiClient.getTrips({ trangThai: 'dang_chay' })
-          const ids = Array.isArray(trips?.data) ? trips.data.map((t: any) => t.maChuyen || t.id || t.maChuyenDi).filter(Boolean) : []
-          ids.forEach((id: any) => socketService.joinTrip(id))
-        } catch {}
-      } catch (e) {
-        console.warn('Failed to load buses', e)
+  useEffect(() => {
+    setSelectedBus((prev) => prev || buses[0] || null)
+  }, [buses])
+
+  useEffect(() => {
+    if (!busPosition || typeof busPosition.lat !== 'number' || typeof busPosition.lng !== 'number') return
+    setBuses((prev) => {
+      const idx = prev.findIndex((b) => b.id === 'demo')
+      const updated = {
+        ...prev[(idx >= 0 ? idx : 0)] ?? {},
+        id: 'demo',
+        plateNumber: '29B-TEST',
+        route: testTripId ? `Trip ${testTripId}` : 'Demo',
+        status: 'running' as const,
+        lat: busPosition.lat,
+        lng: busPosition.lng,
+        speed: busPosition.speed ?? 0,
+      } as Bus
+      if (idx >= 0) {
+        const copy = prev.slice()
+        copy[idx] = { ...copy[idx], ...updated }
+        return copy
       }
-    }
-    load()
-  }, [])
+      return [...prev, updated]
+    })
+  }, [busPosition, testTripId])
 
   // Realtime: update bus list when bus position events arrive (so speed/status UI stays fresh)
   useEffect(() => {
@@ -110,6 +125,8 @@ export default function TrackingPage() {
                   buses={buses as any}
                   selectedBus={selectedBus as any}
                   onSelectBus={(b: any) => setSelectedBus(b)}
+                  height="650px"
+                  followFirstMarker
                   autoFitOnUpdate
                 />
               </CardContent>

@@ -321,17 +321,24 @@ export default function ParentDashboard() {
             </CardHeader>
             <CardContent>
                   {/* Replace placeholder with Leaflet MapView */}
-                  {selectedTripId ? (
-                    <MapView
-                      buses={[{ id: busInfo?.id || 'bus', plateNumber: busInfo?.plateNumber || displayChildInfo.busNumber, route: busInfo?.route || `Trip ${selectedTripId}`, status: delayAlert?.delayMinutes ? 'late' : 'running', lat: busLocation.lat, lng: busLocation.lng, speed: 30, students: 12 }] as any}
-                      stops={stops}
-                      height="500px"
-                      followFirstMarker
-                      autoFitOnUpdate
-                    />
-                  ) : (
-                    <div className="h-[500px] flex items-center justify-center text-sm text-muted-foreground border rounded-lg">Không có chuyến phù hợp để hiển thị bản đồ</div>
-                  )}
+                <MapView
+                  buses={[
+                    {
+                      id: busInfo?.id || 'bus',
+                      plateNumber: busInfo?.plateNumber || displayChildInfo.busNumber,
+                      route: busInfo?.route || (selectedTripId ? `Trip ${selectedTripId}` : 'Demo'),
+                      status: delayAlert?.delayMinutes ? 'late' : 'running',
+                      lat: busLocation.lat,
+                      lng: busLocation.lng,
+                      speed: 30,
+                      students: 12,
+                    },
+                  ] as any}
+                  stops={stops}
+                  height="600px"
+                  followFirstMarker
+                  autoFitOnUpdate
+                />
                 </CardContent>
           </Card>
 

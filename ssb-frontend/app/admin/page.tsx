@@ -155,13 +155,23 @@ export default function AdminDashboard() {
                 </div>
               </CardHeader>
                 <CardContent>
-                  {/* Replace demo preview with Leaflet MapView showing mock buses */}
+                  {/* MapView đồng bộ với Parent/Driver: chỉ 1 chấm ở Hà Nội */}
                   <MapView
                     buses={[
-                      { id: "1", plateNumber: "51A-12345", route: "Tuyến 1", lat: 10.762622, lng: 106.660172, speed: 35, students: 28 },
-                      { id: "2", plateNumber: "51B-67890", route: "Tuyến 3", lat: 10.772622, lng: 106.670172, speed: 28, students: 24 },
+                      {
+                        id: 'demo',
+                        plateNumber: '29B-TEST',
+                        route: 'Demo',
+                        status: 'running',
+                        lat: 21.0285,
+                        lng: 105.8542,
+                        speed: 0,
+                        students: 0,
+                      },
                     ] as any}
                     height="480px"
+                    followFirstMarker
+                    autoFitOnUpdate
                   />
                 </CardContent>
             </Card>
