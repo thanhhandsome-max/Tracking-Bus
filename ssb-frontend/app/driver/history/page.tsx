@@ -8,9 +8,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Eye, CheckCircle, Clock, AlertTriangle } from "lucide-react"
+import { Eye, CheckCircle, Clock, AlertTriangle, CalendarDays, Clock3, User2, Phone, BusFront, BadgeCheck } from "lucide-react"
 import { apiClient } from "@/lib/api"
 import { useToast } from "@/hooks/use-toast"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+import { Separator } from "@/components/ui/separator"
+import { Skeleton } from "@/components/ui/skeleton"
 
 export default function DriverHistoryPage() {
   const { user } = useAuth()
@@ -18,6 +21,9 @@ export default function DriverHistoryPage() {
   const [stats, setStats] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const { toast } = useToast()
+  const [openDetail, setOpenDetail] = useState(false)
+  const [detailTrip, setDetailTrip] = useState<any | null>(null)
+  const [loadingDetail, setLoadingDetail] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -38,6 +44,24 @@ export default function DriverHistoryPage() {
     }
     load()
   }, [user, toast])
+
+  async function openTripDetail(trip: any) {
+    const id = trip?.maChuyen || trip?.id
+    if (!id) return
+    setOpenDetail(true)
+    setLoadingDetail(true)
+    setDetailTrip(null)
+    try {
+      const res = await apiClient.getTripById(id)
+      const data = (res as any)?.data || res
+      setDetailTrip(data)
+    } catch (e) {
+      toast({ title: "Lỗi", description: "Không thể tải chi tiết chuyến đi", variant: "destructive" })
+      setOpenDetail(false)
+    } finally {
+      setLoadingDetail(false)
+    }
+  }
 
   const formatDate = (dateStr: string) => {
     if (!dateStr) return ""
@@ -94,7 +118,32 @@ export default function DriverHistoryPage() {
           </CardHeader>
           <CardContent>
             {loading ? (
-              <div className="py-12 text-center text-muted-foreground">Đang tải lịch sử...</div>
+              <div className="py-6">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Ngày</TableHead>
+                      <TableHead>Tuyến</TableHead>
+                      <TableHead>Thời gian</TableHead>
+                      <TableHead>Học sinh</TableHead>
+                      <TableHead>Trạng thái</TableHead>
+                      <TableHead className="text-right">Thao tác</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <TableRow key={i}>
+                        <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                        <TableCell><Skeleton className="h-4 w-40" /></TableCell>
+                        <TableCell><Skeleton className="h-4 w-28" /></TableCell>
+                        <TableCell><Skeleton className="h-4 w-12" /></TableCell>
+                        <TableCell><Skeleton className="h-5 w-24 rounded-full" /></TableCell>
+                        <TableCell className="text-right"><Skeleton className="h-8 w-20 inline-block" /></TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             ) : trips.length === 0 ? (
               <div className="py-12 text-center text-muted-foreground">Chưa có chuyến đi nào</div>
             ) : (
@@ -158,7 +207,7 @@ export default function DriverHistoryPage() {
                           </div>
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button variant="ghost" size="sm" onClick={() => window.location.href = `/driver/trip/${trip.maChuyen || trip.id}`}>
+                          <Button variant="ghost" size="sm" onClick={() => openTripDetail(trip)}>
                             <Eye className="w-4 h-4 mr-2" />
                             Chi tiết
                           </Button>
@@ -171,7 +220,92 @@ export default function DriverHistoryPage() {
             )}
           </CardContent>
         </Card>
+        {/* Detail dialog */}
+        <DriverTripDetailDialog open={openDetail} onOpenChange={setOpenDetail} data={detailTrip} loading={loadingDetail} />
       </div>
     </DashboardLayout>
+  )
+}
+
+// Detail dialog UI appended below main component
+function DriverTripDetailDialog({ open, onOpenChange, data, loading }: { open: boolean, onOpenChange: (v: boolean) => void, data: any, loading: boolean }) {
+  const d = data || {}
+  const title = d.tenTuyen ? `${d.tenTuyen}` : (d.maChuyen ? `Chuyến #${d.maChuyen}` : 'Chi tiết chuyến đi')
+  const dateStr = d.ngayChay ? new Date(d.ngayChay).toLocaleDateString('vi-VN') : '-'
+  const planned = d.gioKhoiHanh || '-'
+  const actual = d.gioBatDauThucTe ? new Date(d.gioBatDauThucTe).toTimeString().slice(0,5) : '-'
+  const finished = d.gioKetThucThucTe ? new Date(d.gioKetThucThucTe).toTimeString().slice(0,5) : '-'
+  const status = d.trangThai || '-'
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <BusFront className="w-5 h-5 text-primary" />
+            {title}
+          </DialogTitle>
+          <DialogDescription className="flex items-center gap-2">
+            <CalendarDays className="w-4 h-4" />
+            Ngày chạy: {dateStr}
+          </DialogDescription>
+        </DialogHeader>
+        {loading ? (
+          <div className="space-y-3">
+            <Skeleton className="h-5 w-48" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="flex items-center justify-between border rounded-md p-3">
+                  <Skeleton className="h-4 w-28" />
+                  <Skeleton className="h-4 w-20" />
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4 text-sm">
+            <div className="flex items-center gap-2">
+              <BadgeCheck className="w-4 h-4 text-muted-foreground" />
+              <span className="text-muted-foreground">Trạng thái:</span>
+              <Badge variant="outline" className="ml-1 uppercase">
+                {status}
+              </Badge>
+            </div>
+            <Separator />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <InfoRow icon={<BusFront className="w-4 h-4" />} label="Biển số" value={d.bienSoXe || '-'} />
+              <InfoRow icon={<BadgeCheck className="w-4 h-4" />} label="Loại chuyến" value={d.loaiChuyen || '-'} />
+              <InfoRow icon={<Clock3 className="w-4 h-4" />} label="Giờ KH (kế hoạch)" value={planned} />
+              <InfoRow icon={<Clock className="w-4 h-4" />} label="Bắt đầu (thực tế)" value={actual} />
+              <InfoRow icon={<Clock className="w-4 h-4" />} label="Kết thúc (thực tế)" value={finished} />
+              <InfoRow icon={<User2 className="w-4 h-4" />} label="Tài xế" value={d.tenTaiXe || '-'} />
+              <InfoRow icon={<Phone className="w-4 h-4" />} label="SĐT tài xế" value={d.sdtTaiXe || '-'} />
+            </div>
+            {d.ghiChu ? (
+              <>
+                <Separator />
+                <div className="text-xs text-muted-foreground">{d.ghiChu}</div>
+              </>
+            ) : null}
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Đóng</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// Small info row with icon on the left and value on the right
+function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between border rounded-md p-3">
+      <div className="flex items-center gap-2 text-muted-foreground">
+        {icon}
+        <span>{label}</span>
+      </div>
+      <span className="font-medium text-foreground">{value}</span>
+    </div>
   )
 }

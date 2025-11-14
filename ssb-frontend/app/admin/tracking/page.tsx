@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { AdminSidebar } from "@/components/admin/admin-sidebar"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,6 +12,8 @@ import { MapView } from "@/components/tracking/MapView"
 import { apiClient } from "@/lib/api"
 import { socketService } from "@/lib/socket"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { useSearchParams } from "next/navigation"
+import { useTripBusPosition } from "@/hooks/use-socket"
 
 type Bus = { 
   id: string; 
@@ -42,7 +44,19 @@ type RouteInfo = {
 }
 
 export default function TrackingPage() {
-  const [buses, setBuses] = useState<Bus[]>([])
+  const searchParams = useSearchParams()
+  // Khởi tạo đồng nhất: 1 chấm mặc định ở Hà Nội
+  const [buses, setBuses] = useState<Bus[]>([{
+    id: 'demo',
+    plateNumber: '29B-TEST',
+    route: 'Demo',
+    status: 'running',
+    speed: 0,
+    students: 0,
+    progress: 0,
+    lat: 21.0285,
+    lng: 105.8542,
+  }])
   const [selectedBus, setSelectedBus] = useState<Bus | null>(null)
   const [routes, setRoutes] = useState<RouteInfo[]>([])
 

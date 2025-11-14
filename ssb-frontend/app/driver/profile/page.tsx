@@ -13,12 +13,22 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Save, Shield, User, Mail, Phone, Truck, IdCard } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
+import { apiClient } from "@/lib/api"
 
 export default function DriverProfile() {
   const { user } = useAuth()
   const router = useRouter()
   const [isEditing, setIsEditing] = useState(false)
   const [openPasswordDialog, setOpenPasswordDialog] = useState(false)
+  const [loadingProfile, setLoadingProfile] = useState(true)
+  const [profile, setProfile] = useState<{
+    name: string
+    email: string
+    phone?: string
+    license?: string
+    vehicle?: string
+    role: string
+  }>({ name: '', email: '', phone: '', license: '', vehicle: '', role: 'Tài xế' })
 
   useEffect(() => {
     if (user && user.role !== "driver") {
@@ -26,16 +36,34 @@ export default function DriverProfile() {
     }
   }, [user, router])
 
-  if (!user || user.role !== "driver") return null
+  useEffect(() => {
+    async function load() {
+      if (!user || user.role !== 'driver') return
+      setLoadingProfile(true)
+      try {
+        // Lấy thông tin tài xế theo id đăng nhập
+        const res: any = await apiClient.getDriverById(user.id)
+        const data: any = (res?.data ?? res) || {}
+        const userInfo = data.userInfo || data.nguoiDung || {}
+        const name = userInfo.hoTen || user.name || ''
+        const email = userInfo.email || user.email || ''
+        const phone = userInfo.soDienThoai || ''
+        const license = data.soBangLai || data.license || ''
+        // Xe phụ trách: cố gắng suy ra từ lịch trình hiện tại
+        const schedules = Array.isArray(data.currentSchedules) ? data.currentSchedules : []
+        const vehicle = schedules[0]?.bienSoXe || schedules[0]?.busPlate || ''
+        setProfile({ name, email, phone, license, vehicle, role: 'Tài xế' })
+      } catch (e) {
+        // Fallback: hiển thị thông tin cơ bản từ context
+        setProfile({ name: user?.name || '', email: user?.email || '', role: 'Tài xế', phone: '', license: '', vehicle: '' })
+      } finally {
+        setLoadingProfile(false)
+      }
+    }
+    load()
+  }, [user])
 
-  const profile = {
-    name: "Trần Văn Tài",
-    email: "taixe01@smartbus.vn",
-    phone: "0909555123",
-    license: "B2 - 123456789",
-    vehicle: "29B-45678",
-    role: "Tài xế",
-  }
+  if (!user || user.role !== "driver") return null
 
   return (
     <DashboardLayout sidebar={<DriverSidebar />}>
@@ -85,27 +113,27 @@ export default function DriverProfile() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Họ và tên</Label>
-                  <Input defaultValue={profile.name} disabled={!isEditing} />
+                  <Input value={profile.name} onChange={(e) => setProfile({ ...profile, name: e.target.value })} disabled={!isEditing} />
                 </div>
 
                 <div className="space-y-2">
                   <Label>Email</Label>
-                  <Input type="email" defaultValue={profile.email} disabled={!isEditing} />
+                  <Input type="email" value={profile.email} onChange={(e) => setProfile({ ...profile, email: e.target.value })} disabled={!isEditing} />
                 </div>
 
                 <div className="space-y-2">
                   <Label>Số điện thoại</Label>
-                  <Input defaultValue={profile.phone} disabled={!isEditing} />
+                  <Input value={profile.phone} onChange={(e) => setProfile({ ...profile, phone: e.target.value })} disabled={!isEditing} />
                 </div>
 
                 <div className="space-y-2">
                   <Label>Số bằng lái</Label>
-                  <Input defaultValue={profile.license} disabled={!isEditing} />
+                  <Input value={profile.license} onChange={(e) => setProfile({ ...profile, license: e.target.value })} disabled={!isEditing} />
                 </div>
 
                 <div className="space-y-2">
                   <Label>Xe phụ trách</Label>
-                  <Input defaultValue={profile.vehicle} disabled={!isEditing} />
+                  <Input value={profile.vehicle} onChange={(e) => setProfile({ ...profile, vehicle: e.target.value })} disabled={!isEditing} />
                 </div>
 
                 <div className="space-y-2">

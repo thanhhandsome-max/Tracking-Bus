@@ -1,4 +1,4 @@
-import { LRUCache } from "lru-cache";
+import LRU from "lru-cache";
 
 /**
  * MemoryCache - LRU cache implementation using lru-cache
