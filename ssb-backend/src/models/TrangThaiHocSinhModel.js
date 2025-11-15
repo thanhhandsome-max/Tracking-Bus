@@ -16,6 +16,11 @@ const TrangThaiHocSinhModel = {
     return rows[0];
   },
 
+  // Alias for getById - used by TripController
+  async getByTripAndStudent(maChuyen, maHocSinh) {
+    return this.getById(maChuyen, maHocSinh);
+  },
+
   // Lấy tất cả học sinh trên chuyến đi
   async getByTripId(maChuyen) {
     const [rows] = await pool.query(
@@ -55,14 +60,46 @@ const TrangThaiHocSinhModel = {
   },
 
   // Cập nhật trạng thái học sinh
-  async update(maChuyen, maHocSinh, data) {
-    const { thuTuDiemDon, trangThai, thoiGianThucTe, ghiChu } = data;
-    const [result] = await pool.query(
-      `UPDATE TrangThaiHocSinh SET thuTuDiemDon = ?, trangThai = ?, thoiGianThucTe = ?, ghiChu = ?
-       WHERE maChuyen = ? AND maHocSinh = ?`,
-      [thuTuDiemDon, trangThai, thoiGianThucTe, ghiChu, maChuyen, maHocSinh]
-    );
-    return result.affectedRows > 0;
+  async update(maTrangThaiOrMaChuyen, dataOrMaHocSinh, maybeData) {
+    // Support both signatures:
+    // 1. update(maTrangThai, data) - used by new code
+    // 2. update(maChuyen, maHocSinh, data) - used by old code
+
+    if (maybeData !== undefined) {
+      // Old signature: update(maChuyen, maHocSinh, data)
+      const maChuyen = maTrangThaiOrMaChuyen;
+      const maHocSinh = dataOrMaHocSinh;
+      const data = maybeData;
+      const { thuTuDiemDon, trangThai, thoiGianThucTe, ghiChu } = data;
+      const [result] = await pool.query(
+        `UPDATE TrangThaiHocSinh SET thuTuDiemDon = ?, trangThai = ?, thoiGianThucTe = ?, ghiChu = ?
+         WHERE maChuyen = ? AND maHocSinh = ?`,
+        [thuTuDiemDon, trangThai, thoiGianThucTe, ghiChu, maChuyen, maHocSinh]
+      );
+      return result.affectedRows > 0;
+    } else {
+      // New signature: update(maTrangThai, data)
+      const maTrangThai = maTrangThaiOrMaChuyen;
+      const data = dataOrMaHocSinh;
+      const { trangThai, thoiGianCapNhat, ghiChu } = data;
+
+      // Get current record first
+      const [current] = await pool.query(
+        `SELECT * FROM TrangThaiHocSinh WHERE maTrangThai = ?`,
+        [maTrangThai]
+      );
+
+      if (current.length === 0) {
+        return false;
+      }
+
+      const [result] = await pool.query(
+        `UPDATE TrangThaiHocSinh SET trangThai = ?, thoiGianCapNhat = ?, ghiChu = ?
+         WHERE maTrangThai = ?`,
+        [trangThai, thoiGianCapNhat, ghiChu || current[0].ghiChu, maTrangThai]
+      );
+      return result.affectedRows > 0;
+    }
   },
 
   // Xóa trạng thái học sinh

@@ -31,6 +31,8 @@ class ThongBaoModel {
       tieuDe,
       noiDung,
       loaiThongBao,
+      new Date(), // thoiGianGui
+      false, // daDoc
     ]);
 
     const [result] = await pool.query(

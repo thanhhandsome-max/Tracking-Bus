@@ -167,6 +167,16 @@ const NguoiDungModel = {
     return rows[0].count > 0;
   },
 
+  // Lấy người dùng theo vai trò
+  async getByRole(vaiTro) {
+    const [rows] = await pool.query(
+      `SELECT * FROM NguoiDung WHERE vaiTro = ? AND trangThai = TRUE`,
+      [vaiTro]
+    );
+    // Không trả về mật khẩu
+    return rows.map(({ matKhau, ...user }) => user);
+  },
+
   // Thống kê người dùng
   async getStats() {
     const [byRole] = await pool.query(

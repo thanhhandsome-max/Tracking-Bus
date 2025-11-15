@@ -1,8 +1,10 @@
-import fetch from "node-fetch";
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
 import { getCacheProvider, generateCacheKey } from "../core/cacheProvider.js";
+
+// Use native fetch (available in Node.js 18+)
+const fetch = globalThis.fetch;
 
 // Get __dirname equivalent in ESM
 const __filename = fileURLToPath(import.meta.url);
@@ -27,15 +29,24 @@ const MAPS_API_BASE_URL = "https://maps.googleapis.com/maps/api";
 if (!MAPS_API_KEY) {
   console.warn("[MapsService] ⚠️ MAPS_API_KEY is undefined!");
   console.warn("[MapsService] Current working directory:", process.cwd());
-  console.warn("[MapsService] Looking for .env at:", path.join(__dirname, "../../.env"));
+  console.warn(
+    "[MapsService] Looking for .env at:",
+    path.join(__dirname, "../../.env")
+  );
   console.warn("[MapsService] Also checked:", rootEnvPath);
-  console.warn("[MapsService] All env vars with 'MAPS':", 
-    Object.keys(process.env).filter(k => k.includes('MAPS')).map(k => `${k}=${process.env[k] ? '***' : 'undefined'}`)
+  console.warn(
+    "[MapsService] All env vars with 'MAPS':",
+    Object.keys(process.env)
+      .filter((k) => k.includes("MAPS"))
+      .map((k) => `${k}=${process.env[k] ? "***" : "undefined"}`)
   );
 } else {
-  const maskedKey = MAPS_API_KEY.length > 8 
-    ? `${MAPS_API_KEY.substring(0, 4)}...${MAPS_API_KEY.substring(MAPS_API_KEY.length - 4)}`
-    : '***';
+  const maskedKey =
+    MAPS_API_KEY.length > 8
+      ? `${MAPS_API_KEY.substring(0, 4)}...${MAPS_API_KEY.substring(
+          MAPS_API_KEY.length - 4
+        )}`
+      : "***";
   console.log(`[MapsService] ✅ MAPS_API_KEY loaded: ${maskedKey}`);
 }
 
@@ -86,18 +97,22 @@ class MapsService {
     }
 
     // Ensure waypoints is an array and filter out invalid entries
-    const validWaypoints = (Array.isArray(waypoints) ? waypoints : [])
-      .filter((w) => {
+    const validWaypoints = (Array.isArray(waypoints) ? waypoints : []).filter(
+      (w) => {
         if (typeof w === "string") return w.trim() !== "";
-        if (w && typeof w === "object" && w.location) return w.location.trim() !== "";
+        if (w && typeof w === "object" && w.location)
+          return w.location.trim() !== "";
         return false;
-      });
+      }
+    );
 
     // Generate cache key
     const cacheKey = generateCacheKey("dir", {
       origin,
       destination,
-      waypoints: validWaypoints.map((w) => (typeof w === "string" ? w : w.location)).sort(),
+      waypoints: validWaypoints
+        .map((w) => (typeof w === "string" ? w : w.location))
+        .sort(),
       mode,
       alternatives,
       avoid,
@@ -112,13 +127,20 @@ class MapsService {
     }
 
     // Build URL
-    const waypointsStr = validWaypoints.length > 0
-      ? `&waypoints=${validWaypoints.map((w) => (typeof w === "string" ? w : w.location)).join("|")}`
-      : "";
+    const waypointsStr =
+      validWaypoints.length > 0
+        ? `&waypoints=${validWaypoints
+            .map((w) => (typeof w === "string" ? w : w.location))
+            .join("|")}`
+        : "";
     const avoidStr = avoid.length > 0 ? `&avoid=${avoid.join("|")}` : "";
     const alternativesStr = alternatives ? "&alternatives=true" : "";
 
-    const url = `${MAPS_API_BASE_URL}/directions/json?origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}${waypointsStr}&mode=${mode}${avoidStr}${alternativesStr}&language=${language}&units=${units}&key=${MAPS_API_KEY}`;
+    const url = `${MAPS_API_BASE_URL}/directions/json?origin=${encodeURIComponent(
+      origin
+    )}&destination=${encodeURIComponent(
+      destination
+    )}${waypointsStr}&mode=${mode}${avoidStr}${alternativesStr}&language=${language}&units=${units}&key=${MAPS_API_KEY}`;
 
     console.log("[MapsService] Calling Directions API:", {
       origin,
@@ -137,20 +159,22 @@ class MapsService {
         response = await fetch(url, {
           signal: controller.signal,
           headers: {
-            'Accept': 'application/json',
+            Accept: "application/json",
           },
         });
         clearTimeout(timeoutId);
       } catch (fetchError) {
         clearTimeout(timeoutId);
-        if (fetchError.name === 'AbortError') {
+        if (fetchError.name === "AbortError") {
           throw new Error("Maps API request timeout (30s)");
         }
         throw fetchError;
       }
 
       if (!response.ok) {
-        throw new Error(`Maps API HTTP error: ${response.status} ${response.statusText}`);
+        throw new Error(
+          `Maps API HTTP error: ${response.status} ${response.statusText}`
+        );
       }
 
       const data = await response.json();
@@ -167,30 +191,51 @@ class MapsService {
           status: data.status,
           message: errorMsg,
         });
-        
+
         // Handle ZERO_RESULTS gracefully (no route found)
         if (data.status === "ZERO_RESULTS") {
-          console.warn("[MapsService] ZERO_RESULTS - No route found between origin and destination");
+          console.warn(
+            "[MapsService] ZERO_RESULTS - No route found between origin and destination"
+          );
           console.warn("[MapsService] This may happen if:");
-          console.warn("[MapsService]   - Coordinates are invalid or out of range");
-          console.warn("[MapsService]   - No route exists (e.g., across water without bridge)");
+          console.warn(
+            "[MapsService]   - Coordinates are invalid or out of range"
+          );
+          console.warn(
+            "[MapsService]   - No route exists (e.g., across water without bridge)"
+          );
           console.warn("[MapsService]   - Waypoints are too far apart");
-          throw new Error(`Maps API error: ZERO_RESULTS - No route found between points. ${errorMsg}`);
+          throw new Error(
+            `Maps API error: ZERO_RESULTS - No route found between points. ${errorMsg}`
+          );
         }
-        
+
         // Provide helpful error message for REQUEST_DENIED
         if (data.status === "REQUEST_DENIED") {
-          if (errorMsg.includes("legacy API") || errorMsg.includes("not enabled")) {
-            console.error("[MapsService] ⚠️ Directions API (Legacy) chưa được enable!");
-            console.error("[MapsService] 💡 Hãy enable Directions API trong Google Cloud Console:");
-            console.error("[MapsService]   1. Vào: https://console.cloud.google.com/apis/library");
-            console.error("[MapsService]   2. Tìm 'Directions API' (không phải Routes API)");
+          if (
+            errorMsg.includes("legacy API") ||
+            errorMsg.includes("not enabled")
+          ) {
+            console.error(
+              "[MapsService] ⚠️ Directions API (Legacy) chưa được enable!"
+            );
+            console.error(
+              "[MapsService] 💡 Hãy enable Directions API trong Google Cloud Console:"
+            );
+            console.error(
+              "[MapsService]   1. Vào: https://console.cloud.google.com/apis/library"
+            );
+            console.error(
+              "[MapsService]   2. Tìm 'Directions API' (không phải Routes API)"
+            );
             console.error("[MapsService]   3. Click ENABLE");
             console.error("[MapsService]   4. Đợi 1-2 phút và restart backend");
-            throw new Error(`Directions API (Legacy) chưa được enable. Vui lòng enable trong Google Cloud Console. Chi tiết: ${errorMsg}`);
+            throw new Error(
+              `Directions API (Legacy) chưa được enable. Vui lòng enable trong Google Cloud Console. Chi tiết: ${errorMsg}`
+            );
           }
         }
-        
+
         throw new Error(`Maps API error: ${data.status} - ${errorMsg}`);
       }
 
@@ -208,20 +253,22 @@ class MapsService {
       }
 
       // Extract legs (distance, duration for each segment)
-      const legs = route.legs?.map((leg) => ({
-        distance: leg.distance?.value || 0, // meters
-        duration: leg.duration?.value || 0, // seconds
-        start_address: leg.start_address,
-        end_address: leg.end_address,
-        start_location: leg.start_location,
-        end_location: leg.end_location,
-        steps: leg.steps?.map((step) => ({
-          distance: step.distance?.value || 0,
-          duration: step.duration?.value || 0,
-          polyline: step.polyline?.points || null,
-          html_instructions: step.html_instructions,
-        })) || [],
-      })) || [];
+      const legs =
+        route.legs?.map((leg) => ({
+          distance: leg.distance?.value || 0, // meters
+          duration: leg.duration?.value || 0, // seconds
+          start_address: leg.start_address,
+          end_address: leg.end_address,
+          start_location: leg.start_location,
+          end_location: leg.end_location,
+          steps:
+            leg.steps?.map((step) => ({
+              distance: step.distance?.value || 0,
+              duration: step.duration?.value || 0,
+              polyline: step.polyline?.points || null,
+              html_instructions: step.html_instructions,
+            })) || [],
+        })) || [];
 
       // Total distance and duration
       const distance = legs.reduce((sum, leg) => sum + leg.distance, 0);
@@ -301,20 +348,36 @@ class MapsService {
     }
 
     // Build URL
-    const originsStr = origins.map((o) => (typeof o === "string" ? o : `${o.lat},${o.lng}`)).join("|");
-    const destinationsStr = destinations.map((d) => (typeof d === "string" ? d : `${d.lat},${d.lng}`)).join("|");
+    const originsStr = origins
+      .map((o) => (typeof o === "string" ? o : `${o.lat},${o.lng}`))
+      .join("|");
+    const destinationsStr = destinations
+      .map((d) => (typeof d === "string" ? d : `${d.lat},${d.lng}`))
+      .join("|");
     const avoidStr = avoid.length > 0 ? `&avoid=${avoid.join("|")}` : "";
-    const departureTimeStr = departure_time ? `&departure_time=${departure_time}` : "";
-    const trafficModelStr = traffic_model ? `&traffic_model=${traffic_model}` : "";
+    const departureTimeStr = departure_time
+      ? `&departure_time=${departure_time}`
+      : "";
+    const trafficModelStr = traffic_model
+      ? `&traffic_model=${traffic_model}`
+      : "";
 
-    const url = `${MAPS_API_BASE_URL}/distancematrix/json?origins=${encodeURIComponent(originsStr)}&destinations=${encodeURIComponent(destinationsStr)}&mode=${mode}${avoidStr}${departureTimeStr}${trafficModelStr}&language=${language}&units=${units}&key=${MAPS_API_KEY}`;
+    const url = `${MAPS_API_BASE_URL}/distancematrix/json?origins=${encodeURIComponent(
+      originsStr
+    )}&destinations=${encodeURIComponent(
+      destinationsStr
+    )}&mode=${mode}${avoidStr}${departureTimeStr}${trafficModelStr}&language=${language}&units=${units}&key=${MAPS_API_KEY}`;
 
     try {
       const response = await fetch(url);
       const data = await response.json();
 
       if (data.status !== "OK") {
-        throw new Error(`Maps API error: ${data.status} - ${data.error_message || "Unknown error"}`);
+        throw new Error(
+          `Maps API error: ${data.status} - ${
+            data.error_message || "Unknown error"
+          }`
+        );
       }
 
       // Transform response
@@ -380,7 +443,11 @@ class MapsService {
       const data = await response.json();
 
       if (data.status !== "OK") {
-        throw new Error(`Maps API error: ${data.status} - ${data.error_message || "Unknown error"}`);
+        throw new Error(
+          `Maps API error: ${data.status} - ${
+            data.error_message || "Unknown error"
+          }`
+        );
       }
 
       // Transform response
@@ -450,14 +517,18 @@ class MapsService {
     // Build URL
     const pathStr = path.map((p) => `${p.lat},${p.lng}`).join("|");
     const interpolateStr = interpolate ? "&interpolate=true" : "";
-    const url = `${MAPS_API_BASE_URL}/roads/snapToRoads?path=${encodeURIComponent(pathStr)}${interpolateStr}&key=${MAPS_API_KEY}`;
+    const url = `${MAPS_API_BASE_URL}/roads/snapToRoads?path=${encodeURIComponent(
+      pathStr
+    )}${interpolateStr}&key=${MAPS_API_KEY}`;
 
     try {
       const response = await fetch(url);
       const data = await response.json();
 
       if (data.error) {
-        throw new Error(`Maps API error: ${data.error.message || "Unknown error"}`);
+        throw new Error(
+          `Maps API error: ${data.error.message || "Unknown error"}`
+        );
       }
 
       // Extract snapped polyline

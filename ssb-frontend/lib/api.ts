@@ -628,7 +628,30 @@ class ApiClient {
     return this.request(`/incidents${q ? `?${q}` : ""}`);
   }
 
-  async createIncident(payload: { maChuyen: number; moTa: string; mucDo?: string; trangThai?: string }) {
+  async createIncident(payload: {
+    maChuyen?: number;
+    loaiSuCo?: string;
+    moTa: string;
+    mucDo?: string;
+    viTri?: string;
+    trangThai?: string;
+    hocSinhLienQuan?: number[];
+    affectedStudents?: number[];
+  }) {
+    // 🔥 FIX: Gửi đến endpoint /trips/:id/incident thay vì /incidents nếu có maChuyen
+    if (payload.maChuyen) {
+      return this.request(`/trips/${payload.maChuyen}/incident`, { 
+        method: "POST", 
+        body: JSON.stringify({
+          loaiSuCo: payload.loaiSuCo || "other",
+          moTa: payload.moTa,
+          mucDo: payload.mucDo,
+          viTri: payload.viTri,
+          hocSinhLienQuan: payload.hocSinhLienQuan || payload.affectedStudents,
+        })
+      });
+    }
+    // Fallback: Gửi đến /incidents nếu không có maChuyen
     return this.request("/incidents", { method: "POST", body: JSON.stringify(payload) });
   }
 
