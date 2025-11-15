@@ -1,10 +1,10 @@
 import mongoose, { Schema, Document } from 'mongoose';
-import { IDriver } from './driver.model';
 
 export interface IBus extends Document {
   plateNumber: string;
   capacity: number;
   status: 'active' | 'maintenance';
+  driverId?: Schema.Types.ObjectId;
 }
 
 const busSchema: Schema<IBus> = new Schema({
@@ -16,6 +16,7 @@ const busSchema: Schema<IBus> = new Schema({
     required: true, 
     default: 'active' 
   },
+  driverId: { type: Schema.Types.ObjectId, ref: 'User' }
 }, { timestamps: true });
 
 export default mongoose.models.Bus || mongoose.model<IBus>('Bus', busSchema);

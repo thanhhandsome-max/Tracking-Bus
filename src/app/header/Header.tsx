@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import UserProfileModal from '../../components/UserProfileModal';
+import styles from './Header.module.css';
 
 interface HeaderProps {
   userName?: string;
@@ -41,96 +42,30 @@ export default function Header({ userName, userRole }: HeaderProps) {
 
   return (
     <>
-      <header style={{
-        backgroundColor: '#6B8EF5',
-        color: 'white',
-        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-        position: 'sticky',
-        top: 0,
-        zIndex: 50
-      }}>
-        <div style={{
-          maxWidth: '1280px',
-          margin: '0 auto',
-          padding: '1rem',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between'
-        }}>
+      <header className={styles.header}>
+        <div className={styles.headerContent}>
           {/* Logo và tên ứng dụng */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <div style={{
-              width: '48px',
-              height: '48px',
-              backgroundColor: 'white',
-              borderRadius: '50%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
-            }}>
-              <span style={{
-                color: '#6B8EF5',
-                fontWeight: 'bold',
-                fontSize: '1.25rem'
-              }}>SB</span>
+          <div className={styles.logoSection}>
+            <div className={styles.logoCircle}>
+              <span className={styles.logoText}>SB</span>
             </div>
-            <div>
-              <h1 style={{
-                fontSize: '1.5rem',
-                fontWeight: 'bold',
-                margin: 0
-              }}>SchoolBus</h1>
-              <p style={{
-                fontSize: '0.75rem',
-                color: 'rgba(255, 255, 255, 0.8)',
-                margin: 0
-              }}>hệ thống quản lý đưa đón học sinh</p>
+            <div className={styles.appInfo}>
+              <h1>SchoolBus</h1>
+              <p>hệ thống quản lý đưa đón học sinh</p>
             </div>
           </div>
 
           {/* Thông tin người dùng - Clickable */}
           <div 
             onClick={() => setIsProfileOpen(true)}
-            style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '1rem',
-              cursor: 'pointer',
-              padding: '0.5rem',
-              borderRadius: '0.5rem',
-              transition: 'background-color 0.2s'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'}
-            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+            className={styles.userSection}
           >
-            <div style={{ textAlign: 'right' }}>
-              <p style={{
-                fontSize: '0.875rem',
-                fontWeight: '600',
-                margin: 0
-              }}>{displayName}</p>
-              <p style={{
-                fontSize: '0.75rem',
-                color: 'rgba(255, 255, 255, 0.8)',
-                margin: 0
-              }}>{displayRole}</p>
+            <div className={styles.userInfo}>
+              <p className={styles.userName}>{displayName}</p>
+              <p className={styles.userRole}>{displayRole}</p>
             </div>
-            <div style={{
-              width: '48px',
-              height: '48px',
-              backgroundColor: 'white',
-              borderRadius: '50%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
-            }}>
-              <span style={{
-                color: '#6B8EF5',
-                fontWeight: 'bold',
-                fontSize: '1.125rem'
-              }}>PH</span>
+            <div className={styles.userAvatar}>
+              <span className={styles.avatarText}>PH</span>
             </div>
           </div>
         </div>

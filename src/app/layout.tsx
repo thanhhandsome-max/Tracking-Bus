@@ -1,8 +1,12 @@
-import type { Metadata } from "next";
+'use client';
+
 import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
-import Header from "./header";
+import { usePathname } from "next/navigation";
+import Header from "@/app/header/Header";
 import Navigation from "@/components/Navigation";
+import Footer from "@/app/footer/Footer";
+import styles from "./layout.module.css";
+import "./globals.css";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -14,53 +18,33 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: "SchoolBus - Hệ thống quản lý đưa đón học sinh",
-  description: "Ứng dụng theo dõi và quản lý xe buýt đưa đón học sinh",
-};
-
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const pathname = usePathname();
+  const isAdminPage = pathname.startsWith("/admin");
+  const isLoginPage = pathname.startsWith("/login");
+
   return (
     <html lang="vi">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-        style={{ margin: 0, padding: 0 }}
-      >
-        {/* Header sẽ xuất hiện ở tất cả các trang */}
-        <Header />
-        
-        {/* Navigation sẽ xuất hiện ở tất cả các trang - tự động detect active tab */}
-        <Navigation />
-        
-        {/* Content của từng trang sẽ render ở đây */}
-        <main style={{
-          minHeight: 'calc(100vh - 200px)',
-          backgroundColor: '#f9fafb'
-        }}>
+      <head>
+        <title>SchoolBus - Hệ thống quản lý đưa đón học sinh</title>
+        <meta name="description" content="Ứng dụng theo dõi và quản lý xe buýt đưa đón học sinh" />
+      </head>
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased ${styles.layout}`}>
+        {/* Chỉ hiển thị Header và Navigation trên các trang không phải admin và login */}
+        {!isAdminPage && !isLoginPage && <Header />}
+        {!isAdminPage && !isLoginPage && <Navigation />}
+
+        {/* Main content */}
+        <main className={styles.main}>
           {children}
         </main>
-        
-        {/* Footer */}
-        <footer style={{
-          backgroundColor: 'white',
-          borderTop: '1px solid #e5e7eb',
-          marginTop: '3rem'
-        }}>
-          <div style={{
-            maxWidth: '1280px',
-            margin: '0 auto',
-            padding: '1.5rem 1rem',
-            textAlign: 'center',
-            fontSize: '0.875rem',
-            color: '#6b7280'
-          }}>
-            <p style={{ margin: 0 }}>&copy; 2025 SchoolBus - Hệ thống quản lý đưa đón học sinh</p>
-          </div>
-        </footer>
+
+        {/* Chỉ hiển thị Footer trên các trang không phải admin và login */}
+        {!isAdminPage && !isLoginPage && <Footer />}
       </body>
     </html>
   );

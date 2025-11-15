@@ -1,0 +1,163 @@
+.container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem;
+}
+
+.header {
+  margin-bottom: 2rem;
+}
+
+.header h1 {
+  font-size: 2rem;
+  font-weight: bold;
+  margin-bottom: 0.5rem;
+  color: #1f2937;
+}
+
+.header p {
+  color: #6b7280;
+}
+
+.grid {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.grid.withMap {
+  grid-template-columns: 350px 1fr;
+}
+
+.routeList {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.routeListCard {
+  background-color: white;
+  border-radius: 0.75rem;
+  padding: 1rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.routeListCard h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+  color: #1f2937;
+}
+
+.routeItems {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.routeItem {
+  padding: 1rem;
+  border-radius: 0.5rem;
+  border: 2px solid #e5e7eb;
+  background-color: white;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.routeItem:hover {
+  border-color: #3b82f6;
+  background-color: #f9fafb;
+}
+
+.routeItem.active {
+  border-color: #3b82f6;
+  background-color: #eff6ff;
+}
+
+.routeItem h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 0.5rem;
+}
+
+.routeItem p {
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin-bottom: 0.75rem;
+}
+
+.routeItemMeta {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.mapContainer {
+  background-color: white;
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  min-height: 600px;
+}
+
+.mapHeader {
+  margin-bottom: 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.mapHeader h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 0.25rem;
+}
+
+.mapHeader p {
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.closeBtn {
+  padding: 0.5rem 1rem;
+  background-color: #f3f4f6;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #1f2937;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.closeBtn:hover {
+  background-color: #e5e7eb;
+}
+
+.emptyState {
+  background-color: white;
+  border-radius: 0.75rem;
+  padding: 3rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  text-align: center;
+}
+
+.emptyIcon {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 1rem;
+  color: #9ca3af;
+}
+
+.emptyState h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 0.5rem;
+}
+
+.emptyState p {
+  color: #6b7280;
+}

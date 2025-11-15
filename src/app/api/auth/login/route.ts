@@ -4,21 +4,31 @@ import User from '@/models/user.model';
 import Parent from '@/models/parent.model';
 import Driver from '@/models/driver.model';
 import Student from '@/models/student.model';
-import Bus from '@/models/bus.model';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+
+interface StudentData {
+  _id: unknown;
+  name: string;
+  class: string;
+  school: string;
+  age: number;
+}
+
+interface UserData {
+  [key: string]: unknown;
+}
 
 export async function POST(request: NextRequest) {
   try {
     await connectDB();
 
     // Ensure models are registered
-    const _bus = Bus;
-    const _student = Student;
-    const _parent = Parent;
-    const _driver = Driver;
+    void Parent;
+    void Student;
+    void Driver;
 
     const body = await request.json();
     const { email, password } = body;
@@ -52,7 +62,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Handle different user roles
-    let userData: any = {};
+    let userData: UserData = {};
     let token: string = '';
 
     if (user.role === 'parent') {
@@ -70,7 +80,7 @@ export async function POST(request: NextRequest) {
       const students = await Student.find({ parentId: parent._id });
 
       // Prepare student data
-      const studentsData = students.map((student: any) => ({
+      const studentsData: StudentData[] = students.map((student) => ({
         _id: student._id,
         name: student.name,
         class: student.classstudent,
@@ -79,7 +89,7 @@ export async function POST(request: NextRequest) {
       }));
 
       // Student IDs for filtering
-      const studentIds = students.map((s: any) => s._id.toString());
+      const studentIds = students.map((s) => s._id.toString());
 
       // Generate JWT token for parent
       token = jwt.sign(

@@ -1,0 +1,208 @@
+
+> build_model_tracking_bus@0.1.0 build
+> next build --turbopack
+
+ ⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+ We detected multiple lockfiles and selected the directory of c:\Users\CUONG\package-lock.json as the root directory.
+ To silence this warning, set `turbopack.root` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+   See https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopack#root-directory for more information.
+ Detected additional lockfiles: 
+   * c:\Users\CUONG\Tracking-Bus2\package-lock.json
+
+   ▲ Next.js 15.5.3 (Turbopack)
+   - Environments: .env.local
+
+   Creating an optimized production build ...
+ ✓ Finished writing to disk in 111ms
+ ✓ Compiled successfully in 10.1s
+   Linting and checking validity of types ...
+
+Failed to compile.
+
+./src/app/api/buses/active/route.ts
+25:19  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+36:38  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+67:40  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+68:20  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/api/buses/realtime/route.ts
+29:32  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+38:26  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+47:42  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+48:39  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+49:43  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+58:50  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+79:44  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+80:30  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/api/buses/simulate-all/route.ts
+5:8  Warning: 'Route' is defined but never used.  @typescript-eslint/no-unused-vars
+7:8  Warning: 'Bus' is defined but never used.  @typescript-eslint/no-unused-vars
+12:44  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+20:28  Warning: 'request' is defined but never used.  @typescript-eslint/no-unused-vars
+25:18  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+44:20  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+45:22  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+54:44  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+55:25  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/api/buses/simulate-gps/route.ts
+5:8  Warning: 'Route' is defined but never used.  @typescript-eslint/no-unused-vars
+29:17  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+43:18  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+53:40  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+54:21  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/api/buses/[busId]/location/route.ts
+50:39  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+51:38  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+52:35  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/api/messages/route.ts
+34:19  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+116:35  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+117:25  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+168:25  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+177:27  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/api/notifications/route.ts
+33:19  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+43:18  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+53:26  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+71:27  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/api/routes/route.ts
+22:19  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+43:52  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+44:25  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+92:44  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/api/trips/active/route.ts
+24:11  Warning: 'RouteModel' is assigned a value but never used.  @typescript-eslint/no-unused-vars
+25:11  Warning: 'StopModel' is assigned a value but never used.  @typescript-eslint/no-unused-vars
+26:11  Warning: 'BusModel' is assigned a value but never used.  @typescript-eslint/no-unused-vars
+27:11  Warning: 'DriverModel' is assigned a value but never used.  @typescript-eslint/no-unused-vars
+41:18  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+52:18  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+74:24  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+87:46  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+88:27  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+134:22  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+171:39  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/api/trips/active-simple/route.ts
+4:8  Warning: 'Bus' is defined but never used.  @typescript-eslint/no-unused-vars
+5:8  Warning: 'Route' is defined but never used.  @typescript-eslint/no-unused-vars
+11:27  Warning: 'request' is defined but never used.  @typescript-eslint/no-unused-vars
+45:66  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/api/trips/history/route.ts
+5:8  Warning: 'Route' is defined but never used.  @typescript-eslint/no-unused-vars
+6:8  Warning: 'Bus' is defined but never used.  @typescript-eslint/no-unused-vars
+7:8  Warning: 'Driver' is defined but never used.  @typescript-eslint/no-unused-vars
+39:19  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+47:21  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+59:18  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+78:18  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+93:20  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+94:18  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+95:21  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+105:47  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+119:30  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/api/trips/realtime/route.ts
+27:11  Warning: '_r' is assigned a value but never used.  @typescript-eslint/no-unused-vars
+28:11  Warning: '_s' is assigned a value but never used.  @typescript-eslint/no-unused-vars
+29:11  Warning: '_b' is assigned a value but never used.  @typescript-eslint/no-unused-vars
+30:11  Warning: '_bl' is assigned a value but never used.  @typescript-eslint/no-unused-vars
+41:18  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+62:24  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+63:22  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+70:58  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+91:46  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+92:27  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+116:30  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/api/trips/test/route.ts
+5:27  Warning: 'request' is defined but never used.  @typescript-eslint/no-unused-vars
+
+./src/app/bus-tracking/page.tsx
+6:34  Warning: 'BusLocationData' is defined but never used.  @typescript-eslint/no-unused-vars
+
+./src/app/driver/page.tsx
+28:36  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+81:14  Warning: 'error' is defined but never used.  @typescript-eslint/no-unused-vars
+116:22  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/driver/tracking/page.tsx
+61:10  Warning: 'loading' is assigned a value but never used.  @typescript-eslint/no-unused-vars
+65:48  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+107:49  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+122:19  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/footer/Footer.tsx
+26:17  Error: Do not use an `<a>` element to navigate to `/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages  @next/next/no-html-link-for-pages
+
+./src/app/header/Header.tsx
+14:9  Warning: 'router' is assigned a value but never used.  @typescript-eslint/no-unused-vars
+
+./src/app/login/page.tsx
+9:41  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/messages/page.tsx
+4:8  Warning: 'Link' is defined but never used.  @typescript-eslint/no-unused-vars
+
+./src/app/multi-trip-tracking/page.tsx
+173:47  Warning: 'trip' is defined but never used.  @typescript-eslint/no-unused-vars
+173:53  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+232:6  Warning: React Hook useCallback has a missing dependency: 'schoolLocation'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+./src/app/notifications/page.tsx
+19:10  Warning: 'user' is assigned a value but never used.  @typescript-eslint/no-unused-vars
+19:36  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/components/AuthForm.tsx
+7:31  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+25:9  Warning: 'validatePhone' is assigned a value but never used.  @typescript-eslint/no-unused-vars
+118:9  Warning: 'resetForm' is assigned a value but never used.  @typescript-eslint/no-unused-vars
+
+./src/components/HomePage/HomePage.tsx
+47:36  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/components/MapView.tsx
+92:54  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+107:6  Warning: React Hook useEffect has a missing dependency: 'stops'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+118:26  Warning: 'index' is defined but never used.  @typescript-eslint/no-unused-vars
+455:6  Warning: React Hook useEffect has missing dependencies: 'graphHopperKey' and 'stops'. Either include them or remove the dependency array.  react-hooks/exhaustive-deps
+
+./src/components/MultiTripMapView.tsx
+74:9  Warning: The 'busColors' array makes the dependencies of useEffect Hook (at line 391) change on every render. To fix this, wrap the initialization of 'busColors' in its own useMemo() Hook.  react-hooks/exhaustive-deps
+113:21  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+265:21  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+288:6  Warning: React Hook useEffect has a missing dependency: 'trips'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+./src/components/ParentProfileTab.tsx
+48:6  Warning: React Hook useEffect has a missing dependency: 'loadParentProfile'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+./src/components/StudentManagementTab.tsx
+28:6  Warning: React Hook useEffect has a missing dependency: 'loadStudents'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+272:17  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+./src/components/TripDetailModal.tsx
+241:15  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+./src/models/trip.model.ts
+4:15  Warning: 'IRoute' is defined but never used.  @typescript-eslint/no-unused-vars
+5:15  Warning: 'IBus' is defined but never used.  @typescript-eslint/no-unused-vars
+6:15  Warning: 'IDriver' is defined but never used.  @typescript-eslint/no-unused-vars
+7:15  Warning: 'IStudent' is defined but never used.  @typescript-eslint/no-unused-vars
+8:15  Warning: 'IStop' is defined but never used.  @typescript-eslint/no-unused-vars
+
+./src/service/BusSimulationService.ts
+177:9  Warning: 'segmentStartTime' is assigned a value but never used.  @typescript-eslint/no-unused-vars
+
+./src/service/NotificationService.ts
+52:35  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+100:12  Warning: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+info  - Need to disable some ESLint rules? Learn more here: https://nextjs.org/docs/app/api-reference/config/eslint#disabling-rules

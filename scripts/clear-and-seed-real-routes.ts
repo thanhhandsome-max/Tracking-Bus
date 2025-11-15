@@ -2,7 +2,7 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/schoolbus';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/SchoolBus';
 
 // Real addresses in Ho Chi Minh City
 const REAL_LOCATIONS = {
@@ -74,6 +74,12 @@ async function clearAndSeedRealData() {
     console.log('\n👥 Creating users...');
     const users = await db.collection('users').insertMany([
       {
+        email: 'admin@schoolbus.com',
+        password: hashedPassword,
+        role: 'admin',
+        createdAt: new Date()
+      },
+      {
         email: 'parent1@example.com',
         password: hashedPassword,
         name: 'Nguyễn Văn A',
@@ -107,7 +113,7 @@ async function clearAndSeedRealData() {
     // Create drivers
     const drivers = await db.collection('drivers').insertMany([
       {
-        userId: userIds[1], // driver1@schoolbus.com
+        userId: userIds[2], // driver1@schoolbus.com
         name: 'Trần Văn Tài',
         email: 'driver1@schoolbus.com',
         phone: '0912345678',
@@ -116,7 +122,7 @@ async function clearAndSeedRealData() {
         createdAt: new Date()
       },
       {
-        userId: userIds[2], // driver2@schoolbus.com
+        userId: userIds[3], // driver2@schoolbus.com
         name: 'Lê Văn Sơn',
         email: 'driver2@schoolbus.com',
         phone: '0923456789',
@@ -130,12 +136,13 @@ async function clearAndSeedRealData() {
     // Create parents
     const parents = await db.collection('parents').insertMany([
       {
-        userId: userIds[0],
+        userId: userIds[1],
+        firstName: 'Nguyễn',
+        lastName: 'Văn A',
         name: 'Nguyễn Văn A',
         email: 'parent1@example.com',
         phone: '0901234567',
         address: 'Quận 1, TP.HCM',
-        studentIds: [],
         createdAt: new Date()
       }
     ]);
@@ -204,11 +211,11 @@ async function clearAndSeedRealData() {
 
     // Update drivers with busId
     await db.collection('drivers').updateOne(
-      { userId: userIds[1] },
+      { userId: userIds[2] },
       { $set: { busId: buses.insertedIds[0] } }
     );
     await db.collection('drivers').updateOne(
-      { userId: userIds[2] },
+      { userId: userIds[3] },
       { $set: { busId: buses.insertedIds[1] } }
     );
     console.log('✅ Updated drivers with bus assignments');
@@ -438,6 +445,7 @@ async function clearAndSeedRealData() {
     console.log(`1. ${REAL_LOCATIONS.START_POINT.name} → ${REAL_LOCATIONS.SGU_CS1.name}`);
     console.log(`2. ${REAL_LOCATIONS.PICKUP_1.name} → ${REAL_LOCATIONS.SGU_CS2.name}`);
     console.log('\n🔐 Test accounts:');
+    console.log('Admin: admin@schoolbus.com / 123456');
     console.log('Parent: parent1@example.com / 123456');
     console.log('Driver 1: driver1@schoolbus.com / 123456');
     console.log('Driver 2: driver2@schoolbus.com / 123456');

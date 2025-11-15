@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import MapView from '../../components/MapView';
+import styles from './page.module.css';
 
 interface Route {
   id: string;
@@ -69,108 +70,28 @@ export default function RoutesPage() {
   ];
 
   return (
-    <div style={{
-      maxWidth: '1400px',
-      margin: '0 auto',
-      padding: '1.5rem 1rem'
-    }}>
-      <div style={{
-        marginBottom: '2rem'
-      }}>
-        <h1 style={{
-          fontSize: '2rem',
-          fontWeight: 'bold',
-          marginBottom: '0.5rem',
-          color: '#1f2937'
-        }}>
-          🚌 Tuyến xe
-        </h1>
-        <p style={{ color: '#6b7280' }}>
-          Quản lý và theo dõi các tuyến đường xe buýt đưa đón học sinh
-        </p>
+    <div className={styles.container}>
+      <div className={styles.header}>
+        <h1>🚌 Tuyến xe</h1>
+        <p>Quản lý và theo dõi các tuyến đường xe buýt đưa đón học sinh</p>
       </div>
 
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: selectedRoute ? '350px 1fr' : '1fr',
-        gap: '1.5rem'
-      }}>
+      <div className={`${styles.grid} ${selectedRoute ? styles.withMap : ''}`}>
         {/* Route List */}
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '1rem'
-        }}>
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: '0.75rem',
-            padding: '1rem',
-            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
-          }}>
-            <h2 style={{
-              fontSize: '1.25rem',
-              fontWeight: '600',
-              marginBottom: '1rem',
-              color: '#1f2937'
-            }}>
-              Danh sách tuyến ({routes.length})
-            </h2>
+        <div className={styles.routeList}>
+          <div className={styles.routeListCard}>
+            <h2>Danh sách tuyến ({routes.length})</h2>
             
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '0.75rem'
-            }}>
+            <div className={styles.routeItems}>
               {routes.map((route) => (
                 <div
                   key={route.id}
+                  className={`${styles.routeItem} ${selectedRoute?.id === route.id ? styles.active : ''}`}
                   onClick={() => setSelectedRoute(route)}
-                  style={{
-                    padding: '1rem',
-                    borderRadius: '0.5rem',
-                    border: selectedRoute?.id === route.id 
-                      ? '2px solid #3b82f6' 
-                      : '2px solid #e5e7eb',
-                    backgroundColor: selectedRoute?.id === route.id 
-                      ? '#eff6ff' 
-                      : 'white',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s'
-                  }}
-                  onMouseEnter={(e) => {
-                    if (selectedRoute?.id !== route.id) {
-                      e.currentTarget.style.borderColor = '#3b82f6';
-                      e.currentTarget.style.backgroundColor = '#f9fafb';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (selectedRoute?.id !== route.id) {
-                      e.currentTarget.style.borderColor = '#e5e7eb';
-                      e.currentTarget.style.backgroundColor = 'white';
-                    }
-                  }}
                 >
-                  <h3 style={{
-                    fontSize: '1rem',
-                    fontWeight: '600',
-                    color: '#1f2937',
-                    marginBottom: '0.5rem'
-                  }}>
-                    {route.name}
-                  </h3>
-                  <p style={{
-                    fontSize: '0.875rem',
-                    color: '#6b7280',
-                    marginBottom: '0.75rem'
-                  }}>
-                    {route.description}
-                  </p>
-                  <div style={{
-                    display: 'flex',
-                    gap: '1rem',
-                    fontSize: '0.75rem',
-                    color: '#6b7280'
-                  }}>
+                  <h3>{route.name}</h3>
+                  <p>{route.description}</p>
+                  <div className={styles.routeItemMeta}>
                     <span>🚌 {route.busNumber}</span>
                     <span>👨‍✈️ {route.driverName}</span>
                     <span>👥 {route.studentCount} HS</span>
@@ -183,54 +104,15 @@ export default function RoutesPage() {
 
         {/* Map View */}
         {selectedRoute && (
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: '0.75rem',
-            padding: '1.5rem',
-            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
-            minHeight: '600px'
-          }}>
-            <div style={{
-              marginBottom: '1rem',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center'
-            }}>
+          <div className={styles.mapContainer}>
+            <div className={styles.mapHeader}>
               <div>
-                <h2 style={{
-                  fontSize: '1.5rem',
-                  fontWeight: '600',
-                  color: '#1f2937',
-                  marginBottom: '0.25rem'
-                }}>
-                  {selectedRoute.name}
-                </h2>
-                <p style={{
-                  fontSize: '0.875rem',
-                  color: '#6b7280'
-                }}>
-                  {selectedRoute.stops.length} điểm dừng
-                </p>
+                <h2>{selectedRoute.name}</h2>
+                <p>{selectedRoute.stops.length} điểm dừng</p>
               </div>
               <button
+                className={styles.closeBtn}
                 onClick={() => setSelectedRoute(null)}
-                style={{
-                  padding: '0.5rem 1rem',
-                  backgroundColor: '#f3f4f6',
-                  border: 'none',
-                  borderRadius: '0.5rem',
-                  fontSize: '0.875rem',
-                  fontWeight: '600',
-                  color: '#1f2937',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = '#e5e7eb';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = '#f3f4f6';
-                }}
               >
                 Đóng bản đồ
               </button>
@@ -248,20 +130,9 @@ export default function RoutesPage() {
 
       {/* Empty State */}
       {!selectedRoute && (
-        <div style={{
-          backgroundColor: 'white',
-          borderRadius: '0.75rem',
-          padding: '3rem',
-          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
-          textAlign: 'center'
-        }}>
+        <div className={styles.emptyState}>
           <svg
-            style={{
-              width: '80px',
-              height: '80px',
-              margin: '0 auto 1rem',
-              color: '#9ca3af'
-            }}
+            className={styles.emptyIcon}
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -273,19 +144,8 @@ export default function RoutesPage() {
               d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"
             />
           </svg>
-          <h3 style={{
-            fontSize: '1.25rem',
-            fontWeight: '600',
-            color: '#1f2937',
-            marginBottom: '0.5rem'
-          }}>
-            Chọn tuyến để xem bản đồ
-          </h3>
-          <p style={{
-            color: '#6b7280'
-          }}>
-            Nhấn vào một tuyến bên trái để xem lộ trình chi tiết trên bản đồ
-          </p>
+          <h3>Chọn tuyến để xem bản đồ</h3>
+          <p>Nhấn vào một tuyến bên trái để xem lộ trình chi tiết trên bản đồ</p>
         </div>
       )}
     </div>
