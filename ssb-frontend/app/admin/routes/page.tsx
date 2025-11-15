@@ -7,17 +7,20 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Calendar } from "@/components/ui/calendar"
-import { Plus, Edit, Trash2, Eye, MapPin, Clock, Search, Filter, AlertCircle, Route, Calendar as CalendarIcon, X, Grid3x3, List } from "lucide-react"
+import { Plus, Edit, Trash2, Eye, MapPin, Clock, Search, Filter, AlertCircle, Route, Grid3x3, List, Navigation, ArrowRight, MoreVertical } from "lucide-react"
 import { RouteBuilder } from "@/components/admin/route-builder"
 import { StatsCard } from "@/components/admin/stats-card"
 import { useRoutes, useDeleteRoute } from "@/lib/hooks/useRoutes"
 import { useRouter } from "next/navigation"
 import { useDebounce } from "@/lib/hooks/useDebounce"
 import { useToast } from "@/hooks/use-toast"
-import { format } from "date-fns"
-import { vi } from "date-fns/locale"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu"
 
 type Route = { 
   id: string; 
@@ -32,13 +35,12 @@ type Route = {
 
 type ViewMode = "grid" | "list"
 
-  export default function RoutesPage() {
+export default function RoutesPage() {
   const router = useRouter()
   const { toast } = useToast()
   const [searchQuery, setSearchQuery] = useState("")
   const debouncedSearch = useDebounce(searchQuery, 300)
   const [statusFilter, setStatusFilter] = useState<string>("all")
-  const [dateFilter, setDateFilter] = useState<Date | undefined>(undefined)
   const [viewMode, setViewMode] = useState<ViewMode>("grid")
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
@@ -70,18 +72,6 @@ type ViewMode = "grid" | "list"
     }
   }
 
-  // Helper to parse date from route
-  function getRouteDate(route: Route): Date | null {
-    if (!route.raw) return null
-    const dateStr = route.raw.ngayTao || route.raw.createdAt
-    if (!dateStr) return null
-    try {
-      return new Date(dateStr)
-    } catch {
-      return null
-    }
-  }
-
   const routes = useMemo(() => {
     if (!routesData?.data) return []
     const items = Array.isArray(routesData.data) ? routesData.data : []
@@ -107,7 +97,7 @@ type ViewMode = "grid" | "list"
     }
   }, [routes])
 
-  // Filtering routes by status and date
+  // Filtering routes by status only (removed date filter)
   const filteredRoutes = useMemo(() => {
     let filtered = routes
 
@@ -122,21 +112,30 @@ type ViewMode = "grid" | "list"
       })
     }
 
-    // Filter by date (ngày tạo)
-    if (dateFilter) {
-      filtered = filtered.filter((route) => {
-        const routeDate = getRouteDate(route)
-        if (!routeDate) return false
-        return (
-          routeDate.getDate() === dateFilter.getDate() &&
-          routeDate.getMonth() === dateFilter.getMonth() &&
-          routeDate.getFullYear() === dateFilter.getFullYear()
-        )
-      })
-    }
-
     return filtered
-  }, [routes, statusFilter, dateFilter])
+  }, [routes, statusFilter])
+
+  // Helper to get route origin and destination
+  const getRouteEndpoints = (route: Route) => {
+    const raw = route.raw
+    if (!raw) return { origin: null, destination: null }
+    
+    // Try to get from diemBatDau/diemKetThuc
+    const origin = raw.diemBatDau || raw.origin || null
+    const destination = raw.diemKetThuc || raw.destination || null
+    
+    // If we have stops, get first and last stop names
+    const stops = raw.stops || raw.diemDung || []
+    if (stops.length > 0) {
+      const sortedStops = [...stops].sort((a: any, b: any) => (a.sequence || a.thuTu || 0) - (b.sequence || b.thuTu || 0))
+      return {
+        origin: origin || sortedStops[0]?.tenDiem || sortedStops[0]?.name || 'Điểm bắt đầu',
+        destination: destination || sortedStops[sortedStops.length - 1]?.tenDiem || sortedStops[sortedStops.length - 1]?.name || 'Điểm kết thúc'
+      }
+    }
+    
+    return { origin, destination }
+  }
 
   // Show RouteBuilder in fullscreen when creating/editing
   if (isAddDialogOpen || isEditDialogOpen) {
@@ -177,7 +176,7 @@ type ViewMode = "grid" | "list"
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-foreground">Quản lý Tuyến đường</h1>
-            <p className="text-muted-foreground mt-1">Quản lý tuyến đường và điểm dừng</p>
+            <p className="text-muted-foreground mt-1">Quản lý và cấu hình các tuyến đường xe buýt</p>
           </div>
           <Button 
             className="bg-primary hover:bg-primary/90"
@@ -294,74 +293,28 @@ type ViewMode = "grid" | "list"
                     Tạm ngừng
                   </Button>
                 </div>
-
-                {/* Date Filter */}
-                <div className="flex items-center gap-2 ml-auto">
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant={dateFilter ? "default" : "outline"}
-                        size="sm"
-                        className="gap-2"
-                      >
-                        <CalendarIcon className="w-4 h-4" />
-                        {dateFilter ? format(dateFilter, "dd/MM/yyyy", { locale: vi }) : "Lọc theo ngày"}
-                        {dateFilter && (
-                          <X 
-                            className="w-3 h-3 ml-1" 
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setDateFilter(undefined)
-                            }}
-                          />
-                        )}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={dateFilter}
-                        onSelect={setDateFilter}
-                        initialFocus
-                        locale={vi}
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
               </div>
 
               {/* Active Filters Summary */}
-              {(dateFilter || statusFilter !== 'all') && (
+              {statusFilter !== 'all' && (
                 <div className="flex items-center gap-2 pt-2 border-t">
                   <span className="text-xs text-muted-foreground">Đang lọc:</span>
-                  {dateFilter && (
-                    <Badge variant="secondary" className="gap-1">
-                      Ngày: {format(dateFilter, "dd/MM/yyyy", { locale: vi })}
-                      <X 
-                        className="w-3 h-3 cursor-pointer" 
-                        onClick={() => setDateFilter(undefined)}
-                      />
-                    </Badge>
-                  )}
-                  {statusFilter !== 'all' && (
-                    <Badge variant="secondary" className="gap-1">
-                      Trạng thái: {statusFilter === 'active' ? 'Hoạt động' : 'Tạm ngừng'}
-                      <X 
-                        className="w-3 h-3 cursor-pointer" 
-                        onClick={() => setStatusFilter('all')}
-                      />
-                    </Badge>
-                  )}
+                  <Badge variant="secondary" className="gap-1">
+                    Trạng thái: {statusFilter === 'active' ? 'Hoạt động' : 'Tạm ngừng'}
+                    <button
+                      className="ml-1 hover:bg-muted rounded-full p-0.5"
+                      onClick={() => setStatusFilter('all')}
+                    >
+                      ×
+                    </button>
+                  </Badge>
                   <Button
                     variant="ghost"
                     size="sm"
                     className="h-6 px-2 text-xs ml-auto"
-                    onClick={() => {
-                      setDateFilter(undefined)
-                      setStatusFilter('all')
-                    }}
+                    onClick={() => setStatusFilter('all')}
                   >
-                    Xóa tất cả bộ lọc
+                    Xóa bộ lọc
                   </Button>
                 </div>
               )}
@@ -369,7 +322,7 @@ type ViewMode = "grid" | "list"
           </CardContent>
         </Card>
 
-        {/* Routes Grid */}
+        {/* Routes Grid/List */}
         {isLoading ? (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {[1, 2, 3, 4].map((i) => (
@@ -421,18 +374,15 @@ type ViewMode = "grid" | "list"
                 <div>
                   <h3 className="font-semibold text-lg">Không tìm thấy tuyến đường</h3>
                   <p className="text-muted-foreground">
-                    {(dateFilter || statusFilter !== 'all') 
+                    {statusFilter !== 'all' 
                       ? "Thử thay đổi bộ lọc để xem thêm tuyến đường"
                       : "Bắt đầu bằng cách thêm tuyến đường đầu tiên"}
                   </p>
                 </div>
-                {(dateFilter || statusFilter !== 'all') ? (
+                {statusFilter !== 'all' ? (
                   <Button 
                     variant="outline"
-                    onClick={() => {
-                      setDateFilter(undefined)
-                      setStatusFilter('all')
-                    }}
+                    onClick={() => setStatusFilter('all')}
                   >
                     Xóa bộ lọc
                   </Button>
@@ -447,138 +397,117 @@ type ViewMode = "grid" | "list"
           </Card>
         ) : viewMode === "grid" ? (
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-            {filteredRoutes.map((route) => (
-              <Card key={route.id} className="border-border/50 hover:border-primary/50 transition-all hover:shadow-lg flex flex-col">
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="space-y-1 flex-1 min-w-0">
-                      <CardTitle className="text-lg line-clamp-2">{route.name}</CardTitle>
-                      <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
-                        <div className="flex items-center gap-1">
-                          <MapPin className="w-3.5 h-3.5" />
-                          <span>{route.stopsCount ?? '-'} điểm</span>
-                        </div>
-                        {route.duration && (
-                          <div className="flex items-center gap-1">
-                            <Clock className="w-3.5 h-3.5" />
-                            <span>{route.duration} phút</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    <Badge
-                      variant="outline"
-                      className={
-                        (route.status === true || route.status === "active" || route.status === "hoat_dong")
-                          ? "border-success text-success bg-success/10 shrink-0"
-                          : "border-muted-foreground text-muted-foreground bg-muted/10 shrink-0"
-                      }
-                    >
-                      {(route.status === true || route.status === "active" || route.status === "hoat_dong") ? "Hoạt động" : "Tạm ngừng"}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-3 flex-1 flex flex-col">
-                  {(route.distance || route.assignedBus) && (
-                    <div className="grid grid-cols-2 gap-3 text-sm p-3 bg-muted/30 rounded-lg">
-                      {route.distance && (
-                        <div>
-                          <p className="text-muted-foreground text-xs mb-0.5">Khoảng cách</p>
-                          <p className="font-medium text-sm">{route.distance}</p>
-                        </div>
-                      )}
-                      {route.assignedBus && (
-                        <div>
-                          <p className="text-muted-foreground text-xs mb-0.5">Xe được gán</p>
-                          <p className="font-medium text-sm">{route.assignedBus}</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  <div className="flex items-center gap-2 pt-auto mt-auto">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex-1 bg-transparent hover:bg-primary hover:text-primary-foreground"
-                      onClick={() => router.push(`/admin/routes/${route.id}`)}
-                    >
-                      <Eye className="w-4 h-4 mr-1.5" />
-                      Chi tiết
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={() => { setEditingRoute(route); setIsEditDialogOpen(true) }}
-                    >
-                      <Edit className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                      onClick={() => {
-                        if (!confirm(`Bạn có chắc chắn muốn xóa tuyến "${route.name}"?`)) return
-                        deleteRoute(route.id, {
-                          onSuccess: () => {
-                            toast({ title: "Thành công", description: "Đã xóa tuyến đường." })
-                          },
-                          onError: (err: Error) => {
-                            toast({ title: "Lỗi", description: err.message || 'Xóa thất bại', variant: "destructive" })
-                          },
-                        })
-                      }}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {filteredRoutes.map((route) => (
-              <Card key={route.id} className="border-border/50 hover:border-primary/50 transition-all">
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-3 mb-2">
-                        <CardTitle className="text-lg line-clamp-1">{route.name}</CardTitle>
+            {filteredRoutes.map((route) => {
+              const endpoints = getRouteEndpoints(route)
+              const isActive = route.status === true || route.status === "active" || route.status === "hoat_dong"
+              
+              return (
+                <Card key={route.id} className="border-border/50 hover:border-primary/50 transition-all hover:shadow-lg flex flex-col group">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="space-y-1 flex-1 min-w-0">
+                        <CardTitle className="text-lg line-clamp-2 group-hover:text-primary transition-colors">
+                          {route.name}
+                        </CardTitle>
                         <Badge
                           variant="outline"
                           className={
-                            (route.status === true || route.status === "active" || route.status === "hoat_dong")
-                              ? "border-success text-success bg-success/10"
-                              : "border-muted-foreground text-muted-foreground bg-muted/10"
+                            isActive
+                              ? "border-success text-success bg-success/10 shrink-0 mt-1"
+                              : "border-muted-foreground text-muted-foreground bg-muted/10 shrink-0 mt-1"
                           }
                         >
-                          {(route.status === true || route.status === "active" || route.status === "hoat_dong") ? "Hoạt động" : "Tạm ngừng"}
+                          {isActive ? "Hoạt động" : "Tạm ngừng"}
                         </Badge>
                       </div>
-                      <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
-                        <div className="flex items-center gap-1">
-                          <MapPin className="w-4 h-4" />
-                          {route.stopsCount ?? '-'} điểm dừng
-                        </div>
-                        {route.duration && (
-                          <div className="flex items-center gap-1">
-                            <Clock className="w-4 h-4" />
-                            {route.duration} phút
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0 shrink-0">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => router.push(`/admin/routes/${route.id}`)}>
+                            <Eye className="mr-2 h-4 w-4" />
+                            Xem chi tiết
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => { setEditingRoute(route); setIsEditDialogOpen(true) }}>
+                            <Edit className="mr-2 h-4 w-4" />
+                            Chỉnh sửa
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem 
+                            variant="destructive"
+                            onClick={() => {
+                              if (!confirm(`Bạn có chắc chắn muốn xóa tuyến "${route.name}"?`)) return
+                              deleteRoute(route.id, {
+                                onSuccess: () => {
+                                  toast({ title: "Thành công", description: "Đã xóa tuyến đường." })
+                                },
+                                onError: (err: Error) => {
+                                  toast({ title: "Lỗi", description: err.message || 'Xóa thất bại', variant: "destructive" })
+                                },
+                              })
+                            }}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Xóa
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-3 flex-1 flex flex-col">
+                    {/* Route Endpoints */}
+                    {(endpoints.origin || endpoints.destination) && (
+                      <div className="space-y-2 p-3 bg-muted/30 rounded-lg">
+                        {endpoints.origin && (
+                          <div className="flex items-start gap-2 text-sm">
+                            <Navigation className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs text-muted-foreground mb-0.5">Điểm bắt đầu</p>
+                              <p className="font-medium line-clamp-1">{endpoints.origin}</p>
+                            </div>
                           </div>
                         )}
-                        {route.distance && (
-                          <span>Khoảng cách: {route.distance}</span>
-                        )}
-                        {route.assignedBus && (
-                          <span>Xe: {route.assignedBus}</span>
+                        {endpoints.destination && (
+                          <div className="flex items-start gap-2 text-sm">
+                            <MapPin className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs text-muted-foreground mb-0.5">Điểm kết thúc</p>
+                              <p className="font-medium line-clamp-1">{endpoints.destination}</p>
+                            </div>
+                          </div>
                         )}
                       </div>
+                    )}
+
+                    {/* Route Stats */}
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div className="flex items-center gap-2 p-2 bg-muted/20 rounded">
+                        <MapPin className="w-4 h-4 text-muted-foreground" />
+                        <div>
+                          <p className="text-xs text-muted-foreground">Điểm dừng</p>
+                          <p className="font-semibold">{route.stopsCount ?? '-'}</p>
+                        </div>
+                      </div>
+                      {route.duration && (
+                        <div className="flex items-center gap-2 p-2 bg-muted/20 rounded">
+                          <Clock className="w-4 h-4 text-muted-foreground" />
+                          <div>
+                            <p className="text-xs text-muted-foreground">Thời gian</p>
+                            <p className="font-semibold">{route.duration} phút</p>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
+
+                    {/* Actions */}
+                    <div className="flex items-center gap-2 pt-2 mt-auto border-t">
                       <Button
                         variant="outline"
                         size="sm"
+                        className="flex-1"
                         onClick={() => router.push(`/admin/routes/${route.id}`)}
                       >
                         <Eye className="w-4 h-4 mr-1.5" />
@@ -591,29 +520,114 @@ type ViewMode = "grid" | "list"
                       >
                         <Edit className="w-4 h-4" />
                       </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                        onClick={() => {
-                          if (!confirm(`Bạn có chắc chắn muốn xóa tuyến "${route.name}"?`)) return
-                          deleteRoute(route.id, {
-                            onSuccess: () => {
-                              toast({ title: "Thành công", description: "Đã xóa tuyến đường." })
-                            },
-                            onError: (err: Error) => {
-                              toast({ title: "Lỗi", description: err.message || 'Xóa thất bại', variant: "destructive" })
-                            },
-                          })
-                        }}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {filteredRoutes.map((route) => {
+              const endpoints = getRouteEndpoints(route)
+              const isActive = route.status === true || route.status === "active" || route.status === "hoat_dong"
+              
+              return (
+                <Card key={route.id} className="border-border/50 hover:border-primary/50 transition-all">
+                  <CardContent className="pt-6">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-3 mb-2">
+                          <CardTitle className="text-lg line-clamp-1">{route.name}</CardTitle>
+                          <Badge
+                            variant="outline"
+                            className={
+                              isActive
+                                ? "border-success text-success bg-success/10"
+                                : "border-muted-foreground text-muted-foreground bg-muted/10"
+                            }
+                          >
+                            {isActive ? "Hoạt động" : "Tạm ngừng"}
+                          </Badge>
+                        </div>
+                        
+                        {/* Route Endpoints */}
+                        {(endpoints.origin || endpoints.destination) && (
+                          <div className="flex items-center gap-4 mb-2 text-sm text-muted-foreground">
+                            {endpoints.origin && (
+                              <div className="flex items-center gap-1.5">
+                                <Navigation className="w-3.5 h-3.5 text-primary" />
+                                <span className="line-clamp-1">{endpoints.origin}</span>
+                              </div>
+                            )}
+                            {endpoints.origin && endpoints.destination && (
+                              <ArrowRight className="w-4 h-4 shrink-0" />
+                            )}
+                            {endpoints.destination && (
+                              <div className="flex items-center gap-1.5">
+                                <MapPin className="w-3.5 h-3.5 text-destructive" />
+                                <span className="line-clamp-1">{endpoints.destination}</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        
+                        <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
+                          <div className="flex items-center gap-1">
+                            <MapPin className="w-4 h-4" />
+                            {route.stopsCount ?? '-'} điểm dừng
+                          </div>
+                          {route.duration && (
+                            <div className="flex items-center gap-1">
+                              <Clock className="w-4 h-4" />
+                              {route.duration} phút
+                            </div>
+                          )}
+                          {route.distance && (
+                            <span>Khoảng cách: {route.distance}</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => router.push(`/admin/routes/${route.id}`)}
+                        >
+                          <Eye className="w-4 h-4 mr-1.5" />
+                          Chi tiết
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => { setEditingRoute(route); setIsEditDialogOpen(true) }}
+                        >
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => {
+                            if (!confirm(`Bạn có chắc chắn muốn xóa tuyến "${route.name}"?`)) return
+                            deleteRoute(route.id, {
+                              onSuccess: () => {
+                                toast({ title: "Thành công", description: "Đã xóa tuyến đường." })
+                              },
+                              onError: (err: Error) => {
+                                toast({ title: "Lỗi", description: err.message || 'Xóa thất bại', variant: "destructive" })
+                              },
+                            })
+                          }}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })}
           </div>
         )}
 
