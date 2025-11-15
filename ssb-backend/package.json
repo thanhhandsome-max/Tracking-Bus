@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "node src/server.js",
-    "test": "jest --runInBand",
+    "test": "jest --runInBand --testEnvironment=node",
     "db:init": "mysql -u root -p school_bus_system < ../database/01_init_db_ver2.sql",
     "db:seed": "mysql -u root -p school_bus_system < ../database/02_sample_data.sql",
     "db:reset": "npm run db:init && npm run db:seed",
@@ -17,7 +17,7 @@
     "export-postman": "node scripts/export-postman.js",
     "check:backend": "node scripts/check-backend.js",
     "check:env": "node scripts/check-env.js",
-    "test": "jest --runInBand --testEnvironment=node",
+    "test:connections": "node src/scripts/test_connections.js",
     "test:watch": "jest --watch",
     "lint": "eslint src --ext .js",
     "lint:fix": "eslint src --ext .js --fix"
@@ -36,6 +36,7 @@
   "author": "SSB Development Team",
   "license": "MIT",
   "dependencies": {
+    "@mapbox/polyline": "^1.2.1",
     "bcryptjs": "^2.4.3",
     "compression": "^1.7.4",
     "cors": "^2.8.5",

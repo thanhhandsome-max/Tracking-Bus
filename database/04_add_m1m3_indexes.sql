@@ -14,14 +14,18 @@ ON LichTrinh(maTaiXe, ngayChay, gioKhoiHanh, loaiChuyen);
 CREATE INDEX IF NOT EXISTS idx_schedules_active 
 ON LichTrinh(dangApDung, ngayChay, gioKhoiHanh);
 
--- Indexes for Route_Stops table (stops ordering)
--- Index on route_id + order for fast reorder operations
-CREATE INDEX IF NOT EXISTS idx_route_stops_route_order 
-ON Route_Stops(maTuyen, thuTu);
+-- Indexes for route_stops table (stops ordering) - FIXED for new schema
+-- Index on route_id + sequence for fast reorder operations
+CREATE INDEX IF NOT EXISTS idx_route_stops_route_seq 
+ON route_stops(route_id, sequence);
 
 -- Composite index for route stops lookup
 CREATE INDEX IF NOT EXISTS idx_route_stops_route 
-ON Route_Stops(maTuyen);
+ON route_stops(route_id);
+
+-- Index for stop lookup
+CREATE INDEX IF NOT EXISTS idx_route_stops_stop 
+ON route_stops(stop_id);
 
 -- Additional indexes for common queries
 -- Index on buses status for filtering
@@ -42,7 +46,8 @@ ON TuyenDuong(trangThai);
 
 -- Show indexes created
 SHOW INDEX FROM LichTrinh;
-SHOW INDEX FROM Route_Stops;
+SHOW INDEX FROM route_stops;
+SHOW INDEX FROM DiemDung;
 SHOW INDEX FROM XeBuyt;
 SHOW INDEX FROM TaiXe;
 SHOW INDEX FROM HocSinh;

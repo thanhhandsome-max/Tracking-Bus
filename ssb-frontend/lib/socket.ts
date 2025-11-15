@@ -12,7 +12,9 @@ class SocketService {
 
     // Always tear down existing socket before creating a new one (even if not connected)
     if (this.socket) {
-      try { this.socket.disconnect(); } catch {}
+      try {
+        this.socket.disconnect();
+      } catch {}
       this.socket = null;
     }
 
@@ -31,7 +33,11 @@ class SocketService {
 
     return new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
-        reject(new Error(`Không thể kết nối WebSocket đến ${SOCKET_URL}. Vui lòng kiểm tra server có đang chạy không.`));
+        reject(
+          new Error(
+            `Không thể kết nối WebSocket đến ${SOCKET_URL}. Vui lòng kiểm tra server có đang chạy không.`
+          )
+        );
       }, 10000);
 
       this.socket!.on("connect", () => {
@@ -45,7 +51,10 @@ class SocketService {
         clearTimeout(timeout);
         // Don't reject immediately, let reconnection attempts happen
         // Only reject if it's a critical error
-        if (error.message?.includes('authentication') || error.message?.includes('unauthorized')) {
+        if (
+          error.message?.includes("authentication") ||
+          error.message?.includes("unauthorized")
+        ) {
           reject(new Error(`Lỗi xác thực WebSocket: ${error.message}`));
         }
       });
@@ -62,20 +71,26 @@ class SocketService {
 
   // Convenience helpers for rooms and telemetry
   joinTrip(tripId: number | string) {
-    this.socket?.emit('join_trip', tripId)
+    this.socket?.emit("join_trip", tripId);
   }
   leaveTrip(tripId: number | string) {
-    this.socket?.emit('leave_trip', tripId)
+    this.socket?.emit("leave_trip", tripId);
   }
   // P2 Fix: Join/Leave route room for route_updated events
   joinRoute(routeId: number | string) {
-    this.socket?.emit('join_route', routeId)
+    this.socket?.emit("join_route", routeId);
   }
   leaveRoute(routeId: number | string) {
-    this.socket?.emit('leave_route', routeId)
+    this.socket?.emit("leave_route", routeId);
   }
-  sendDriverGPS(data: { tripId: number | string; lat: number; lng: number; speed?: number; heading?: number }) {
-    this.socket?.emit('driver_gps', data)
+  sendDriverGPS(data: {
+    tripId: number | string;
+    lat: number;
+    lng: number;
+    speed?: number;
+    heading?: number;
+  }) {
+    this.socket?.emit("driver_gps", data);
   }
 
   private setupEventListeners() {
@@ -84,25 +99,35 @@ class SocketService {
     // Connection events
     this.socket.on("connect", () => {
       console.log("Socket.IO connected");
-      try { window.dispatchEvent(new CustomEvent("socketConnected")); } catch {}
+      try {
+        window.dispatchEvent(new CustomEvent("socketConnected"));
+      } catch {}
     });
 
     this.socket.on("disconnect", (reason) => {
       console.log("Socket.IO disconnected:", reason);
-      try { window.dispatchEvent(new CustomEvent("socketDisconnected", { detail: reason })); } catch {}
+      try {
+        window.dispatchEvent(
+          new CustomEvent("socketDisconnected", { detail: reason })
+        );
+      } catch {}
     });
 
     this.socket.on("connect_error", (error) => {
       console.error("Socket.IO connection error:", error);
       // Don't crash the app, just log and notify
-      try { 
-        window.dispatchEvent(new CustomEvent("socketConnectError", { 
-          detail: {
-            error,
-            message: `Lỗi kết nối WebSocket: ${error.message || 'Không thể kết nối đến server'}`,
-            url: SOCKET_URL
-          }
-        })); 
+      try {
+        window.dispatchEvent(
+          new CustomEvent("socketConnectError", {
+            detail: {
+              error,
+              message: `Lỗi kết nối WebSocket: ${
+                error.message || "Không thể kết nối đến server"
+              }`,
+              url: SOCKET_URL,
+            },
+          })
+        );
       } catch {}
     });
 
@@ -110,12 +135,14 @@ class SocketService {
     this.socket.on("error", (error) => {
       console.error("Socket.IO error:", error);
       try {
-        window.dispatchEvent(new CustomEvent("socketError", { 
-          detail: {
-            error,
-            message: `Lỗi WebSocket: ${error.message || 'Unknown error'}`
-          }
-        }));
+        window.dispatchEvent(
+          new CustomEvent("socketError", {
+            detail: {
+              error,
+              message: `Lỗi WebSocket: ${error.message || "Unknown error"}`,
+            },
+          })
+        );
       } catch {}
     });
 
@@ -139,7 +166,9 @@ class SocketService {
     // Alias: server may emit snake_case 'bus_position_update'
     this.socket.on("bus_position_update", (data) => {
       console.log("Bus position updated:", data);
-      window.dispatchEvent(new CustomEvent("busPositionUpdate", { detail: data }));
+      window.dispatchEvent(
+        new CustomEvent("busPositionUpdate", { detail: data })
+      );
     });
 
     this.socket.on("bus_location_response", (data) => {
@@ -160,16 +189,12 @@ class SocketService {
     // Explicit started/completed aliases (if server emits these)
     this.socket.on("trip_started", (data) => {
       console.log("Trip started:", data);
-      window.dispatchEvent(
-        new CustomEvent("tripStarted", { detail: data })
-      );
+      window.dispatchEvent(new CustomEvent("tripStarted", { detail: data }));
     });
 
     this.socket.on("trip_completed", (data) => {
       console.log("Trip completed:", data);
-      window.dispatchEvent(
-        new CustomEvent("tripCompleted", { detail: data })
-      );
+      window.dispatchEvent(new CustomEvent("tripCompleted", { detail: data }));
     });
 
     this.socket.on("trip_update_success", (data) => {
@@ -229,24 +254,32 @@ class SocketService {
     // Day 4: stop proximity and delay alerts
     this.socket.on("approach_stop", (data) => {
       console.log("Approach stop:", data);
-      window.dispatchEvent(
-        new CustomEvent("approachStop", { detail: data })
-      );
+      window.dispatchEvent(new CustomEvent("approachStop", { detail: data }));
     });
 
     this.socket.on("delay_alert", (data) => {
       console.log("Delay alert:", data);
+      window.dispatchEvent(new CustomEvent("delayAlert", { detail: data }));
+    });
+
+    // M5: Student pickup status update (checkin/checkout)
+    this.socket.on("pickup_status_update", (data) => {
+      console.log("Pickup status update:", data);
       window.dispatchEvent(
-        new CustomEvent("delayAlert", { detail: data })
+        new CustomEvent("pickupStatusUpdate", { detail: data })
       );
+    });
+
+    // M5: Trip incident (emergency)
+    this.socket.on("trip_incident", (data) => {
+      console.log("Trip incident:", data);
+      window.dispatchEvent(new CustomEvent("tripIncident", { detail: data }));
     });
 
     // P2 Fix: Route updated event (for rebuild polyline)
     this.socket.on("route_updated", (data) => {
       console.log("Route updated:", data);
-      window.dispatchEvent(
-        new CustomEvent("routeUpdated", { detail: data })
-      );
+      window.dispatchEvent(new CustomEvent("routeUpdated", { detail: data }));
     });
   }
 

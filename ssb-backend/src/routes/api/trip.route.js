@@ -38,6 +38,15 @@ router.post(
   TripController.create
 );
 
+// 🔥 FIX: Specific routes MUST be defined BEFORE generic /:id route
+// POST /api/v1/trips/:id/incident - Báo cáo sự cố
+router.post(
+  "/:id/incident",
+  AuthMiddleware.authenticate,
+  AuthMiddleware.authorize("quan_tri", "tai_xe"),
+  TripController.reportIncident
+);
+
 // Get trip by ID
 router.get("/:id", AuthMiddleware.authenticate, TripController.getById);
 
@@ -50,10 +59,19 @@ router.post(
 );
 
 // End trip (Driver only)
-router.post("/:id/end", AuthMiddleware.authenticate, AuthMiddleware.requireDriver, TripController.endTrip);
+router.post(
+  "/:id/end",
+  AuthMiddleware.authenticate,
+  AuthMiddleware.requireDriver,
+  TripController.endTrip
+);
 
 // Cancel trip (Admin or Driver of trip)
-router.post("/:id/cancel", AuthMiddleware.authenticate, TripController.cancelTrip);
+router.post(
+  "/:id/cancel",
+  AuthMiddleware.authenticate,
+  TripController.cancelTrip
+);
 
 // M4-M6: Attendance routes (Driver only)
 router.post(
@@ -68,6 +86,37 @@ router.post(
   AuthMiddleware.authenticate,
   AuthMiddleware.requireDriver,
   TripController.checkoutStudent
+);
+
+// Update student status (Driver only) - notify parent when student picked up
+router.put(
+  "/:id/students/:studentId/status",
+  AuthMiddleware.authenticate,
+  AuthMiddleware.requireDriver,
+  TripController.updateStudentStatus
+);
+
+// M5: Arrive at stop (Driver only) - notify parents when bus arrives at stop
+router.post(
+  "/:id/stops/:stopId/arrive",
+  AuthMiddleware.authenticate,
+  AuthMiddleware.requireDriver,
+  TripController.arriveAtStop
+);
+
+// M5: Leave stop (Driver only) - notify parents when bus leaves stop
+router.post(
+  "/:id/stops/:stopId/leave",
+  AuthMiddleware.authenticate,
+  AuthMiddleware.requireDriver,
+  TripController.leaveStop
+);
+
+// Get stop status (Driver & Parent) - get arrival/departure times for all stops
+router.get(
+  "/:id/stops/status",
+  AuthMiddleware.authenticate,
+  TripController.getStopStatus
 );
 
 export default router;

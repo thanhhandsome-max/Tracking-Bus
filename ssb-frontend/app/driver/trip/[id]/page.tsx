@@ -59,7 +59,8 @@ import {
   cancelTrip,
 } from "@/lib/services/trip.service";
 import { useGPS } from "@/hooks/use-gps";
-import { apiClient } from "@/lib/api";
+import apiClient from "@/lib/api-client";
+import { apiClient as api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import dynamic from "next/dynamic";
@@ -99,6 +100,8 @@ const mockTrip = {
       eta: "06:30",
       status: "completed",
       notes: "Đã đón đủ học sinh",
+      lat: 10.762622,
+      lng: 106.660172,
       students: [
         {
           id: "1",
@@ -124,6 +127,8 @@ const mockTrip = {
       eta: "06:40",
       status: "current",
       notes: "",
+      lat: 10.76342,
+      lng: 106.66572,
       students: [
         {
           id: "3",
@@ -156,6 +161,8 @@ const mockTrip = {
       eta: "06:48",
       status: "upcoming",
       notes: "",
+      lat: 10.76442,
+      lng: 106.67072,
       students: [
         {
           id: "6",
@@ -181,6 +188,8 @@ const mockTrip = {
       eta: "07:05",
       status: "upcoming",
       notes: "",
+      lat: 10.76542,
+      lng: 106.67572,
       students: [],
     },
   ],
@@ -190,6 +199,10 @@ export default function TripDetailPage() {
   const router = useRouter();
   const params = useParams();
   const [trip, setTrip] = useState(mockTrip);
+  const [routePolyline, setRoutePolyline] = useState<string | null>(null); // Add polyline state
+  const [dynamicDirections, setDynamicDirections] = useState<string | null>(
+    null
+  ); // Dynamic directions from current pos to next stop
   const [isIncidentDialogOpen, setIsIncidentDialogOpen] = useState(false);
   const [stopNotes, setStopNotes] = useState<Record<string, string>>({});
   // old admin chat state removed
@@ -221,6 +234,7 @@ export default function TripDetailPage() {
     start: startGPS,
     stop: stopGPS,
     running: gpsRunning,
+    lastPoint: gpsLastPoint,
   } = useGPS(effectiveTripId);
   // Khởi tạo theo vị trí test script (Hà Nội) để tránh nhảy từ HCM ra HN khi mới vào trang
   const [busLocation, setBusLocation] = useState<{ lat: number; lng: number }>({
@@ -238,6 +252,91 @@ export default function TripDetailPage() {
       setBusLocation({ lat: busPosition.lat, lng: busPosition.lng });
     }
   }, [busPosition]);
+
+  // P1 Fix: Fetch dynamic directions from current position to next stop
+  useEffect(() => {
+    // Only fetch if trip is running and we have a valid current position and next stop
+    if (
+      tripStatus !== "dang_chay" ||
+      !busLocation ||
+      !trip.stops[trip.currentStop]
+    ) {
+      return;
+    }
+
+    const nextStop = trip.stops[trip.currentStop] as any;
+    const nextStopLat = Number(nextStop.lat);
+    const nextStopLng = Number(nextStop.lng);
+
+    // Validate coordinates
+    if (
+      !Number.isFinite(nextStopLat) ||
+      !Number.isFinite(nextStopLng) ||
+      !Number.isFinite(busLocation.lat) ||
+      !Number.isFinite(busLocation.lng)
+    ) {
+      return;
+    }
+
+    // Don't fetch if already at stop (< 50m)
+    const distanceToStop =
+      Math.sqrt(
+        Math.pow(nextStopLat - busLocation.lat, 2) +
+          Math.pow(nextStopLng - busLocation.lng, 2)
+      ) * 111000; // rough conversion to meters
+
+    if (distanceToStop < 50) {
+      console.log("[Driver Trip] Already at stop, clearing dynamic directions");
+      setDynamicDirections(null);
+      return;
+    }
+
+    // Debounce: only fetch every 30 seconds to avoid too many requests
+    const lastFetch = (window as any).__lastDirectionsFetch || 0;
+    const now = Date.now();
+    if (now - lastFetch < 30000) {
+      return;
+    }
+    (window as any).__lastDirectionsFetch = now;
+
+    console.log(
+      "[Driver Trip] Fetching dynamic directions from current position to next stop"
+    );
+
+    apiClient
+      .getDirections({
+        origin: `${busLocation.lat},${busLocation.lng}`,
+        destination: `${nextStopLat},${nextStopLng}`,
+        mode: "driving",
+      })
+      .then((response: any) => {
+        if (response.success && response.data) {
+          const data = response.data as any;
+          const newPolyline =
+            data.polyline || data.overview_polyline?.points || null;
+          if (
+            newPolyline &&
+            typeof newPolyline === "string" &&
+            newPolyline.trim()
+          ) {
+            console.log(
+              "[Driver Trip] Successfully fetched dynamic directions:",
+              newPolyline.length,
+              "chars"
+            );
+            setDynamicDirections(newPolyline);
+          } else {
+            console.warn("[Driver Trip] No polyline in directions response");
+          }
+        }
+      })
+      .catch((err: any) => {
+        console.error(
+          "[Driver Trip] Error fetching dynamic directions:",
+          err?.message || err
+        );
+      });
+  }, [busLocation, trip.currentStop, trip.stops, tripStatus]);
 
   // Day 5: Show toast notifications for trip alerts
   useEffect(() => {
@@ -298,65 +397,127 @@ export default function TripDetailPage() {
     async function loadDetail() {
       try {
         if (!tripIdNum) return;
-        console.log('[Driver Trip] Loading trip detail for:', tripIdNum);
-        const res = await apiClient.getTripById(tripIdNum);
+        console.log("[Driver Trip] Loading trip detail for:", tripIdNum);
+        const res = await api.getTripById(tripIdNum);
         const data: any = (res as any).data || res;
-        console.log('[Driver Trip] API response:', data);
+        console.log("[Driver Trip] API response:", data);
 
         // Map route name with trip type (don_sang/tra_chieu)
-        const loaiChuyen = data?.schedule?.loaiChuyen || '';
+        const loaiChuyen = data?.schedule?.loaiChuyen || "";
         const baseRouteName =
           data?.routeInfo?.tenTuyen ||
           data?.tuyen?.tenTuyen ||
           data?.tenTuyen ||
           "Chưa có tên tuyến";
         // Add trip type indicator if not already in name
-        const routeName = baseRouteName.includes('Đi') || baseRouteName.includes('Về')
-          ? baseRouteName
-          : `${baseRouteName} ${loaiChuyen === 'don_sang' ? '(Đi)' : loaiChuyen === 'tra_chieu' ? '(Về)' : ''}`;
+        const routeName =
+          baseRouteName.includes("Đi") || baseRouteName.includes("Về")
+            ? baseRouteName
+            : `${baseRouteName} ${
+                loaiChuyen === "don_sang"
+                  ? "(Đi)"
+                  : loaiChuyen === "tra_chieu"
+                  ? "(Về)"
+                  : ""
+              }`;
 
         // Map stops from routeInfo.diemDung (already sorted by sequence from backend)
         const routeStops = data?.routeInfo?.diemDung || [];
+
+        // Debug: Log raw stop data from API
+        console.log(
+          "[Driver Trip] Raw routeStops from API:",
+          routeStops.length > 0 ? routeStops[0] : "No stops"
+        );
+        console.log("[Driver Trip] All routeStops:", routeStops);
+        console.log(
+          "[Driver Trip] Sample stop fields:",
+          routeStops.length > 0 ? Object.keys(routeStops[0]) : "No stops"
+        );
+
+        // Get polyline from route data
+        const routePolyline = data?.routeInfo?.polyline || null;
+        console.log(
+          "[Driver Trip] Route polyline:",
+          routePolyline ? "Available" : "Not found"
+        );
+        // Store polyline in component state so SSBMap can render it
+        try {
+          setRoutePolyline(routePolyline);
+        } catch (err) {
+          console.warn("[Driver Trip] Failed to set route polyline state", err);
+        }
+
         const mappedStops = routeStops.map((stop: any, index: number) => {
           // Use stop.sequence if available, otherwise use index + 1
-          const stopSequence = stop.sequence || (index + 1);
-          
+          const stopSequence = stop.sequence || index + 1;
+
           // Find students for this stop (by thuTuDiemDon matching sequence)
-          const stopStudents = (data?.students || []).filter((student: any) => {
-            // Match students to stops by thuTuDiemDon (sequence) or maDiem
-            return student.thuTuDiemDon === stopSequence || 
-                   student.maDiem === stop.maDiem ||
-                   student.thuTuDiemDon === (index + 1);
-          }).map((student: any) => ({
-            id: String(student.maHocSinh || student.id || ''),
-            name: student.hoTen || student.name || 'Học sinh',
-            status: student.trangThai === 'da_don' ? 'picked' :
-                   student.trangThai === 'vang' ? 'absent' : 'pending',
-            avatar: student.anhDaiDien || "/placeholder.svg?height=40&width=40",
-            parent: student.soDienThoaiPhuHuynh || student.parentPhone || '',
-          }));
+          const stopStudents = (data?.students || [])
+            .filter((student: any) => {
+              // Match students to stops by thuTuDiemDon (sequence) or maDiem
+              return (
+                student.thuTuDiemDon === stopSequence ||
+                student.maDiem === stop.maDiem ||
+                student.thuTuDiemDon === index + 1
+              );
+            })
+            .map((student: any) => ({
+              id: String(student.maHocSinh || student.id || ""),
+              name: student.hoTen || student.name || "Học sinh",
+              status:
+                student.trangThai === "da_don"
+                  ? "picked"
+                  : student.trangThai === "vang"
+                  ? "absent"
+                  : "pending",
+              avatar:
+                student.anhDaiDien || "/placeholder.svg?height=40&width=40",
+              parent: student.soDienThoaiPhuHuynh || student.parentPhone || "",
+            }));
 
           // Determine stop status
-          let stopStatus: 'completed' | 'current' | 'upcoming' = 'upcoming';
-          if (data?.trangThai === 'dang_chay') {
+          let stopStatus: "completed" | "current" | "upcoming" = "upcoming";
+          if (data?.trangThai === "dang_chay") {
             // For running trips, we need to determine current stop
             // This is a simplified logic - you may need to enhance based on actual tracking
-            stopStatus = index === 0 ? 'current' : 'upcoming';
-          } else if (data?.trangThai === 'hoan_thanh' || data?.trangThai === 'da_hoan_thanh') {
-            stopStatus = 'completed';
+            stopStatus = index === 0 ? "current" : "upcoming";
+          } else if (
+            data?.trangThai === "hoan_thanh" ||
+            data?.trangThai === "da_hoan_thanh"
+          ) {
+            stopStatus = "completed";
+          }
+
+          // Try multiple field names for coordinates (lat/lng first, then viDo/kinhDo)
+          let stopLat = stop.lat || stop.viDo || stop.latitude || 0;
+          let stopLng = stop.lng || stop.kinhDo || stop.longitude || 0;
+
+          // FALLBACK: If coordinates are 0, log warning
+          if ((stopLat === 0 || stopLng === 0) && index === 0) {
+            console.warn(
+              "[Driver Trip] Stop has no coordinates, available fields:",
+              Object.keys(stop)
+            );
+            console.warn("[Driver Trip] Stop data:", stop);
+          } else if (index === 0) {
+            console.log("[Driver Trip] ✅ First stop HAS coords:", {
+              lat: stopLat,
+              lng: stopLng,
+            });
           }
 
           return {
             id: String(stop.maDiem || stop.id || index + 1),
             name: stop.tenDiem || stop.name || `Điểm ${index + 1}`,
-            address: stop.address || `${stop.viDo || 0}, ${stop.kinhDo || 0}`,
-            time: stop.scheduled_time || data?.schedule?.gioKhoiHanh || '--:--',
-            eta: stop.scheduled_time || '--:--',
+            address: stop.address || stop.diaChi || `${stopLat}, ${stopLng}`,
+            time: stop.scheduled_time || data?.schedule?.gioKhoiHanh || "--:--",
+            eta: stop.scheduled_time || "--:--",
             status: stopStatus,
-            notes: '',
+            notes: "",
             students: stopStudents,
-            lat: stop.viDo || 0,
-            lng: stop.kinhDo || 0,
+            lat: stopLat,
+            lng: stopLng,
           };
         });
 
@@ -370,9 +531,11 @@ export default function TripDetailPage() {
 
         // Determine current stop index
         let currentStopIndex = 0;
-        if (data?.trangThai === 'dang_chay' && mappedStops.length > 0) {
+        if (data?.trangThai === "dang_chay" && mappedStops.length > 0) {
           // Find first non-completed stop
-          const firstNonCompleted = mappedStops.findIndex((s: any) => s.status !== 'completed');
+          const firstNonCompleted = mappedStops.findIndex(
+            (s: any) => s.status !== "completed"
+          );
           currentStopIndex = firstNonCompleted >= 0 ? firstNonCompleted : 0;
         }
 
@@ -380,12 +543,21 @@ export default function TripDetailPage() {
         setTrip({
           id: String(data?.maChuyen || data?.id || tripIdNum),
           route: routeName,
-          startTime: data?.gioBatDauThucTe || data?.schedule?.gioKhoiHanh || data?.gioKhoiHanh || '--:--',
-          status: data?.trangThai === 'dang_chay' ? 'in-progress' : 
-                 data?.trangThai === 'hoan_thanh' || data?.trangThai === 'da_hoan_thanh' ? 'completed' : 'pending',
+          startTime:
+            data?.gioBatDauThucTe ||
+            data?.schedule?.gioKhoiHanh ||
+            data?.gioKhoiHanh ||
+            "--:--",
+          status:
+            data?.trangThai === "dang_chay"
+              ? "in-progress"
+              : data?.trangThai === "hoan_thanh" ||
+                data?.trangThai === "da_hoan_thanh"
+              ? "completed"
+              : "pending",
           currentStop: currentStopIndex,
           vehicle: {
-            plateNumber: data?.busInfo?.bienSoXe || data?.bienSoXe || 'N/A',
+            plateNumber: data?.busInfo?.bienSoXe || data?.bienSoXe || "N/A",
             fuel: 75, // Not available from API yet
             speed: 0,
             temperature: 85, // Not available from API yet
@@ -400,12 +572,86 @@ export default function TripDetailPage() {
           stops: mappedStops.length > 0 ? mappedStops : trip.stops, // Fallback to mock if no stops
         });
 
-        console.log('[Driver Trip] Trip data loaded:', {
+        console.log("[Driver Trip] Trip data loaded:", {
           route: routeName,
           stopsCount: mappedStops.length,
           status: data?.trangThai,
           currentStop: currentStopIndex,
         });
+
+        // 💾 Load stop arrival/departure status from database
+        try {
+          const API_URL =
+            process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
+          const token = localStorage.getItem("ssb_token");
+
+          // Only load status if we have a token
+          if (!token) {
+            console.warn(
+              "[Driver Trip] No token found, skipping stop status load"
+            );
+            return;
+          }
+
+          const statusResponse = await fetch(
+            `${API_URL}/trips/${tripIdNum}/stops/status`,
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+            }
+          );
+
+          if (statusResponse.ok) {
+            const statusData = await statusResponse.json();
+            const statuses = statusData.data || [];
+            console.log("[Driver Trip] Loaded stop statuses:", statuses);
+
+            // Update stop statuses based on database (thoiGianDen/thoiGianRoi)
+            setTrip((prevTrip) => ({
+              ...prevTrip,
+              stops: prevTrip.stops.map((stop: any, idx: number) => {
+                const thuTu = idx + 1;
+                const savedStatus = statuses.find(
+                  (s: any) => s.thuTuDiem === thuTu
+                );
+
+                if (savedStatus) {
+                  // If both arrival and departure times exist, mark as completed
+                  if (savedStatus.thoiGianDen && savedStatus.thoiGianRoi) {
+                    return { ...stop, status: "completed" };
+                  }
+                  // If only arrival time exists, mark as current
+                  if (savedStatus.thoiGianDen) {
+                    return { ...stop, status: "current" };
+                  }
+                }
+                return stop;
+              }),
+            }));
+
+            // Update currentStop to first non-completed stop
+            const firstNonCompleted = mappedStops.findIndex(
+              (s: any, idx: number) => {
+                const thuTu = idx + 1;
+                const savedStatus = statuses.find(
+                  (s: any) => s.thuTuDiem === thuTu
+                );
+                return !savedStatus || !savedStatus.thoiGianRoi;
+              }
+            );
+            if (firstNonCompleted >= 0) {
+              setTrip((prev) => ({ ...prev, currentStop: firstNonCompleted }));
+            }
+          }
+        } catch (statusError) {
+          console.warn(
+            "[Driver Trip] Failed to load stop statuses:",
+            statusError
+          );
+          // Not critical - continue without status
+        }
       } catch (e) {
         console.error("Failed to load trip detail", e);
         toast({
@@ -422,25 +668,35 @@ export default function TripDetailPage() {
   // P1 Fix: Calculate ETA for current stop using useETA hook
   const currentStopData = trip.stops[trip.currentStop] as any;
   // Use actual coordinates from stop data (lat/lng from API)
-  const nextStopCoords = currentStopData && 
-    Number.isFinite(currentStopData.lat) && 
+  const nextStopCoords =
+    currentStopData &&
+    Number.isFinite(currentStopData.lat) &&
     Number.isFinite(currentStopData.lng)
-    ? { lat: currentStopData.lat, lng: currentStopData.lng }
-    : null;
-  
-  const etaParams = busLocation && nextStopCoords ? {
-    origins: [`${busLocation.lat},${busLocation.lng}`],
-    destinations: [`${nextStopCoords.lat},${nextStopCoords.lng}`],
-    mode: 'driving' as const,
-    enabled: tripStatus === "dang_chay" && !!busLocation && !!nextStopCoords,
-  } : { origins: [], destinations: [], enabled: false };
+      ? { lat: currentStopData.lat, lng: currentStopData.lng }
+      : null;
 
-  const { data: etaData, isFetchedFromCacheFE, isBESaysCached } = useETA(etaParams);
+  const etaParams =
+    busLocation && nextStopCoords
+      ? {
+          origins: [`${busLocation.lat},${busLocation.lng}`],
+          destinations: [`${nextStopCoords.lat},${nextStopCoords.lng}`],
+          mode: "driving" as const,
+          enabled:
+            tripStatus === "dang_chay" && !!busLocation && !!nextStopCoords,
+        }
+      : { origins: [], destinations: [], enabled: false };
+
+  const {
+    data: etaData,
+    isFetchedFromCacheFE,
+    isBESaysCached,
+  } = useETA(etaParams);
 
   const currentStop = trip.stops[trip.currentStop];
   const progress = ((trip.currentStop + 1) / trip.stops.length) * 100;
 
-  const handleStudentCheck = (studentId: string, checked: boolean) => {
+  const handleStudentCheck = async (studentId: string, checked: boolean) => {
+    // Update UI optimistically
     setTrip((prev) => ({
       ...prev,
       stops: prev.stops.map((stop) =>
@@ -456,9 +712,51 @@ export default function TripDetailPage() {
           : stop
       ),
     }));
+
+    // Call API to update student status and notify parent
+    try {
+      const token = localStorage.getItem("ssb_token");
+      const API_URL =
+        process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
+      const trangThai = checked ? "da_don" : "cho_don";
+
+      const response = await fetch(
+        `${API_URL}/trips/${tripIdNum}/students/${studentId}/status`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ trangThai }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to update student status");
+      }
+
+      const result = await response.json();
+      console.log("[Driver Trip] Student status updated:", result);
+
+      if (checked) {
+        toast({
+          title: "✅ Đã đón học sinh",
+          description: "Phụ huynh đã nhận thông báo",
+        });
+      }
+    } catch (error) {
+      console.error("[Driver Trip] Error updating student status:", error);
+      toast({
+        title: "❌ Lỗi cập nhật",
+        description: "Không thể cập nhật trạng thái học sinh",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleMarkAbsent = (studentId: string) => {
+  const handleMarkAbsent = async (studentId: string) => {
+    // Update UI optimistically
     setTrip((prev) => ({
       ...prev,
       stops: prev.stops.map((stop) =>
@@ -474,38 +772,203 @@ export default function TripDetailPage() {
           : stop
       ),
     }));
+
+    // Call API to update student status and notify parent
+    try {
+      const token = localStorage.getItem("ssb_token");
+      const API_URL =
+        process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
+
+      const response = await fetch(
+        `${API_URL}/trips/${tripIdNum}/students/${studentId}/status`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ trangThai: "vang" }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to mark student as absent");
+      }
+
+      const result = await response.json();
+      console.log("[Driver Trip] Student marked as absent:", result);
+
+      toast({
+        title: "⚠️ Đã đánh dấu vắng",
+        description: "Phụ huynh đã nhận thông báo",
+      });
+    } catch (error) {
+      console.error("[Driver Trip] Error marking student absent:", error);
+      toast({
+        title: "❌ Lỗi cập nhật",
+        description: "Không thể đánh dấu học sinh vắng",
+        variant: "destructive",
+      });
+    }
   };
 
-  const arriveCurrentStop = () => {
-    // Có thể cập nhật trạng thái điểm dừng nếu muốn hiển thị khác biệt
-    setAtCurrentStop(true);
+  const arriveCurrentStop = async () => {
+    console.log("[Driver Trip] arriveCurrentStop called!");
+    try {
+      setProcessing(true);
+      const stopName = currentStop.name || `Điểm dừng ${trip.currentStop + 1}`;
+      const stopId = (currentStop as any).id || (currentStop as any).maDiem;
+
+      console.log("[Driver Trip] Arriving at stop:", {
+        stopId,
+        stopName,
+        tripIdNum,
+      });
+
+      // Call API to notify arrival at stop
+      // This will trigger WebSocket notification to parents
+      try {
+        const token =
+          typeof window !== "undefined"
+            ? localStorage.getItem("ssb_token")
+            : null;
+
+        const apiUrl = `${
+          process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1"
+        }/trips/${tripIdNum}/stops/${stopId}/arrive`;
+
+        console.log(
+          "[Driver Trip] Calling API:",
+          apiUrl,
+          "with token:",
+          token ? "YES" : "NO"
+        );
+
+        const response = await fetch(apiUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            arrivedAt: new Date().toISOString(),
+          }),
+        });
+
+        if (!response.ok) {
+          console.warn(
+            "[Driver Trip] Failed to notify stop arrival:",
+            response.statusText
+          );
+        }
+      } catch (err) {
+        console.warn("[Driver Trip] Failed to notify stop arrival:", err);
+        // Continue anyway - update local state
+      }
+
+      setAtCurrentStop(true);
+
+      // Show notification
+      toast({
+        title: "🚏 Đã đến điểm dừng",
+        description: `Xe đã đến ${stopName}`,
+      });
+    } catch (error) {
+      console.error("[Driver Trip] Error arriving at stop:", error);
+      toast({
+        title: "Lỗi",
+        description: "Không thể cập nhật trạng thái điểm dừng",
+        variant: "destructive",
+      });
+    } finally {
+      setProcessing(false);
+    }
   };
 
-  const leaveCurrentStop = () => {
+  const leaveCurrentStop = async () => {
     // Chuyển sang điểm tiếp theo
     if (trip.currentStop < trip.stops.length - 1) {
-      setTrip((prev) => ({
-        ...prev,
-        currentStop: prev.currentStop + 1,
-        stops: prev.stops.map((stop, index) =>
-          index === prev.currentStop
-            ? { ...stop, status: "completed" }
-            : index === prev.currentStop + 1
-            ? { ...stop, status: "current" }
-            : stop
-        ),
-      }));
-      setAtCurrentStop(false);
+      try {
+        setProcessing(true);
+        const currentStopName =
+          currentStop.name || `Điểm dừng ${trip.currentStop + 1}`;
+        const stopId = (currentStop as any).id || (currentStop as any).maDiem;
+
+        // Call API to notify leaving stop
+        // This will trigger WebSocket notification to parents
+        try {
+          const token =
+            typeof window !== "undefined"
+              ? localStorage.getItem("ssb_token")
+              : null;
+          const response = await fetch(
+            `${
+              process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1"
+            }/trips/${tripIdNum}/stops/${stopId}/leave`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+              },
+              body: JSON.stringify({
+                leftAt: new Date().toISOString(),
+              }),
+            }
+          );
+
+          if (!response.ok) {
+            console.warn(
+              "[Driver Trip] Failed to notify stop departure:",
+              response.statusText
+            );
+          }
+        } catch (err) {
+          console.warn("[Driver Trip] Failed to notify stop departure:", err);
+          // Continue anyway - update local state
+        }
+
+        setTrip((prev) => ({
+          ...prev,
+          currentStop: prev.currentStop + 1,
+          stops: prev.stops.map((stop, index) =>
+            index === prev.currentStop
+              ? { ...stop, status: "completed" }
+              : index === prev.currentStop + 1
+              ? { ...stop, status: "current" }
+              : stop
+          ),
+        }));
+        setAtCurrentStop(false);
+
+        // Show notification
+        const nextStopName =
+          trip.stops[trip.currentStop + 1]?.name ||
+          `Điểm dừng ${trip.currentStop + 2}`;
+        toast({
+          title: "🚌 Đã rời điểm dừng",
+          description: `Đang di chuyển đến ${nextStopName}`,
+        });
+      } catch (error) {
+        console.error("[Driver Trip] Error leaving stop:", error);
+        toast({
+          title: "Lỗi",
+          description: "Không thể cập nhật trạng thái điểm dừng",
+          variant: "destructive",
+        });
+      } finally {
+        setProcessing(false);
+      }
     }
   };
 
   async function doStartTrip() {
     try {
       setProcessing(true);
-      console.log('[Driver Trip] Starting trip:', tripIdNum);
+      console.log("[Driver Trip] Starting trip:", tripIdNum);
       const res = await startTrip(tripIdNum);
-      console.log('[Driver Trip] Start trip response:', res);
-      
+      console.log("[Driver Trip] Start trip response:", res);
+
       // Extract trip ID from response
       const newId =
         (res as any)?.data?.maChuyen ||
@@ -520,9 +983,9 @@ export default function TripDetailPage() {
 
       // Reload trip data to get updated status
       try {
-        const updatedRes = await apiClient.getTripById(newId);
+        const updatedRes = await api.getTripById(newId);
         const updatedData: any = (updatedRes as any).data || updatedRes;
-        
+
         // Update trip status in state
         if (updatedData?.trangThai) {
           setTripStatus(updatedData.trangThai);
@@ -534,14 +997,17 @@ export default function TripDetailPage() {
           updatedData?.tuyen?.tenTuyen ||
           updatedData?.tenTuyen ||
           trip.route;
-        
+
         setTrip((prev) => ({
           ...prev,
           route: routeName,
-          status: 'in-progress',
+          status: "in-progress",
         }));
       } catch (reloadError) {
-        console.warn('[Driver Trip] Failed to reload trip data after start:', reloadError);
+        console.warn(
+          "[Driver Trip] Failed to reload trip data after start:",
+          reloadError
+        );
         // Continue anyway - the trip was started successfully
       }
 
@@ -555,13 +1021,13 @@ export default function TripDetailPage() {
         router.push(`/driver/trip/${newId}`);
       }
     } catch (e: any) {
-      console.error('[Driver Trip] Failed to start trip:', e);
-      const errorMessage = 
+      console.error("[Driver Trip] Failed to start trip:", e);
+      const errorMessage =
         e?.response?.data?.message ||
         e?.message ||
         e?.error ||
         "Vui lòng thử lại";
-      
+
       toast({
         title: "Không thể bắt đầu chuyến",
         description: errorMessage,
@@ -640,9 +1106,15 @@ export default function TripDetailPage() {
       }
     };
 
-    window.addEventListener("tripCancelled", handleTripCancelled as EventListener);
+    window.addEventListener(
+      "tripCancelled",
+      handleTripCancelled as EventListener
+    );
     return () => {
-      window.removeEventListener("tripCancelled", handleTripCancelled as EventListener);
+      window.removeEventListener(
+        "tripCancelled",
+        handleTripCancelled as EventListener
+      );
     };
   }, [effectiveTripId, toast, stopGPS]);
 
@@ -751,6 +1223,8 @@ export default function TripDetailPage() {
               <IncidentForm
                 onClose={() => setIsIncidentDialogOpen(false)}
                 tripId={trip.id}
+                currentLocation={busLocation}
+                gpsLastPoint={gpsLastPoint}
               />
             </DialogContent>
           </Dialog>
@@ -784,7 +1258,9 @@ export default function TripDetailPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">Tốc độ</p>
-                  <p className="text-2xl font-bold text-foreground">{currentSpeed} km/h</p>
+                  <p className="text-2xl font-bold text-foreground">
+                    {currentSpeed} km/h
+                  </p>
                 </div>
                 <Gauge className="w-8 h-8 text-primary" />
               </div>
@@ -879,14 +1355,15 @@ export default function TripDetailPage() {
                     {(() => {
                       const isCached = isFetchedFromCacheFE || isBESaysCached;
                       if (isCached) {
-                        const cacheSource = isFetchedFromCacheFE && isBESaysCached 
-                          ? "FE+BE" 
-                          : isFetchedFromCacheFE 
-                          ? "FE" 
-                          : "BE";
+                        const cacheSource =
+                          isFetchedFromCacheFE && isBESaysCached
+                            ? "FE+BE"
+                            : isFetchedFromCacheFE
+                            ? "FE"
+                            : "BE";
                         return (
-                          <Badge 
-                            variant="outline" 
+                          <Badge
+                            variant="outline"
                             className="text-xs bg-muted text-muted-foreground"
                             title="Kết quả được cache 120s"
                           >
@@ -905,26 +1382,55 @@ export default function TripDetailPage() {
                     {/* Google Maps with SSBMap */}
                     <div className="h-[640px] w-full">
                       <SSBMap
+                        polyline={dynamicDirections || routePolyline}
                         height="640px"
                         center={busLocation}
                         zoom={13}
                         buses={[
                           {
-                            id: (busPosition?.busId ?? trip.vehicle?.plateNumber ?? 5) + "",
+                            id:
+                              (busPosition?.busId ??
+                                trip.vehicle?.plateNumber ??
+                                5) + "",
                             lat: busLocation.lat,
                             lng: busLocation.lng,
                             label: `${trip.vehicle.plateNumber} - ${trip.route}`,
                             status: "running",
                           },
                         ]}
-                        stops={trip.stops.map((stop: any, idx) => ({
-                          maDiem: parseInt(stop.id) || idx + 1,
-                          tenDiem: stop.name,
-                          viDo: Number.isFinite(stop.lat) ? stop.lat : 0,
-                          kinhDo: Number.isFinite(stop.lng) ? stop.lng : 0,
-                          sequence: idx + 1,
-                        }))}
-                        autoFitOnUpdate={true}
+                        stops={(() => {
+                          const mappedStops = trip.stops.map(
+                            (stop: any, idx) => {
+                              const stopData = {
+                                maDiem: parseInt(stop.id) || idx + 1,
+                                tenDiem: stop.name,
+                                viDo: stop.lat || 0,
+                                kinhDo: stop.lng || 0,
+                                sequence: idx + 1,
+                              };
+                              // Debug: log stop coordinates
+                              if (idx === 0) {
+                                console.log(
+                                  "[Driver Trip] First stop data for SSBMap:",
+                                  stopData,
+                                  "from trip.stops:",
+                                  stop
+                                );
+                              }
+                              return stopData;
+                            }
+                          );
+                          console.log(
+                            "[Driver Trip] Total stops for SSBMap:",
+                            mappedStops.length,
+                            "stops with valid coords:",
+                            mappedStops.filter(
+                              (s) => s.viDo !== 0 && s.kinhDo !== 0
+                            ).length
+                          );
+                          return mappedStops;
+                        })()}
+                        autoFitOnUpdate={false}
                         followFirstMarker={true}
                       />
                     </div>
@@ -950,7 +1456,10 @@ export default function TripDetailPage() {
                                   checked as boolean
                                 )
                               }
-                              disabled={student.status === "absent"}
+                              disabled={
+                                student.status === "absent" ||
+                                student.status === "picked"
+                              }
                             />
                             <Avatar className="w-10 h-10">
                               <AvatarImage
@@ -1158,13 +1667,19 @@ export default function TripDetailPage() {
                   </Button>
                 )}
                 {/* Cancel Trip Confirmation Dialog */}
-                <AlertDialog open={isCancelDialogOpen} onOpenChange={setIsCancelDialogOpen}>
+                <AlertDialog
+                  open={isCancelDialogOpen}
+                  onOpenChange={setIsCancelDialogOpen}
+                >
                   <AlertDialogContent>
                     <AlertDialogHeader>
-                      <AlertDialogTitle>Xác nhận hủy chuyến đi</AlertDialogTitle>
+                      <AlertDialogTitle>
+                        Xác nhận hủy chuyến đi
+                      </AlertDialogTitle>
                       <AlertDialogDescription>
-                        Bạn có chắc chắn muốn hủy chuyến đi này? Hành động này không thể hoàn tác.
-                        Phụ huynh sẽ nhận được thông báo về việc hủy chuyến.
+                        Bạn có chắc chắn muốn hủy chuyến đi này? Hành động này
+                        không thể hoàn tác. Phụ huynh sẽ nhận được thông báo về
+                        việc hủy chuyến.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>

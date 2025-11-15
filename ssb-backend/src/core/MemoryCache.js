@@ -1,21 +1,25 @@
-import { LRUCache } from "lru-cache";
-
 /**
- * MemoryCache - LRU cache implementation using lru-cache
+ * MemoryCache - Simple LRU cache implementation using Map
  */
 export class MemoryCache {
   constructor(maxSize = 500, ttlMs = 3600000) {
-    this.cache = new LRUCache({
-      max: maxSize,
-      ttl: ttlMs,
-      updateAgeOnGet: true,
-    });
+    this.cache = new Map();
+    this.maxSize = maxSize;
+    this.ttlMs = ttlMs;
   }
 
   async get(key) {
     try {
-      const value = this.cache.get(key);
-      return value || null;
+      const item = this.cache.get(key);
+      if (!item) return null;
+
+      // Check if expired
+      if (Date.now() > item.expiry) {
+        this.cache.delete(key);
+        return null;
+      }
+
+      return item.value;
     } catch (error) {
       console.error("MemoryCache get error:", error);
       return null;
@@ -24,8 +28,16 @@ export class MemoryCache {
 
   async set(key, value, ttlSeconds = undefined) {
     try {
-      const ttl = ttlSeconds ? ttlSeconds * 1000 : undefined;
-      this.cache.set(key, value, { ttl });
+      const ttl = ttlSeconds ? ttlSeconds * 1000 : this.ttlMs;
+      const expiry = Date.now() + ttl;
+
+      // Simple LRU: if cache is full, delete oldest entry
+      if (this.cache.size >= this.maxSize) {
+        const firstKey = this.cache.keys().next().value;
+        this.cache.delete(firstKey);
+      }
+
+      this.cache.set(key, { value, expiry });
       return true;
     } catch (error) {
       console.error("MemoryCache set error:", error);
@@ -51,5 +63,8 @@ export class MemoryCache {
       return false;
     }
   }
-}
 
+  async size() {
+    return this.cache.size;
+  }
+}

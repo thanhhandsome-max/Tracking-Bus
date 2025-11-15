@@ -20,6 +20,7 @@
  */
 
 import { haversine, inGeofence } from "../utils/geo.js";
+import { EMASpeedTracker, calculateETA, checkDelay } from "../utils/eta.js"; // 🎯 P1: EMA ETA
 import ChuyenDiModel from "../models/ChuyenDiModel.js";
 import LichTrinhModel from "../models/LichTrinhModel.js";
 import TuyenDuongModel from "../models/TuyenDuongModel.js";
@@ -81,6 +82,22 @@ const lastUpdateTime = new Map();
 const emittedStops = new Map();
 
 /**
+ * 📊 EMA SPEED TRACKERS - Theo dõi tốc độ EMA cho từng trip
+ *
+ * Structure: Map<tripId, EMASpeedTracker>
+ * Ví dụ: Map { 16 => EMASpeedTracker { emaSpeed: 28.5, sampleCount: 12 }, ... }
+ *
+ * Dùng để:
+ * - Track tốc độ trung bình của xe (EMA)
+ * - Tính ETA đến điểm dừng tiếp theo
+ * - Phát hiện delay chính xác hơn
+ * - Clear khi trip hoàn thành hoặc hủy
+ *
+ * @since P1 Enhancement - 2025-11-13
+ */
+const emaTrackers = new Map();
+
+/**
  * ⏱️ RATE LIMIT - Thời gian tối thiểu giữa 2 lần cập nhật
  * 2000ms = 2 giây
  */
@@ -100,9 +117,52 @@ function getRateLimitMs() {
     }
   } catch (error) {
     // Nếu có lỗi, dùng giá trị mặc định
-    console.warn('⚠️ Could not get rate limit from SettingsService, using default:', error.message);
+    console.warn(
+      "⚠️ Could not get rate limit from SettingsService, using default:",
+      error.message
+    );
   }
   return RATE_LIMIT_MS;
+}
+
+/**
+ * Lấy geofence radius (meters)
+ * Có thể lấy từ SettingsService hoặc dùng giá trị mặc định
+ * @returns {number} Geofence radius in meters
+ */
+function getGeofenceRadius() {
+  try {
+    const settings = SettingsService.getSettings();
+    if (settings.geofenceRadiusMeters) {
+      return settings.geofenceRadiusMeters;
+    }
+  } catch (error) {
+    console.warn(
+      "⚠️ Could not get geofence radius from SettingsService, using default:",
+      error.message
+    );
+  }
+  return GEOFENCE_RADIUS;
+}
+
+/**
+ * Lấy delay threshold (minutes)
+ * Có thể lấy từ SettingsService hoặc dùng giá trị mặc định
+ * @returns {number} Delay threshold in minutes
+ */
+function getDelayThresholdMin() {
+  try {
+    const settings = SettingsService.getSettings();
+    if (settings.delayAlertThresholdMin) {
+      return settings.delayAlertThresholdMin;
+    }
+  } catch (error) {
+    console.warn(
+      "⚠️ Could not get delay threshold from SettingsService, using default:",
+      error.message
+    );
+  }
+  return DELAY_THRESHOLD_MIN;
 }
 
 /**
@@ -176,7 +236,7 @@ class TelemetryService {
    *
    * @param {number} tripId - ID chuyến đi
    * @param {number} busId - ID xe bus
-   * 
+   *
    * Gọi hàm này khi:
    * - Trip completed (trangThai = 'hoan_thanh')
    * - Trip cancelled (trangThai = 'huy')
@@ -188,13 +248,13 @@ class TelemetryService {
       lastUpdateTime.delete(`bus-${busId}`);
       console.log(`🧹 Cleared position cache for bus-${busId}`);
     }
-    
+
     // Clear emitted stops for this trip
     if (emittedStops.has(tripId)) {
       emittedStops.delete(tripId);
       console.log(`🧹 Cleared emitted stops cache for trip-${tripId}`);
     }
-    
+
     // Clear delay alert cache
     if (delayAlertLastSent.has(tripId)) {
       delayAlertLastSent.delete(tripId);
@@ -276,6 +336,35 @@ class TelemetryService {
       busPositions.set(`bus-${busId}`, position);
       lastUpdateTime.set(`bus-${busId}`, now);
 
+      // 📊 P1: Update EMA Speed Tracker
+      let emaData = null;
+      try {
+        // Get or create EMA tracker for this trip
+        if (!emaTrackers.has(tripId)) {
+          emaTrackers.set(tripId, new EMASpeedTracker(0.2)); // α = 0.2 (balanced)
+          console.log(`[EMA] Created tracker for trip ${tripId}`);
+        }
+
+        const tracker = emaTrackers.get(tripId);
+        const emaResult = tracker.update({
+          lat,
+          lng,
+          speed: speed || 0,
+          timestamp: now,
+        });
+
+        emaData = {
+          emaSpeed: emaResult.emaSpeed?.toFixed(1),
+          instantSpeed: emaResult.instantSpeed?.toFixed(1),
+          sampleCount: emaResult.sampleCount,
+          isStable: tracker.isStable(),
+        };
+
+        console.log(`[EMA] Trip ${tripId}:`, emaData);
+      } catch (emaError) {
+        console.warn("[EMA] Update failed (non-fatal):", emaError.message);
+      }
+
       // M4-M6: Broadcast bus_position_update to multiple rooms
       const positionUpdate = {
         busId,
@@ -285,14 +374,15 @@ class TelemetryService {
         speed: speed || 0,
         heading: heading || 0,
         timestamp: position.timestamp,
+        emaSpeed: emaData?.emaSpeed, // 📊 P1: Include EMA speed
       };
 
       // Emit to trip room (parents + admin subscribed)
       io.to(`trip-${tripId}`).emit("bus_position_update", positionUpdate);
-      
+
       // M4-M6: Also emit to bus room
       io.to(`bus-${busId}`).emit("bus_position_update", positionUpdate);
-      
+
       // M4-M6: Emit to role-admin for monitoring
       io.to("role-quan_tri").emit("bus_position_update", positionUpdate);
 
@@ -387,7 +477,7 @@ class TelemetryService {
         if (distance <= geofenceRadius) {
           // 🚏 Anti-spam: Check if this stop has already been emitted for this trip
           const tripEmittedStops = emittedStops.get(tripId) || new Set();
-          
+
           if (tripEmittedStops.has(stop.maDiem)) {
             // Already emitted for this stop, skip
             console.log(
@@ -400,21 +490,88 @@ class TelemetryService {
             `📍 Xe gần điểm dừng ${stop.tenDiem} (${Math.round(distance)}m)`
           );
 
+          // 📊 P1: Calculate ETA to this stop
+          let etaData = null;
+          try {
+            const tracker = emaTrackers.get(tripId);
+            const eta = calculateETA(currentPos, stop, tracker, 25); // fallback 25 km/h
+            etaData = {
+              etaMinutes: eta.etaMinutes,
+              etaSeconds: eta.etaSeconds,
+              distance: eta.distance,
+              speed: eta.speed,
+              confidence: eta.confidence,
+            };
+            console.log(`[ETA] Stop ${stop.tenDiem}:`, etaData);
+          } catch (etaError) {
+            console.warn(
+              "[ETA] Calculation failed (non-fatal):",
+              etaError.message
+            );
+          }
+
           const eventData = {
             tripId,
             stopId: stop.maDiem,
             stopName: stop.tenDiem,
             distance_m: Math.round(distance),
             timestamp: new Date().toISOString(),
+            eta: etaData, // 📊 P1: Include ETA data
           };
 
           // Emit WebSocket event
           console.log(`📡 emit: approach_stop to trip-${tripId}`, eventData);
           io.to(`trip-${tripId}`).emit("approach_stop", eventData);
-          
+
           // 🚏 Mark this stop as emitted for this trip
           tripEmittedStops.add(stop.maDiem);
           emittedStops.set(tripId, tripEmittedStops);
+
+          // 📬 M5: Create notification in database for parents
+          try {
+            const students = await HocSinhModel.getByTripId(tripId);
+            const parentIds = students
+              .map((s) => s.maPhuHuynh)
+              .filter((id) => id);
+
+            if (parentIds.length > 0) {
+              const ThongBaoModel = (await import("../models/ThongBaoModel.js"))
+                .default;
+              const route = await TuyenDuongModel.getById(schedule.maTuyen);
+
+              await ThongBaoModel.createMultiple(
+                parentIds,
+                "Xe đến gần điểm dừng",
+                `Xe buýt tuyến ${route?.tenTuyen || "N/A"} đang đến gần ${
+                  stop.tenDiem
+                } (cách ${Math.round(distance)}m)`,
+                "approach_stop"
+              );
+
+              // Emit notification:new event to each parent
+              for (const parentId of parentIds) {
+                io.to(`user-${parentId}`).emit("notification:new", {
+                  tieuDe: "Xe đến gần điểm dừng",
+                  noiDung: `Xe buýt tuyến ${
+                    route?.tenTuyen || "N/A"
+                  } đang đến gần ${stop.tenDiem} (cách ${Math.round(
+                    distance
+                  )}m)`,
+                  loaiThongBao: "approach_stop",
+                  thoiGianTao: new Date().toISOString(),
+                });
+              }
+
+              console.log(
+                `📬 Sent approach_stop notifications to ${parentIds.length} parents`
+              );
+            }
+          } catch (notifError) {
+            console.warn(
+              "⚠️  Failed to create approach_stop notification:",
+              notifError.message
+            );
+          }
 
           // 🔥 Day 5: Send Push Notification to parents
           try {
@@ -527,6 +684,10 @@ class TelemetryService {
           `🚨 Delay alert sent for trip ${tripId} (will send again after 3 minutes)`
         );
 
+        // 📬 M5: NO LONGER CREATE NOTIFICATION - Parents see banner via WebSocket
+        // Frontend will display persistent banner that updates delay_minutes in real-time
+        // Only driver receives notification every 3 minutes via WebSocket "delay_alert" event
+
         // 🔥 Day 5: Send Push Notification to parents
         try {
           const parentTokens = await getParentTokensForTrip(tripId);
@@ -579,6 +740,18 @@ class TelemetryService {
     if (tripId) {
       delayAlertLastSent.delete(tripId);
       console.log(`🗑️ Cleared delay alert cache for trip ${tripId}`);
+
+      // 📊 P1: Clear EMA tracker
+      if (emaTrackers.has(tripId)) {
+        emaTrackers.delete(tripId);
+        console.log(`🗑️ Cleared EMA tracker for trip ${tripId}`);
+      }
+
+      // 🚏 Clear emitted stops
+      if (emittedStops.has(tripId)) {
+        emittedStops.delete(tripId);
+        console.log(`🗑️ Cleared emitted stops for trip ${tripId}`);
+      }
     }
   }
 

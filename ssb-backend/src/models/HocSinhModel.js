@@ -35,13 +35,157 @@ const HocSinhModel = {
 
   // Lấy học sinh theo phụ huynh
   async getByParent(maPhuHuynh) {
+    // M5 FIX: Join với TrangThaiHocSinh để lấy trạng thái thực tế trong chuyến đi hôm nay
+    // 🔥 FIX: Also join với schedule để lấy thông tin ngay cả khi chưa có trip
     const [rows] = await pool.query(
-      `SELECT * FROM HocSinh 
-       WHERE maPhuHuynh = ? AND trangThai = TRUE
-       ORDER BY hoTen`,
+      `SELECT 
+        hs.*,
+        tts.trangThai as trangThaiHocSinh,
+        tts.ngayCapNhat as thoiGianCapNhatTrangThai,
+        tts.maChuyen,
+        cd.trangThai as trangThaiChuyen,
+        cd.ngayChay,
+        cd.maChuyen as trip_maChuyen,
+        -- Thông tin từ trip (nếu có)
+        lt_trip.gioKhoiHanh as trip_gioKhoiHanh,
+        lt_trip.loaiChuyen as trip_loaiChuyen,
+        lt_trip.maTuyen as trip_maTuyen,
+        lt_trip.maXe as trip_maXe,
+        lt_trip.maTaiXe as trip_maTaiXe,
+        td_trip.tenTuyen as trip_tenTuyen,
+        xb_trip.bienSoXe as trip_bienSoXe,
+        tx_trip.tenTaiXe as trip_tenTaiXe,
+        nd_tx_trip.soDienThoai as trip_sdtTaiXe,
+        -- Thông tin từ schedule hôm nay (nếu chưa có trip)
+        lt_sched.maLichTrinh as sched_maLichTrinh,
+        lt_sched.gioKhoiHanh as sched_gioKhoiHanh,
+        lt_sched.loaiChuyen as sched_loaiChuyen,
+        lt_sched.maTuyen as sched_maTuyen,
+        lt_sched.maXe as sched_maXe,
+        lt_sched.maTaiXe as sched_maTaiXe,
+        lt_sched.ngayChay as sched_ngayChay,
+        td_sched.tenTuyen as sched_tenTuyen,
+        xb_sched.bienSoXe as sched_bienSoXe,
+        tx_sched.tenTaiXe as sched_tenTaiXe,
+        nd_tx_sched.soDienThoai as sched_sdtTaiXe
+       FROM HocSinh hs
+       -- Join với trip (nếu có)
+       LEFT JOIN TrangThaiHocSinh tts ON hs.maHocSinh = tts.maHocSinh
+       LEFT JOIN ChuyenDi cd ON tts.maChuyen = cd.maChuyen AND cd.ngayChay = CURDATE()
+       LEFT JOIN LichTrinh lt_trip ON cd.maLichTrinh = lt_trip.maLichTrinh
+       LEFT JOIN TuyenDuong td_trip ON lt_trip.maTuyen = td_trip.maTuyen
+       LEFT JOIN XeBuyt xb_trip ON lt_trip.maXe = xb_trip.maXe
+       LEFT JOIN TaiXe tx_trip ON lt_trip.maTaiXe = tx_trip.maTaiXe
+       LEFT JOIN NguoiDung nd_tx_trip ON tx_trip.maTaiXe = nd_tx_trip.maNguoiDung
+       -- 🔥 Join với schedule hôm nay (nếu chưa có trip) - tìm schedule cho route mà học sinh được phân công
+       -- Strategy: 
+       -- 1. Tìm route từ trip hôm nay (nếu có) - từ TrangThaiHocSinh với ChuyenDi ngayChay = CURDATE()
+       -- 2. Nếu không có, tìm route từ trip gần nhất của học sinh
+       -- 3. Sau đó tìm schedule cho route đó (ưu tiên hôm nay)
+       LEFT JOIN (
+         -- Tìm route từ trip hôm nay (nếu có) hoặc trip gần nhất
+         SELECT DISTINCT 
+           tts2.maHocSinh,
+           COALESCE(
+             -- Ưu tiên: route từ trip hôm nay
+             (SELECT lt_today.maTuyen 
+              FROM TrangThaiHocSinh tts_today
+              JOIN ChuyenDi cd_today ON tts_today.maChuyen = cd_today.maChuyen AND cd_today.ngayChay = CURDATE()
+              JOIN LichTrinh lt_today ON cd_today.maLichTrinh = lt_today.maLichTrinh
+              WHERE tts_today.maHocSinh = tts2.maHocSinh
+              LIMIT 1),
+             -- Fallback: route từ trip gần nhất
+             (SELECT lt2.maTuyen 
+              FROM TrangThaiHocSinh tts3
+              JOIN ChuyenDi cd3 ON tts3.maChuyen = cd3.maChuyen
+              JOIN LichTrinh lt2 ON cd3.maLichTrinh = lt2.maLichTrinh
+              WHERE tts3.maHocSinh = tts2.maHocSinh
+                AND cd3.ngayChay <= CURDATE()
+              ORDER BY cd3.ngayChay DESC, cd3.gioBatDauThucTe DESC
+              LIMIT 1)
+           ) as recent_maTuyen
+         FROM TrangThaiHocSinh tts2
+         GROUP BY tts2.maHocSinh
+       ) recent_route ON hs.maHocSinh = recent_route.maHocSinh
+       LEFT JOIN (
+         -- Tìm schedule gần nhất cho route (ưu tiên hôm nay, nếu không có thì lấy gần nhất)
+         SELECT 
+           lt1.maLichTrinh,
+           lt1.maTuyen,
+           lt1.maXe,
+           lt1.maTaiXe,
+           lt1.loaiChuyen,
+           lt1.gioKhoiHanh,
+           lt1.ngayChay,
+           lt1.dangApDung
+         FROM LichTrinh lt1
+         WHERE lt1.dangApDung = TRUE
+           AND lt1.ngayChay >= CURDATE() - INTERVAL 7 DAY
+           AND lt1.maLichTrinh = (
+             SELECT lt2.maLichTrinh
+             FROM LichTrinh lt2
+             WHERE lt2.maTuyen = lt1.maTuyen
+               AND lt2.dangApDung = TRUE
+               AND lt2.ngayChay >= CURDATE() - INTERVAL 7 DAY
+             ORDER BY 
+               CASE WHEN lt2.ngayChay = CURDATE() THEN 0 ELSE 1 END,
+               lt2.ngayChay DESC
+             LIMIT 1
+           )
+       ) lt_sched ON lt_sched.maTuyen = recent_route.recent_maTuyen
+       LEFT JOIN TuyenDuong td_sched ON lt_sched.maTuyen = td_sched.maTuyen
+       LEFT JOIN XeBuyt xb_sched ON lt_sched.maXe = xb_sched.maXe
+       LEFT JOIN TaiXe tx_sched ON lt_sched.maTaiXe = tx_sched.maTaiXe
+       LEFT JOIN NguoiDung nd_tx_sched ON tx_sched.maTaiXe = nd_tx_sched.maNguoiDung
+       WHERE hs.maPhuHuynh = ? AND hs.trangThai = TRUE
+       ORDER BY hs.hoTen, tts.ngayCapNhat DESC`,
       [maPhuHuynh]
     );
-    return rows;
+
+    // Transform to match frontend expectation
+    return rows.map((row) => {
+      // Ưu tiên thông tin từ trip, nếu không có thì dùng từ schedule
+      const tripInfo = row.trip_maChuyen
+        ? {
+            // Có trip (đã start hoặc chưa start)
+            maChuyen: row.trip_maChuyen,
+            trangThai: row.trangThaiChuyen,
+            ngayChay: row.ngayChay,
+            gioKhoiHanh: row.trip_gioKhoiHanh,
+            loaiChuyen: row.trip_loaiChuyen,
+            maTuyen: row.trip_maTuyen,
+            tenTuyen: row.trip_tenTuyen,
+            maXe: row.trip_maXe,
+            bienSoXe: row.trip_bienSoXe,
+            maTaiXe: row.trip_maTaiXe,
+            tenTaiXe: row.trip_tenTaiXe,
+            sdtTaiXe: row.trip_sdtTaiXe,
+            trangThaiHocSinh: row.trangThaiHocSinh,
+          }
+        : row.sched_maLichTrinh
+        ? {
+            // Chưa có trip nhưng có schedule
+            maChuyen: null,
+            trangThai: "chua_khoi_hanh",
+            ngayChay: row.sched_ngayChay ? new Date(row.sched_ngayChay).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+            gioKhoiHanh: row.sched_gioKhoiHanh,
+            loaiChuyen: row.sched_loaiChuyen,
+            maTuyen: row.sched_maTuyen,
+            tenTuyen: row.sched_tenTuyen,
+            maXe: row.sched_maXe,
+            bienSoXe: row.sched_bienSoXe,
+            maTaiXe: row.sched_maTaiXe,
+            tenTaiXe: row.sched_tenTaiXe,
+            sdtTaiXe: row.sched_sdtTaiXe,
+            trangThaiHocSinh: null,
+          }
+        : null;
+
+      return {
+        ...row,
+        tripInfo,
+      };
+    });
   },
 
   // Lấy học sinh theo lớp

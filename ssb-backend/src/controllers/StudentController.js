@@ -509,6 +509,11 @@ class StudentController {
       const ChuyenDiModel = (await import("../models/ChuyenDiModel.js")).default;
       const LichTrinhModel = (await import("../models/LichTrinhModel.js")).default;
 
+      // Import models cần thiết
+      const TuyenDuongModel = (await import("../models/TuyenDuongModel.js")).default;
+      const XeBuytModel = (await import("../models/XeBuytModel.js")).default;
+      const TaiXeModel = (await import("../models/TaiXeModel.js")).default;
+
       const studentsWithTripInfo = await Promise.all(
         students.map(async (student) => {
           // Lấy chuyến đi gần nhất của học sinh này (nếu có)
@@ -524,14 +529,58 @@ class StudentController {
             const hasStudent = tripStudents.some((ts) => ts.maHocSinh === student.maHocSinh);
             if (hasStudent) {
               const schedule = await LichTrinhModel.getById(trip.maLichTrinh);
+              const route = schedule ? await TuyenDuongModel.getById(schedule.maTuyen) : null;
+              const bus = schedule ? await XeBuytModel.getById(schedule.maXe) : null;
+              const driver = schedule ? await TaiXeModel.getById(schedule.maTaiXe) : null;
+              
               tripInfo = {
                 maChuyen: trip.maChuyen,
-                tenTuyen: trip.tenTuyen,
-                bienSoXe: trip.bienSoXe,
+                maTuyen: schedule?.maTuyen || route?.maTuyen,
+                maXe: schedule?.maXe || bus?.maXe,
+                tenTuyen: route?.tenTuyen || trip.tenTuyen,
+                bienSoXe: bus?.bienSoXe || trip.bienSoXe,
                 trangThai: trip.trangThai,
                 gioKhoiHanh: schedule?.gioKhoiHanh || trip.gioKhoiHanh,
+                tenTaiXe: driver?.tenTaiXe,
+                sdtTaiXe: driver?.soDienThoai,
               };
               break;
+            }
+          }
+
+          // 🔥 FIX: Nếu chưa có trip, tìm schedule dựa trên route của học sinh
+          if (!tripInfo && student.maTuyen) {
+            try {
+              // Tìm schedule cho route này hôm nay
+              const schedules = await LichTrinhModel.getAll({
+                maTuyen: student.maTuyen,
+              });
+
+              // Tìm schedule phù hợp với ngày hôm nay (có thể check weekday_mask)
+              const todaySchedule = schedules.find((s) => {
+                // TODO: Check weekday_mask nếu có
+                return true; // Tạm thời lấy schedule đầu tiên
+              });
+
+              if (todaySchedule) {
+                const route = await TuyenDuongModel.getById(todaySchedule.maTuyen);
+                const bus = await XeBuytModel.getById(todaySchedule.maXe);
+                const driver = await TaiXeModel.getById(todaySchedule.maTaiXe);
+
+                tripInfo = {
+                  maChuyen: null, // Chưa có trip
+                  maTuyen: todaySchedule.maTuyen,
+                  maXe: todaySchedule.maXe,
+                  tenTuyen: route?.tenTuyen,
+                  bienSoXe: bus?.bienSoXe,
+                  trangThai: "chua_khoi_hanh", // Chưa khởi hành
+                  gioKhoiHanh: todaySchedule.gioKhoiHanh,
+                  tenTaiXe: driver?.tenTaiXe,
+                  sdtTaiXe: driver?.soDienThoai,
+                };
+              }
+            } catch (scheduleError) {
+              console.warn(`[StudentController] Failed to load schedule for student ${student.maHocSinh}:`, scheduleError.message);
             }
           }
 

@@ -12,6 +12,7 @@ CREATE DATABASE IF NOT EXISTS school_bus_system;
 USE school_bus_system;
 
 -- Drop existing tables if they exist (for clean initialization)
+DROP TABLE IF EXISTS trip_stop_status;
 DROP TABLE IF EXISTS TrangThaiHocSinh;
 DROP TABLE IF EXISTS SuCo;
 DROP TABLE IF EXISTS ThongBao;
@@ -261,6 +262,36 @@ CREATE TABLE SuCo (
 -- Minimal indexes for MVP2 performance
 CREATE INDEX idx_schedules_driver_time ON LichTrinh(maTaiXe, gioKhoiHanh);
 CREATE INDEX idx_schedules_bus_time ON LichTrinh(maXe, gioKhoiHanh);
+
+-- ===========================================================================
+-- Bảng lưu thời gian đến/rời từng điểm dừng của mỗi chuyến đi (trip_stop_status)
+-- ===========================================================================
+CREATE TABLE IF NOT EXISTS trip_stop_status (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    maChuyen INT NOT NULL,
+    thuTuDiem INT NOT NULL,                -- Thứ tự điểm dừng (1,2,3...)
+    thoiGianDen DATETIME NULL,             -- Thời gian xe đến điểm dừng
+    thoiGianRoi DATETIME NULL,             -- Thời gian xe rời điểm dừng
+    
+    ngayTao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    ngayCapNhat TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    -- Mỗi chuyến đi chỉ có 1 record cho mỗi điểm dừng
+    UNIQUE KEY uniq_trip_stop (maChuyen, thuTuDiem),
+    
+    -- Foreign key
+    CONSTRAINT fk_tss_chuyen_di
+        FOREIGN KEY (maChuyen) REFERENCES ChuyenDi(maChuyen) 
+        ON DELETE CASCADE,
+    
+    -- Index để query nhanh
+    INDEX idx_ma_chuyen (maChuyen),
+    INDEX idx_thoi_gian_den (thoiGianDen),
+    INDEX idx_thoi_gian_roi (thoiGianRoi)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Add comments
+ALTER TABLE trip_stop_status COMMENT = 'Lưu trạng thái thời gian đến/rời từng điểm dừng trong chuyến đi';
 
 -- Display completion message
 SELECT 'Database initialization completed successfully!' as message;
