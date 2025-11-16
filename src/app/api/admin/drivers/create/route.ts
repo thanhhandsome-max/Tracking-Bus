@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/user.model';
 import Driver from '@/models/driver.model';
+import Bus from '@/models/bus.model';
+import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 
 // POST create new driver
@@ -10,7 +12,7 @@ export async function POST(request: NextRequest) {
     await connectDB();
 
     const body = await request.json();
-    const { email, password, name, phone, licenseNumber } = body;
+    const { email, password, name, phone, licenseNumber, busId } = body;
 
     // Validate input
     if (!email || !password || !name || !phone) {
@@ -40,13 +42,32 @@ export async function POST(request: NextRequest) {
     });
 
     // Create driver
-    const newDriver = await Driver.create({
+    const driverData: any = {
       userId: newUser._id,
       name,
       email,
       phone,
       licenseNumber: licenseNumber || ''
-    });
+    };
+
+    // If a busId was provided, validate and assign
+    if (busId) {
+      if (!mongoose.Types.ObjectId.isValid(busId)) {
+        return NextResponse.json({ message: 'Mã xe không hợp lệ' }, { status: 400 });
+      }
+      const bus = await Bus.findById(busId);
+      if (!bus) {
+        return NextResponse.json({ message: 'Xe không tồn tại' }, { status: 400 });
+      }
+      driverData.busId = busId;
+    }
+
+    const newDriver = await Driver.create(driverData);
+
+    // If bus assigned, update bus.driverId to reference the created user's id
+    if (busId) {
+      await Bus.findByIdAndUpdate(busId, { driverId: newUser._id });
+    }
 
     return NextResponse.json(
       { 

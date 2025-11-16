@@ -4,10 +4,12 @@ import AdminUserManagement from '@/components/AdminUserManagement';
 import AdminDriverManagement from '@/components/AdminDriverManagement';
 import AdminParentManagement from '@/components/AdminParentManagement';
 import AdminRouteManagement from '@/components/AdminRouteManagement';
+import AdminStopManagement from '@/components/AdminStopManagement';
+import AdminBusManagement from '@/components/AdminBusManagement';
 import styles from './page.module.css';
 
 const AdminDashboard: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'users' | 'drivers' | 'parents' | 'routes'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'drivers' | 'parents' | 'routes' | 'stops' | 'buses'>('users');
 
   return (
     <div className={styles.dashboard}>
@@ -40,6 +42,18 @@ const AdminDashboard: React.FC = () => {
           >
             🗺️ Quản lý Tuyến xe
           </button>
+          <button
+            className={`${styles.navItem} ${activeTab === 'stops' ? styles.active : ''}`}
+            onClick={() => setActiveTab('stops')}
+          >
+            📍 Quản lý Trạm
+          </button>
+          <button
+            className={`${styles.navItem} ${activeTab === 'buses' ? styles.active : ''}`}
+            onClick={() => setActiveTab('buses')}
+          >
+            🚍 Quản lý Xe
+          </button>
         </nav>
       </div>
 
@@ -48,6 +62,8 @@ const AdminDashboard: React.FC = () => {
         {activeTab === 'drivers' && <AdminDriverManagement />}
         {activeTab === 'parents' && <AdminParentManagement />}
         {activeTab === 'routes' && <AdminRouteManagement />}
+        {activeTab === 'stops' && <AdminStopManagement />}
+        {activeTab === 'buses' && <AdminBusManagement />}
       </div>
     </div>
   );

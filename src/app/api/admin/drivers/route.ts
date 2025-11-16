@@ -3,7 +3,7 @@ import connectDB from '@/lib/mongodb';
 import Driver from '@/models/driver.model';
 
 interface DriverData {
-  userId?: { _id: unknown };
+  userId?: { _id: unknown; email?: string; firstName?: string; lastName?: string; name?: string };
   busId?: { _id: unknown; plateNumber: string };
   [key: string]: unknown;
 }
@@ -19,7 +19,8 @@ export async function GET() {
       _id: driver._id,
       userId: driver.userId?._id,
       name: driver.name,
-      email: driver.email,
+      // Email lives on the referenced User document (userId)
+      email: driver.userId?.email || '',
       phone: driver.phone,
       licenseNumber: driver.licenseNumber,
       busId: driver.busId?._id,

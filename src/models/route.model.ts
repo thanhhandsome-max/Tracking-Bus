@@ -13,6 +13,9 @@ export interface IRoute extends Document {
   department: string;
   arrival: string;
   time: string;
+  distance?: number; // in km
+  estimatedDuration?: string; // e.g. "45 min" or "1h 30m"
+  status?: 'active' | 'inactive' | 'maintenance';
   busId?: IBus['_id'];
   stops: IRouteStopInfo[];
 }
@@ -22,6 +25,13 @@ const routeSchema: Schema<IRoute> = new Schema({
   department: { type: String, required: true },
   arrival: { type: String, required: true },
   time: { type: String, required: true },
+  distance: { type: Number, min: 0 },
+  estimatedDuration: { type: String },
+  status: { 
+    type: String, 
+    enum: ['active', 'inactive', 'maintenance'], 
+    default: 'active' 
+  },
   busId: { type: Schema.Types.ObjectId, ref: 'Bus' },
   stops: [
     {

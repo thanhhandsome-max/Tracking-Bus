@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Driver from '@/models/driver.model';
+import Bus from '@/models/bus.model';
+import mongoose from 'mongoose';
 
 // GET driver by id
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -62,8 +64,34 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (name) driver.name = name;
     if (phone) driver.phone = phone;
     if (licenseNumber) driver.licenseNumber = licenseNumber;
-    if (busId) driver.busId = busId;
-    if (status) driver.status = status;
+    if (typeof status !== 'undefined') driver.status = status;
+
+    // Handle bus assignment changes: if busId provided (including null), synchronize Bus.driverId
+    if (typeof busId !== 'undefined') {
+      // Validate busId if not null/empty
+      if (busId) {
+        if (!mongoose.Types.ObjectId.isValid(busId)) {
+          return NextResponse.json({ message: 'Mã xe không hợp lệ' }, { status: 400 });
+        }
+        const newBus = await Bus.findById(busId);
+        if (!newBus) return NextResponse.json({ message: 'Xe không tồn tại' }, { status: 400 });
+
+        // If driver was previously assigned to another bus, remove that link
+        if (driver.busId && String(driver.busId) !== String(busId)) {
+          await Bus.findByIdAndUpdate(driver.busId, { $unset: { driverId: '' } });
+        }
+
+        // Assign new bus -> set driver's busId and set bus.driverId
+        driver.busId = busId;
+        await Bus.findByIdAndUpdate(busId, { driverId: driver.userId || driver._id });
+      } else {
+        // Unassign bus
+        if (driver.busId) {
+          await Bus.findByIdAndUpdate(driver.busId, { $unset: { driverId: '' } });
+        }
+        driver.busId = null as any;
+      }
+    }
 
     await driver.save();
 

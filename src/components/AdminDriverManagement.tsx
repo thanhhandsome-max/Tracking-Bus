@@ -9,6 +9,7 @@ interface Driver {
   phone: string;
   licenseNumber: string;
   busPlateNumber?: string;
+  busId?: string | null;
   status: string;
   createdAt: string;
 }
@@ -26,7 +27,8 @@ const AdminDriverManagement: React.FC = () => {
     password: '',
     name: '',
     phone: '',
-    licenseNumber: ''
+    licenseNumber: '',
+    busId: ''
   });
 
   const [editForm, setEditForm] = useState({
@@ -35,10 +37,21 @@ const AdminDriverManagement: React.FC = () => {
     licenseNumber: '',
     status: 'active'
   });
+  
+  // include busId in editForm
+  useEffect(() => {
+    // ensure editForm has busId when selectedDriver changes
+    if (selectedDriver) {
+      setEditForm(prev => ({ ...prev, busId: selectedDriver.busId || '' } as any));
+    }
+  }, [selectedDriver]);
+
+  const [buses, setBuses] = useState<Array<{ _id: string; plateNumber?: string; capacity?: number }>>([]);
 
   // Fetch drivers
   useEffect(() => {
     fetchDrivers();
+    fetchBuses();
   }, []);
 
   const fetchDrivers = async () => {
@@ -59,6 +72,16 @@ const AdminDriverManagement: React.FC = () => {
     setLoading(false);
   };
 
+  const fetchBuses = async () => {
+    try {
+      const res = await fetch('/api/admin/buses');
+      const data = await res.json();
+      if (res.ok) setBuses(data.buses || []);
+    } catch (err) {
+      console.error('Error fetching buses', err);
+    }
+  };
+
   const handleSelectDriver = (driver: Driver) => {
     setSelectedDriver(driver);
     setEditForm({
@@ -70,7 +93,7 @@ const AdminDriverManagement: React.FC = () => {
     setShowUpdateModal(true);
   };
 
-  const handleCreateInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCreateInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setCreateForm(prev => ({
       ...prev,
@@ -89,10 +112,14 @@ const AdminDriverManagement: React.FC = () => {
 
     setLoading(true);
     try {
+      const payload: any = { ...createForm };
+      // send null if no bus selected
+      if (payload.busId === '') payload.busId = null;
+
       const response = await fetch('/api/admin/drivers/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(createForm)
+        body: JSON.stringify(payload)
       });
 
       const data = await response.json();
@@ -104,7 +131,8 @@ const AdminDriverManagement: React.FC = () => {
           password: '',
           name: '',
           phone: '',
-          licenseNumber: ''
+          licenseNumber: '',
+          busId: ''
         });
         await fetchDrivers();
       } else {
@@ -175,6 +203,7 @@ const AdminDriverManagement: React.FC = () => {
       [name]: value
     }));
   };
+
 
   return (
     <div className={styles.container}>
@@ -322,6 +351,21 @@ const AdminDriverManagement: React.FC = () => {
                 />
               </div>
 
+              <div className={styles.formGroup}>
+                <label htmlFor="createBus">Gán xe (tùy chọn):</label>
+                <select
+                  id="createBus"
+                  name="busId"
+                  value={createForm.busId}
+                  onChange={(e) => handleCreateInputChange(e as unknown as React.ChangeEvent<HTMLInputElement>)}
+                >
+                  <option value="">-- Chưa gán --</option>
+                  {buses.map(b => (
+                    <option key={b._id} value={b._id}>{b.plateNumber} (S:{b.capacity})</option>
+                  ))}
+                </select>
+              </div>
+
               <div className={styles.modalActions}>
                 <button type="submit" className={styles.submitBtn} disabled={loading}>
                   {loading ? 'Đang tạo...' : 'Tạo tài xế'}
@@ -380,6 +424,21 @@ const AdminDriverManagement: React.FC = () => {
                   value={editForm.licenseNumber}
                   onChange={handleInputChange}
                 />
+              </div>
+
+              <div className={styles.formGroup}>
+                <label htmlFor="editBus">Gán xe</label>
+                <select
+                  id="editBus"
+                  name="busId"
+                  value={(editForm as any).busId || ''}
+                  onChange={handleInputChange}
+                >
+                  <option value="">-- Chưa gán --</option>
+                  {buses.map(b => (
+                    <option key={b._id} value={b._id}>{b.plateNumber} (S:{b.capacity})</option>
+                  ))}
+                </select>
               </div>
 
               <div className={styles.formGroup}>
