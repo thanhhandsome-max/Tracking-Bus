@@ -2,6 +2,7 @@ import LichTrinhModel from "../models/LichTrinhModel.js";
 import TuyenDuongModel from "../models/TuyenDuongModel.js";
 import XeBuytModel from "../models/XeBuytModel.js";
 import TaiXeModel from "../models/TaiXeModel.js";
+import ChuyenDiModel from "../models/ChuyenDiModel.js";
 
 const VALID_LOAI_CHUYEN = ["don_sang", "tra_chieu"];
 
@@ -85,6 +86,33 @@ class ScheduleService {
       ngayChay,
       dangApDung: true,
     });
+    
+    // Tự động tạo ChuyenDi từ LichTrinh nếu ngayChay là hôm nay hoặc tương lai
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const scheduleDate = new Date(ngayChay);
+      scheduleDate.setHours(0, 0, 0, 0);
+      
+      // Chỉ tạo ChuyenDi nếu ngayChay >= hôm nay
+      if (scheduleDate >= today) {
+        // Kiểm tra xem đã có ChuyenDi cho lịch trình này chưa
+        const existingTrip = await ChuyenDiModel.getByScheduleAndDate(id, ngayChay);
+        if (!existingTrip) {
+          await ChuyenDiModel.create({
+            maLichTrinh: id,
+            ngayChay,
+            trangThai: 'chua_khoi_hanh',
+            ghiChu: null,
+          });
+          console.log(`✅ Tự động tạo ChuyenDi cho LichTrinh ${id}, ngayChay: ${ngayChay}`);
+        }
+      }
+    } catch (tripError) {
+      // Log lỗi nhưng không throw - việc tạo schedule vẫn thành công
+      console.error(`⚠️ Không thể tự động tạo ChuyenDi cho LichTrinh ${id}:`, tripError);
+    }
+    
     return await LichTrinhModel.getById(id);
   }
 

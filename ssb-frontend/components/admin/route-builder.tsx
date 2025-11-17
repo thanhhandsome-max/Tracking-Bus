@@ -87,18 +87,53 @@ export function RouteBuilder({
   const clickListenerRef = useRef<google.maps.MapsEventListener | null>(null);
   
   const [routeName, setRouteName] = useState(initialRoute?.name || '');
-  const [diemBatDau, setDiemBatDau] = useState(initialRoute?.diemBatDau || '');
-  const [diemKetThuc, setDiemKetThuc] = useState(initialRoute?.diemKetThuc || '');
-  const [stops, setStops] = useState<Stop[]>(() => {
+  // Điểm bắt đầu và điểm kết thúc cũng là các điểm dừng
+  const [originStop, setOriginStop] = useState<Stop | null>(() => {
     if (initialRoute?.stops && initialRoute.stops.length > 0) {
-      return initialRoute.stops.map((s: any, idx: number) => ({
-        id: String(s.maDiem || s.id || idx + 1),
+      const firstStop = initialRoute.stops[0];
+      if (firstStop && (firstStop.viDo || firstStop.latitude)) {
+        return {
+          id: 'origin',
+          name: initialRoute.diemBatDau || firstStop.tenDiem || firstStop.name || 'Điểm bắt đầu',
+          address: firstStop.diaChi || firstStop.address || '',
+          lat: firstStop.viDo || firstStop.latitude,
+          lng: firstStop.kinhDo || firstStop.longitude,
+          estimatedTime: '',
+          sequence: 1,
+        };
+      }
+    }
+    return null;
+  });
+  const [destinationStop, setDestinationStop] = useState<Stop | null>(() => {
+    if (initialRoute?.stops && initialRoute.stops.length > 0) {
+      const lastStop = initialRoute.stops[initialRoute.stops.length - 1];
+      if (lastStop && (lastStop.viDo || lastStop.latitude)) {
+        return {
+          id: 'destination',
+          name: initialRoute.diemKetThuc || lastStop.tenDiem || lastStop.name || 'Điểm kết thúc',
+          address: lastStop.diaChi || lastStop.address || '',
+          lat: lastStop.viDo || lastStop.latitude,
+          lng: lastStop.kinhDo || lastStop.longitude,
+          estimatedTime: '',
+          sequence: 999, // Sẽ được cập nhật khi lưu
+        };
+      }
+    }
+    return null;
+  });
+  // Các điểm dừng trung gian (không bao gồm điểm bắt đầu và điểm kết thúc)
+  const [stops, setStops] = useState<Stop[]>(() => {
+    if (initialRoute?.stops && initialRoute.stops.length > 2) {
+      // Bỏ qua điểm đầu và điểm cuối
+      return initialRoute.stops.slice(1, -1).map((s: any, idx: number) => ({
+        id: String(s.maDiem || s.id || idx + 2),
         name: s.tenDiem || s.name || '',
         address: s.diaChi || s.address || '',
         lat: s.viDo || s.latitude,
         lng: s.kinhDo || s.longitude,
         estimatedTime: s.thoiGianDung || s.estimatedTime || '',
-        sequence: s.thuTu || s.sequence || idx + 1,
+        sequence: s.thuTu || s.sequence || idx + 2,
       }));
     }
     return [];
@@ -219,23 +254,26 @@ export function RouteBuilder({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapMode, isMapReady]);
 
-  // Update markers when stops change
+  // Update markers when stops, origin, or destination change
   useEffect(() => {
     if (!isMapReady || !mapInstanceRef.current) return;
     updateMarkers();
-  }, [stops, isMapReady]);
+  }, [stops, originStop, destinationStop, isMapReady]);
 
-  // Update route when stops change (với debounce để tránh gọi quá nhiều)
+  // Update route when stops, origin, or destination change (với debounce để tránh gọi quá nhiều)
   useEffect(() => {
-    console.log('🔄 useEffect [stops] triggered, stops count:', stops.length);
+    console.log('🔄 useEffect [stops, origin, destination] triggered', {
+      stopsCount: stops.length,
+      hasOrigin: !!originStop,
+      hasDestination: !!destinationStop,
+    });
     const timeoutId = setTimeout(() => {
-      const validStops = stops.filter((s) => s.lat && s.lng && s.address);
-      console.log('🔄 Debounced update, valid stops:', validStops.length);
-      if (validStops.length >= 2) {
+      // Cần có ít nhất origin và destination để tính polyline
+      if (originStop && destinationStop && originStop.lat && originStop.lng && destinationStop.lat && destinationStop.lng) {
         console.log('✅ Calling updateRoute from useEffect');
         updateRoute();
       } else {
-        console.log('⚠️ Not enough valid stops, clearing');
+        console.log('⚠️ Not enough valid points, clearing');
         setPolyline(null);
         setRouteSegments([]);
         // Remove polylines from map
@@ -247,11 +285,11 @@ export function RouteBuilder({
     }, 300); // Debounce 300ms
 
     return () => {
-      console.log('🧹 Cleaning up useEffect [stops] timeout');
+      console.log('🧹 Cleaning up useEffect [stops, origin, destination] timeout');
       clearTimeout(timeoutId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stops]);
+  }, [stops, originStop, destinationStop]);
 
   // Update polyline on map when route segments change
   useEffect(() => {
@@ -286,12 +324,34 @@ export function RouteBuilder({
     });
     markersRef.current.clear();
 
-    // Add new markers
-    stops.forEach((stop, index) => {
+    // Tạo danh sách tất cả các điểm (origin + stops + destination)
+    const allPoints: Array<{ stop: Stop; type: 'origin' | 'stop' | 'destination'; index: number }> = [];
+    
+    if (originStop && originStop.lat && originStop.lng) {
+      allPoints.push({ stop: originStop, type: 'origin', index: 0 });
+    }
+    stops.forEach((stop, idx) => {
+      if (stop.lat && stop.lng) {
+        allPoints.push({ stop, type: 'stop', index: idx + 1 });
+      }
+    });
+    if (destinationStop && destinationStop.lat && destinationStop.lng) {
+      allPoints.push({ stop: destinationStop, type: 'destination', index: allPoints.length });
+    }
+
+    // Add markers for all points
+    allPoints.forEach(({ stop, type, index }) => {
       if (!stop.lat || !stop.lng) return;
 
-      // Label: A, B, C... cho các điểm dừng
-      const label = String.fromCharCode(65 + index); // A=65, B=66, C=67...
+      // Label: S (Start), 1, 2, 3... (stops), E (End)
+      let label = '';
+      if (type === 'origin') {
+        label = 'S';
+      } else if (type === 'destination') {
+        label = 'E';
+      } else {
+        label = String(index);
+      }
       
       const marker = new google.maps.Marker({
         position: { lat: stop.lat, lng: stop.lng },
@@ -304,14 +364,14 @@ export function RouteBuilder({
         },
         icon: {
           path: google.maps.SymbolPath.CIRCLE,
-          scale: index === 0 ? 10 : 8, // Điểm đầu lớn hơn
-          fillColor: index === 0 ? '#4285F4' : index === stops.length - 1 ? '#EA4335' : '#34A853',
+          scale: type === 'origin' || type === 'destination' ? 10 : 8,
+          fillColor: type === 'origin' ? '#4285F4' : type === 'destination' ? '#EA4335' : '#34A853',
           fillOpacity: 1,
           strokeColor: 'white',
           strokeWeight: 2,
         },
-        title: stop.name || `Điểm ${label}`,
-        zIndex: index === 0 ? 1000 : 100 + index, // Điểm đầu ở trên cùng
+        title: stop.name || (type === 'origin' ? 'Điểm bắt đầu' : type === 'destination' ? 'Điểm kết thúc' : `Điểm dừng ${index}`),
+        zIndex: type === 'origin' ? 1000 : type === 'destination' ? 999 : 100 + index,
       });
 
       marker.addListener('click', () => {
@@ -333,23 +393,36 @@ export function RouteBuilder({
       markersRef.current.set(stop.id, marker);
     });
 
-    if (stops.length > 0) {
+    if (allPoints.length > 0) {
       fitBounds();
     }
   };
 
   const fitBounds = () => {
-    if (!mapInstanceRef.current || stops.length === 0) return;
+    if (!mapInstanceRef.current) return;
     if (!window.google?.maps) return;
 
     const google: typeof window.google = window.google;
     const bounds = new google.maps.LatLngBounds();
 
+    // Add origin
+    if (originStop && originStop.lat && originStop.lng) {
+      bounds.extend({ lat: originStop.lat, lng: originStop.lng });
+    }
+    
+    // Add stops
     stops.forEach((stop) => {
       if (stop.lat && stop.lng) {
         bounds.extend({ lat: stop.lat, lng: stop.lng });
       }
     });
+    
+    // Add destination
+    if (destinationStop && destinationStop.lat && destinationStop.lng) {
+      bounds.extend({ lat: destinationStop.lat, lng: destinationStop.lng });
+    }
+
+    if (bounds.isEmpty()) return;
 
     mapInstanceRef.current.fitBounds(bounds);
     // Add padding
@@ -360,15 +433,30 @@ export function RouteBuilder({
   };
 
   const updateRoute = async () => {
-    const validStops = stops.filter((s) => s.lat && s.lng && s.address);
+    // Cần có origin và destination để tính polyline
+    if (!originStop || !destinationStop || !originStop.lat || !originStop.lng || !destinationStop.lat || !destinationStop.lng) {
+      console.log('⚠️ Missing origin or destination, clearing polyline');
+      setPolyline(null);
+      setRouteSegments([]);
+      setRouteInfo(null);
+      return;
+    }
+
+    // Tạo danh sách tất cả các điểm: origin -> stops -> destination
+    const allPoints: Stop[] = [originStop];
+    const validStops = stops.filter((s) => s.lat && s.lng);
+    allPoints.push(...validStops);
+    allPoints.push(destinationStop);
+
     console.log('🔄 updateRoute called:', { 
-      totalStops: stops.length, 
-      validStops: validStops.length,
-      validStopsData: validStops.map(s => ({ name: s.name, lat: s.lat, lng: s.lng, address: s.address }))
+      totalPoints: allPoints.length,
+      origin: originStop.name,
+      destination: destinationStop.name,
+      intermediateStops: validStops.length,
     });
     
-    if (validStops.length < 2) {
-      console.log('⚠️ Not enough valid stops, clearing polyline');
+    if (allPoints.length < 2) {
+      console.log('⚠️ Not enough valid points, clearing polyline');
       setPolyline(null);
       setRouteSegments([]);
       setRouteInfo(null);
@@ -376,18 +464,18 @@ export function RouteBuilder({
     }
 
     try {
-      console.log('📡 Fetching directions for', validStops.length - 1, 'segments');
+      console.log('📡 Fetching directions for', allPoints.length - 1, 'segments');
       // Lấy directions cho từng đoạn đường
       const segments: Array<{ polyline: string; from: number; to: number }> = [];
       let totalDistance = 0;
       let totalDuration = 0;
 
-      for (let i = 0; i < validStops.length - 1; i++) {
-        const from = validStops[i];
-        const to = validStops[i + 1];
+      for (let i = 0; i < allPoints.length - 1; i++) {
+        const from = allPoints[i];
+        const to = allPoints[i + 1];
 
         try {
-          console.log(`📡 Fetching directions segment ${i + 1}/${validStops.length - 1}: ${from.name} → ${to.name}`);
+          console.log(`📡 Fetching directions segment ${i + 1}/${allPoints.length - 1}: ${from.name} → ${to.name}`);
           const response = await apiClient.getDirections({
             origin: `${from.lat},${from.lng}`,
             destination: `${to.lat},${to.lng}`,
@@ -437,7 +525,7 @@ export function RouteBuilder({
         }
       }
 
-      console.log(`📊 Total segments fetched: ${segments.length}/${validStops.length - 1}`);
+      console.log(`📊 Total segments fetched: ${segments.length}/${allPoints.length - 1}`);
       console.log('📊 Segments data:', segments.map(s => ({ from: s.from, to: s.to, polylineLength: s.polyline.length })));
       
       setRouteSegments(segments);
@@ -534,9 +622,15 @@ export function RouteBuilder({
         return;
       }
 
+      // Tạo danh sách tất cả các điểm để tìm index
+      const allPointsForHighlight: Stop[] = [];
+      if (originStop) allPointsForHighlight.push(originStop);
+      allPointsForHighlight.push(...stops);
+      if (destinationStop) allPointsForHighlight.push(destinationStop);
+      
       // Tìm index của điểm dừng được chọn
       const selectedIndex = selectedStopId 
-        ? stops.findIndex((s) => s.id === selectedStopId)
+        ? allPointsForHighlight.findIndex((s) => s.id === selectedStopId)
         : -1;
 
       // Tạo polyline cho từng đoạn đường
@@ -907,35 +1001,46 @@ export function RouteBuilder({
         address = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
       }
 
-      // Update stop coordinates and address
-      const updatedStops = stops.map((stop) =>
-        stop.id === stopId
-          ? { ...stop, lat, lng, address }
-          : stop
-      );
-      setStops(updatedStops);
-
-      // Trigger update route để cập nhật polyline
-      if (updatedStops.filter((s) => s.lat && s.lng && s.address).length >= 2) {
-        setTimeout(() => {
-          updateRoute();
-        }, 100);
+      // Update origin, destination, or stop coordinates and address
+      if (stopId === 'origin' && originStop) {
+        setOriginStop({ ...originStop, lat, lng, address });
+      } else if (stopId === 'destination' && destinationStop) {
+        setDestinationStop({ ...destinationStop, lat, lng, address });
+      } else {
+        // Update stop coordinates and address
+        const updatedStops = stops.map((stop) =>
+          stop.id === stopId
+            ? { ...stop, lat, lng, address }
+            : stop
+        );
+        setStops(updatedStops);
       }
 
+      // Trigger update route để cập nhật polyline
+      setTimeout(() => {
+        updateRoute();
+      }, 100);
+
       toast({
-        title: 'Đã di chuyển điểm dừng',
+        title: 'Đã di chuyển điểm',
         description: 'Địa chỉ đã được cập nhật tự động',
       });
     } catch (error) {
       console.error('Failed to reverse geocode:', error);
       // Update coordinates anyway
-      setStops(
-        stops.map((stop) =>
-          stop.id === stopId
-            ? { ...stop, lat, lng, address: `${lat.toFixed(6)}, ${lng.toFixed(6)}` }
-            : stop
-        )
-      );
+      if (stopId === 'origin' && originStop) {
+        setOriginStop({ ...originStop, lat, lng, address: `${lat.toFixed(6)}, ${lng.toFixed(6)}` });
+      } else if (stopId === 'destination' && destinationStop) {
+        setDestinationStop({ ...destinationStop, lat, lng, address: `${lat.toFixed(6)}, ${lng.toFixed(6)}` });
+      } else {
+        setStops(
+          stops.map((stop) =>
+            stop.id === stopId
+              ? { ...stop, lat, lng, address: `${lat.toFixed(6)}, ${lng.toFixed(6)}` }
+              : stop
+          )
+        );
+      }
     }
   };
 
@@ -966,15 +1071,7 @@ export function RouteBuilder({
       return;
     }
 
-    const validStops = stops.filter((s) => s.name.trim() && s.address.trim());
-    if (validStops.length === 0) {
-      toast({
-        title: 'Lỗi',
-        description: 'Vui lòng thêm ít nhất một điểm dừng',
-        variant: 'destructive',
-      });
-      return;
-    }
+    const validStops = stops.filter((s) => s.name.trim() && s.lat && s.lng);
 
     try {
       setIsSubmitting(true);
@@ -998,21 +1095,34 @@ export function RouteBuilder({
         return;
       }
 
-      // Chuẩn bị diemBatDau và diemKetThuc
-      const startPoint = diemBatDau.trim() || stops[0]?.name || 'Điểm bắt đầu';
-      const endPoint = diemKetThuc.trim() || stops[stops.length - 1]?.name || 'Điểm kết thúc';
-      
+      // Validation: Cần có origin và destination
+      if (!originStop || !originStop.lat || !originStop.lng) {
+        toast({
+          title: 'Lỗi',
+          description: 'Vui lòng chọn điểm bắt đầu',
+          variant: 'destructive',
+        });
+        return;
+      }
+      if (!destinationStop || !destinationStop.lat || !destinationStop.lng) {
+        toast({
+          title: 'Lỗi',
+          description: 'Vui lòng chọn điểm kết thúc',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Chuẩn bị diemBatDau và diemKetThuc từ origin và destination
       const routePayload: any = {
         tenTuyen: trimmedRouteName,
+        diemBatDau: originStop.name.trim().substring(0, 255),
+        diemKetThuc: destinationStop.name.trim().substring(0, 255),
+        origin_lat: originStop.lat,
+        origin_lng: originStop.lng,
+        dest_lat: destinationStop.lat,
+        dest_lng: destinationStop.lng,
       };
-      
-      // Chỉ thêm diemBatDau và diemKetThuc nếu có giá trị (optional theo validation)
-      if (startPoint && startPoint.trim().length > 0) {
-        routePayload.diemBatDau = startPoint.trim().substring(0, 255);
-      }
-      if (endPoint && endPoint.trim().length > 0) {
-        routePayload.diemKetThuc = endPoint.trim().substring(0, 255);
-      }
 
       if (mode === 'edit' && initialRoute?.id) {
         const updateResult = await apiClient.updateRoute(initialRoute.id, routePayload);
@@ -1077,8 +1187,30 @@ export function RouteBuilder({
           throw new Error(`Không thể lấy ID tuyến đường sau khi tạo. Response: ${JSON.stringify(result)}`);
         }
 
+        // Thêm origin và destination vào route_stops trước
+        // Thêm origin (sequence = 1)
+        try {
+          const originPayload: any = {
+            tenDiem: originStop.name.trim(),
+            address: originStop.address.trim() || undefined,
+            sequence: 1,
+            dwell_seconds: 30,
+            viDo: Number(originStop.lat),
+            kinhDo: Number(originStop.lng),
+          };
+          await apiClient.addRouteStop(newRouteId, originPayload);
+          console.log('✅ Đã thêm điểm bắt đầu');
+        } catch (err: any) {
+          console.error('❌ Lỗi khi thêm điểm bắt đầu:', err);
+          toast({
+            title: 'Lỗi',
+            description: `Không thể thêm điểm bắt đầu. ${err?.message || 'Lỗi không xác định'}`,
+            variant: 'destructive',
+          });
+        }
+
+        // Thêm các điểm dừng trung gian
         if (validStops.length > 0) {
-          // Thêm tất cả stops trước
           const addedStops: any[] = [];
           for (let i = 0; i < validStops.length; i++) {
             const stop = validStops[i];
@@ -1086,7 +1218,7 @@ export function RouteBuilder({
               const stopPayload: any = {
                 tenDiem: stop.name.trim(),
                 address: stop.address.trim() || undefined,
-                sequence: i + 1, // Sử dụng index từ vòng lặp thay vì indexOf
+                sequence: i + 2, // +2 vì đã có origin ở sequence 1
                 dwell_seconds: stop.estimatedTime ? parseInt(stop.estimatedTime) * 60 : 30, // Mặc định 30 giây
               };
 
@@ -1225,11 +1357,33 @@ export function RouteBuilder({
             }
           }
           
-          console.log(`📊 Tổng số điểm dừng đã thêm: ${addedStops.length}/${validStops.length}`);
+          console.log(`📊 Tổng số điểm dừng trung gian đã thêm: ${addedStops.length}/${validStops.length}`);
 
-          // Chỉ rebuild polyline nếu có ít nhất 2 stops đã được thêm thành công
-          // Lưu ý: Rebuild polyline là optional, không bắt buộc
-          if (addedStops.length >= 2) {
+        // Thêm destination (sequence = cuối cùng, ngay cả khi không có điểm dừng trung gian)
+        try {
+          const destinationSequence = validStops.length > 0 ? addedStops.length + 2 : 2; // +2 vì đã có origin ở sequence 1
+          const destinationPayload: any = {
+            tenDiem: destinationStop.name.trim(),
+            address: destinationStop.address.trim() || undefined,
+            sequence: destinationSequence,
+            dwell_seconds: 60, // Điểm kết thúc dừng lâu hơn
+            viDo: Number(destinationStop.lat),
+            kinhDo: Number(destinationStop.lng),
+          };
+          await apiClient.addRouteStop(newRouteId, destinationPayload);
+          console.log('✅ Đã thêm điểm kết thúc');
+        } catch (err: any) {
+          console.error('❌ Lỗi khi thêm điểm kết thúc:', err);
+          toast({
+            title: 'Lỗi',
+            description: `Không thể thêm điểm kết thúc. ${err?.message || 'Lỗi không xác định'}`,
+            variant: 'destructive',
+          });
+        }
+
+        // Chỉ rebuild polyline nếu có ít nhất origin và destination
+        // Lưu ý: Rebuild polyline là optional, không bắt buộc
+        if (originStop && destinationStop) {
             try {
               // Đợi một chút để đảm bảo tất cả stops đã được lưu vào DB
               await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -1422,24 +1576,58 @@ export function RouteBuilder({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-3">
               <div>
-                <Label className="text-xs">Điểm bắt đầu</Label>
-                <Input
-                  value={diemBatDau}
-                  onChange={(e) => setDiemBatDau(e.target.value)}
-                  placeholder="VD: Trường TH ABC"
-                  className="text-sm"
+                <Label className="text-xs flex items-center gap-1">
+                  <Navigation className="w-3 h-3 text-primary" />
+                  Điểm bắt đầu *
+                </Label>
+                <PlacePicker
+                  onPlaceSelected={(place) => {
+                    setOriginStop({
+                      id: 'origin',
+                      name: place.name || 'Điểm bắt đầu',
+                      address: place.address || '',
+                      lat: place.lat,
+                      lng: place.lng,
+                      estimatedTime: '',
+                      sequence: 1,
+                    });
+                  }}
+                  placeholder="Tìm kiếm điểm bắt đầu..."
                 />
+                {originStop && (
+                  <div className="mt-1 p-2 bg-primary/5 rounded text-xs">
+                    <p className="font-medium">{originStop.name}</p>
+                    <p className="text-muted-foreground line-clamp-1">{originStop.address}</p>
+                  </div>
+                )}
               </div>
               <div>
-                <Label className="text-xs">Điểm kết thúc</Label>
-                <Input
-                  value={diemKetThuc}
-                  onChange={(e) => setDiemKetThuc(e.target.value)}
-                  placeholder="VD: Khu dân cư XYZ"
-                  className="text-sm"
+                <Label className="text-xs flex items-center gap-1">
+                  <MapPin className="w-3 h-3 text-destructive" />
+                  Điểm kết thúc *
+                </Label>
+                <PlacePicker
+                  onPlaceSelected={(place) => {
+                    setDestinationStop({
+                      id: 'destination',
+                      name: place.name || 'Điểm kết thúc',
+                      address: place.address || '',
+                      lat: place.lat,
+                      lng: place.lng,
+                      estimatedTime: '',
+                      sequence: 999,
+                    });
+                  }}
+                  placeholder="Tìm kiếm điểm kết thúc..."
                 />
+                {destinationStop && (
+                  <div className="mt-1 p-2 bg-destructive/5 rounded text-xs">
+                    <p className="font-medium">{destinationStop.name}</p>
+                    <p className="text-muted-foreground line-clamp-1">{destinationStop.address}</p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -1642,7 +1830,7 @@ export function RouteBuilder({
               </div>
               <div className="flex items-center gap-2 text-xs text-muted-foreground pt-1">
                 <MapPin className="w-3 h-3" />
-                <span>{stops.length} điểm dừng</span>
+                <span>{stops.length + (originStop ? 1 : 0) + (destinationStop ? 1 : 0)} điểm dừng</span>
               </div>
             </div>
           </div>
@@ -1652,7 +1840,7 @@ export function RouteBuilder({
           <Button
             className="w-full"
             onClick={handleSubmit}
-            disabled={isSubmitting || !routeName.trim() || stops.length === 0}
+            disabled={isSubmitting || !routeName.trim() || !originStop || !destinationStop}
           >
             <Save className="w-4 h-4 mr-2" />
             {isSubmitting

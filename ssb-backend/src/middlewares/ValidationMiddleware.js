@@ -36,6 +36,7 @@ class ValidationMiddleware {
   // Validate driver data
   static validateDriver(req, res, next) {
     const schema = Joi.object({
+      maTaiXe: Joi.alternatives().try(Joi.string(), Joi.number()).optional(),
       hoTen: Joi.string().min(2).max(100).required().messages({
         "string.min": "Họ tên phải có ít nhất 2 ký tự",
         "string.max": "Họ tên không được quá 100 ký tự",
@@ -51,25 +52,19 @@ class ValidationMiddleware {
         .messages({
           "string.pattern.base": "Số điện thoại phải có 10-11 chữ số",
         }),
-      matKhau: Joi.string().min(6).required().messages({
+      matKhau: Joi.string().min(6).optional().messages({
         "string.min": "Mật khẩu phải có ít nhất 6 ký tự",
-        "any.required": "Mật khẩu là bắt buộc",
       }),
-      vaiTro: Joi.string().valid("quan_tri", "tai_xe", "phu_huynh").required(),
-      soBangLai: Joi.string().required().when("vaiTro", {
-        is: "tai_xe",
-        then: Joi.required(),
-        otherwise: Joi.optional(),
+      vaiTro: Joi.string().valid("quan_tri", "tai_xe", "phu_huynh").optional().default("tai_xe"),
+      soBangLai: Joi.string().required().messages({
+        "any.required": "Số bằng lái là bắt buộc",
       }),
-      ngayHetHanBangLai: Joi.date().min("now").when("vaiTro", {
-        is: "tai_xe",
-        then: Joi.required(),
-        otherwise: Joi.optional(),
-      }),
+      ngayHetHanBangLai: Joi.date().min("now").optional(),
       soNamKinhNghiem: Joi.number().integer().min(0).optional(),
+      trangThai: Joi.string().valid("hoat_dong", "tam_nghi", "nghi_huu").optional(),
     });
 
-    const { error } = schema.validate(req.body);
+    const { error, value } = schema.validate(req.body, { abortEarly: false });
     if (error) {
       return res.status(400).json({
         success: false,
@@ -77,6 +72,24 @@ class ValidationMiddleware {
         errors: error.details.map((detail) => detail.message),
       });
     }
+
+    // Auto-set vaiTro to "tai_xe" for driver creation
+    req.body.vaiTro = value.vaiTro || "tai_xe";
+
+    // Auto-generate default password if not provided
+    if (!value.matKhau) {
+      // Generate a default password: email prefix + 123456
+      const emailPrefix = value.email.split("@")[0];
+      req.body.matKhau = `${emailPrefix}123456`;
+    }
+
+    // Set default license expiry date if not provided (2 years from now)
+    if (!value.ngayHetHanBangLai) {
+      const defaultExpiry = new Date();
+      defaultExpiry.setFullYear(defaultExpiry.getFullYear() + 2);
+      req.body.ngayHetHanBangLai = defaultExpiry.toISOString().split("T")[0];
+    }
+
     next();
   }
 

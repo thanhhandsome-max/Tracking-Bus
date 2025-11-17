@@ -5,6 +5,7 @@ import NguoiDungModel from "../models/NguoiDungModel.js";
 import LichTrinhModel from "../models/LichTrinhModel.js";
 import ChuyenDiModel from "../models/ChuyenDiModel.js";
 import * as response from "../utils/response.js";
+import bcrypt from "bcryptjs";
 
 class DriverController {
   // Lấy danh sách tất cả tài xế với thông tin người dùng
@@ -108,7 +109,7 @@ class DriverController {
       const userInfo = await NguoiDungModel.getById(id);
 
       // Lấy lịch trình hiện tại của tài xế
-      const currentSchedules = await LichTrinhModel.getByDriverId(id);
+      const currentSchedules = await LichTrinhModel.getByDriver(id);
 
       // Lấy lịch sử chuyến đi
       const tripHistory = await ChuyenDiModel.getByDriverId(id);
@@ -129,7 +130,6 @@ class DriverController {
   static async create(req, res) {
     try {
       const {
-        maTaiXe,
         hoTen,
         email,
         soDienThoai,
@@ -140,11 +140,11 @@ class DriverController {
       } = req.body;
 
       // Validation dữ liệu bắt buộc
-      if (!maTaiXe || !hoTen || !email || !soDienThoai || !soBangLai) {
+      if (!hoTen || !email || !soDienThoai || !soBangLai) {
         return res.status(400).json({
           success: false,
           message:
-            "Mã tài xế, họ tên, email, số điện thoại và số bằng lái là bắt buộc",
+            "Họ tên, email, số điện thoại và số bằng lái là bắt buộc",
         });
       }
 
@@ -173,6 +173,17 @@ class DriverController {
           success: false,
           message: "Email đã tồn tại trong hệ thống",
         });
+      }
+
+      // Kiểm tra số điện thoại đã tồn tại chưa (nếu có)
+      if (soDienThoai) {
+        const existingUserByPhone = await NguoiDungModel.getByPhone(soDienThoai);
+        if (existingUserByPhone) {
+          return res.status(409).json({
+            success: false,
+            message: "Số điện thoại đã tồn tại trong hệ thống",
+          });
+        }
       }
 
       // Kiểm tra số bằng lái đã tồn tại chưa
@@ -204,31 +215,121 @@ class DriverController {
         });
       }
 
-      // Tạo người dùng trước
+      // Validation ngày hết hạn bằng lái (lấy từ req.body sau khi middleware xử lý)
+      const expiryDateValue = req.body.ngayHetHanBangLai || ngayHetHanBangLai || null;
+      if (expiryDateValue) {
+        try {
+          const expiryDate = new Date(expiryDateValue);
+          if (isNaN(expiryDate.getTime())) {
+            return res.status(400).json({
+              success: false,
+              message: "Ngày hết hạn bằng lái không hợp lệ",
+            });
+          }
+          const today = new Date();
+          today.setHours(0, 0, 0, 0); // Reset time to compare dates only
+          expiryDate.setHours(0, 0, 0, 0);
+          if (expiryDate <= today) {
+            return res.status(400).json({
+              success: false,
+              message: "Bằng lái đã hết hạn hoặc không hợp lệ",
+            });
+          }
+        } catch (dateError) {
+          return res.status(400).json({
+            success: false,
+            message: "Ngày hết hạn bằng lái không hợp lệ",
+          });
+        }
+      }
+
+      // Hash password - bắt buộc khi tạo mới
+      const matKhau = req.body.matKhau;
+      if (!matKhau) {
+        return res.status(400).json({
+          success: false,
+          message: "Mật khẩu là bắt buộc khi tạo tài xế mới",
+        });
+      }
+
+      const saltRounds = 12;
+      const hashedPassword = await bcrypt.hash(matKhau, saltRounds);
+
+      // Tạo người dùng trước (maNguoiDung sẽ được auto-generate)
       const userData = {
-        maNguoiDung: maTaiXe,
         hoTen,
         email,
-        soDienThoai,
-        vaiTro: "tai_xe",
-        trangThai: trangThai || "hoat_dong",
+        matKhau: hashedPassword,
+        soDienThoai: soDienThoai || null,
+        anhDaiDien: null,
+        vaiTro: req.body.vaiTro || "tai_xe",
       };
 
-      const userId = await NguoiDungModel.create(userData);
+      let userId;
+      try {
+        console.log("Creating user with data:", { ...userData, matKhau: "***" });
+        userId = await NguoiDungModel.create(userData);
+        console.log("User created with ID:", userId);
+        if (!userId) {
+          return res.status(500).json({
+            success: false,
+            message: "Không thể tạo tài khoản người dùng",
+          });
+        }
+      } catch (userError) {
+        console.error("Error creating user:", userError);
+        console.error("User error details:", {
+          message: userError.message,
+          code: userError.code,
+          sqlMessage: userError.sqlMessage,
+          sqlState: userError.sqlState,
+        });
+        throw userError;
+      }
 
-      // Tạo tài xế
+      // Tạo tài xế (sử dụng userId làm maTaiXe)
       const driverData = {
-        maTaiXe,
+        maTaiXe: userId,
+        tenTaiXe: hoTen, // Trường bắt buộc trong database
         soBangLai,
-        ngayHetHanBangLai,
+        ngayHetHanBangLai: expiryDateValue || null,
         soNamKinhNghiem: soNamKinhNghiem || 0,
         trangThai: trangThai || "hoat_dong",
       };
 
-      const driverId = await TaiXeModel.create(driverData);
+      let driverCreated;
+      try {
+        console.log("Creating driver with data:", driverData);
+        driverCreated = await TaiXeModel.create(driverData);
+        console.log("Driver created:", driverCreated);
+      } catch (driverError) {
+        console.error("Error creating driver:", driverError);
+        console.error("Driver error details:", {
+          message: driverError.message,
+          code: driverError.code,
+          sqlMessage: driverError.sqlMessage,
+          sqlState: driverError.sqlState,
+        });
+        // Rollback: xóa user đã tạo
+        try {
+          await NguoiDungModel.delete(userId);
+        } catch (rollbackError) {
+          console.error("Rollback error:", rollbackError);
+        }
+        throw driverError;
+      }
 
-      // Lấy thông tin tài xế vừa tạo
-      const newDriver = await TaiXeModel.getById(driverId);
+      if (!driverCreated) {
+        // Nếu tạo tài xế thất bại, xóa người dùng đã tạo để rollback
+        await NguoiDungModel.delete(userId);
+        return res.status(500).json({
+          success: false,
+          message: "Không thể tạo thông tin tài xế",
+        });
+      }
+
+      // Lấy thông tin tài xế vừa tạo (sử dụng userId vì maTaiXe = userId)
+      const newDriver = await TaiXeModel.getById(userId);
       const userInfo = await NguoiDungModel.getById(userId);
 
       res.status(201).json({
@@ -241,10 +342,22 @@ class DriverController {
       });
     } catch (error) {
       console.error("Error in DriverController.create:", error);
+      console.error("Error stack:", error.stack);
+      console.error("Request body:", req.body);
+      
+      // Nếu đã tạo user nhưng chưa tạo driver, rollback
+      if (error.userId) {
+        try {
+          await NguoiDungModel.delete(error.userId);
+        } catch (rollbackError) {
+          console.error("Rollback error:", rollbackError);
+        }
+      }
+      
       res.status(500).json({
         success: false,
         message: "Lỗi server khi tạo tài xế mới",
-        error: error.message,
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
     }
   }
@@ -411,7 +524,7 @@ class DriverController {
       }
 
       // Kiểm tra tài xế có đang được sử dụng trong lịch trình không
-      const schedules = await LichTrinhModel.getByDriverId(id);
+      const schedules = await LichTrinhModel.getByDriver(id);
       if (schedules.length > 0) {
         return res.status(409).json({
           success: false,
@@ -466,7 +579,7 @@ class DriverController {
         });
       }
 
-      let schedules = await LichTrinhModel.getByDriverId(id);
+      let schedules = await LichTrinhModel.getByDriver(id);
 
       // Lọc theo ngày
       if (date) {

@@ -79,16 +79,18 @@ const TaiXeModel = {
   async create(data) {
     const {
       maTaiXe,
+      tenTaiXe,
       soBangLai,
       ngayHetHanBangLai,
       soNamKinhNghiem,
       trangThai,
     } = data;
     const [result] = await pool.query(
-      `INSERT INTO TaiXe (maTaiXe, soBangLai, ngayHetHanBangLai, soNamKinhNghiem, trangThai)
-       VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO TaiXe (maTaiXe, tenTaiXe, soBangLai, ngayHetHanBangLai, soNamKinhNghiem, trangThai)
+       VALUES (?, ?, ?, ?, ?, ?)`,
       [
         maTaiXe,
+        tenTaiXe,
         soBangLai,
         ngayHetHanBangLai,
         soNamKinhNghiem || 0,
