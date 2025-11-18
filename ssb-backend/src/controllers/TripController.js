@@ -214,6 +214,35 @@ class TripController {
         };
       }
 
+      // 🔥 FIX: Tự động copy students từ schedule sang trip nếu trip không có students
+      // Chỉ làm cho trips hôm nay hoặc tương lai để tránh ảnh hưởng đến trips cũ
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      for (const trip of result.data) {
+        // Kiểm tra nếu trip không có students và có schedule
+        if (trip.soHocSinh === 0 && trip.maLichTrinh) {
+          const tripDate = new Date(trip.ngayChay);
+          tripDate.setHours(0, 0, 0, 0);
+          
+          // Chỉ copy cho trips hôm nay hoặc tương lai
+          if (tripDate >= today) {
+            try {
+              const ScheduleStudentStopModel = (await import("../models/ScheduleStudentStopModel.js")).default;
+              const copiedCount = await ScheduleStudentStopModel.copyToTrip(trip.maLichTrinh, trip.maChuyen);
+              if (copiedCount > 0) {
+                console.log(`[TripController.getAll] ✅ Auto-copied ${copiedCount} students from schedule ${trip.maLichTrinh} to trip ${trip.maChuyen}`);
+                // Cập nhật soHocSinh trong result
+                trip.soHocSinh = copiedCount;
+              }
+            } catch (copyError) {
+              console.error(`[TripController.getAll] ⚠️ Failed to auto-copy students for trip ${trip.maChuyen}:`, copyError);
+              // Continue - không fail request
+            }
+          }
+        }
+      }
+
       return response.ok(res, result.data, {
         page: pageNum,
         pageSize: limit,
@@ -273,20 +302,186 @@ class TripController {
       }
 
       // Lấy danh sách học sinh trong chuyến đi
-      const students = await TrangThaiHocSinhModel.getByTripId(id);
+      let students = await TrangThaiHocSinhModel.getByTripId(id);
+
+      // 🔥 FIX: Nếu trip không có students nhưng có schedule, tự động copy từ schedule
+      if (students.length === 0 && schedule && schedule.maLichTrinh) {
+        console.log(`[TripController.getById] Trip ${id} has no students, checking schedule ${schedule.maLichTrinh}...`);
+        try {
+          const ScheduleStudentStopModel = (await import("../models/ScheduleStudentStopModel.js")).default;
+          
+          // Kiểm tra schedule có students không
+          const scheduleStudents = await ScheduleStudentStopModel.getByScheduleId(schedule.maLichTrinh);
+          console.log(`[TripController.getById] Schedule ${schedule.maLichTrinh} has ${scheduleStudents.length} students`);
+          
+          if (scheduleStudents.length > 0) {
+            // Copy từ schedule sang trip
+            const copiedCount = await ScheduleStudentStopModel.copyToTrip(schedule.maLichTrinh, id);
+            if (copiedCount > 0) {
+              console.log(`[TripController.getById] ✅ Copied ${copiedCount} students from schedule ${schedule.maLichTrinh} to trip ${id}`);
+              // Reload students sau khi copy
+              students = await TrangThaiHocSinhModel.getByTripId(id);
+            } else {
+              console.warn(`[TripController.getById] ⚠️ Failed to copy students (copiedCount = 0)`);
+            }
+          } else {
+            // Schedule không có students, thử auto-assign từ route
+            console.log(`[TripController.getById] Schedule ${schedule.maLichTrinh} has no students, trying to auto-assign from route ${schedule.maTuyen}...`);
+            try {
+              const RouteService = (await import("../services/RouteService.js")).default;
+              const routeStops = await RouteService.getStops(schedule.maTuyen);
+              
+              if (routeStops.length > 0) {
+                const HocSinhModel = (await import("../models/HocSinhModel.js")).default;
+                let allStudents = await HocSinhModel.getAll();
+                allStudents = allStudents.filter(s => s.viDo && s.kinhDo && !isNaN(s.viDo) && !isNaN(s.kinhDo) && s.trangThai);
+                
+                const StopSuggestionService = (await import("../services/StopSuggestionService.js")).default;
+                const autoAssignedStudents = [];
+                
+                for (const student of allStudents) {
+                  let nearestStop = null;
+                  let minDistance = Infinity;
+                  
+                  for (const stop of routeStops) {
+                    const distance = StopSuggestionService.calculateDistance(
+                      student.viDo,
+                      student.kinhDo,
+                      stop.viDo,
+                      stop.kinhDo
+                    );
+                    
+                    if (distance < minDistance && distance <= 5.0) { // Tăng lên 5km để tìm được nhiều học sinh hơn
+                      minDistance = distance;
+                      nearestStop = stop;
+                    }
+                  }
+                  
+                  if (nearestStop) {
+                    autoAssignedStudents.push({
+                      maHocSinh: student.maHocSinh,
+                      thuTuDiem: nearestStop.sequence,
+                      maDiem: nearestStop.maDiem,
+                    });
+                  }
+                }
+                
+                if (autoAssignedStudents.length > 0) {
+                  // Lưu vào schedule_student_stops
+                  await ScheduleStudentStopModel.bulkCreate(schedule.maLichTrinh, autoAssignedStudents);
+                  console.log(`[TripController.getById] ✅ Auto-assigned ${autoAssignedStudents.length} students to schedule ${schedule.maLichTrinh}`);
+                  
+                  // Copy sang trip
+                  const copiedCount = await ScheduleStudentStopModel.copyToTrip(schedule.maLichTrinh, id);
+                  if (copiedCount > 0) {
+                    console.log(`[TripController.getById] ✅ Copied ${copiedCount} students to trip ${id}`);
+                    students = await TrangThaiHocSinhModel.getByTripId(id);
+                  }
+                } else {
+                  console.warn(`[TripController.getById] ⚠️ No students found near route stops (within 5km)`);
+                }
+              }
+            } catch (autoAssignError) {
+              console.error(`[TripController.getById] ⚠️ Failed to auto-assign students:`, autoAssignError);
+            }
+          }
+        } catch (copyError) {
+          console.error(`[TripController.getById] ⚠️ Failed to copy students from schedule:`, copyError);
+          // Continue anyway - trip vẫn có thể được xem
+        }
+      }
+
+      // 🔥 CHUẨN HÓA: Group học sinh theo điểm dừng với format rõ ràng
+      const stopsWithStudents = routeStops.map((stop) => {
+        // Match students với stop bằng thuTuDiemDon (sequence) - đây là cách chính xác nhất
+        const stopStudents = students.filter(
+          (student) => {
+            // Match chính xác theo sequence
+            if (student.thuTuDiemDon && stop.sequence && student.thuTuDiemDon === stop.sequence) {
+              return true;
+            }
+            // Fallback: match theo index nếu sequence không khớp
+            return false;
+          }
+        );
+        
+        return {
+          sequence: stop.sequence,
+          maDiem: stop.maDiem || stop.stop_id,
+          tenDiem: stop.tenDiem || stop.name,
+          viDo: stop.viDo || stop.lat,
+          kinhDo: stop.kinhDo || stop.lng,
+          address: stop.address || stop.diaChi,
+          studentCount: stopStudents.length,
+          students: stopStudents.map((s) => ({
+            maHocSinh: s.maHocSinh,
+            hoTen: s.hoTen,
+            lop: s.lop,
+            trangThai: s.trangThai,
+            anhDaiDien: s.anhDaiDien,
+            thuTuDiemDon: s.thuTuDiemDon,
+            thoiGianThucTe: s.thoiGianThucTe,
+            ghiChu: s.ghiChu,
+          })),
+        };
+      });
+
+      // Tính tổng số học sinh theo trạng thái
+      const totalStudents = students.length;
+      const pickedCount = students.filter(s => s.trangThai === 'da_don').length;
+      const absentCount = students.filter(s => s.trangThai === 'vang').length;
+      const waitingCount = students.filter(s => s.trangThai === 'cho_don').length;
+      const droppedCount = students.filter(s => s.trangThai === 'da_tra').length;
 
       return response.ok(res, {
-        ...trip,
-        schedule,
-        busInfo,
-        driverInfo,
-        routeInfo: routeInfo
-          ? {
-              ...routeInfo,
-              diemDung: routeStops, // Thêm danh sách điểm dừng vào routeInfo
-            }
-          : null,
-        students,
+        trip: {
+          maChuyen: trip.maChuyen,
+          maLichTrinh: trip.maLichTrinh,
+          ngayChay: trip.ngayChay,
+          trangThai: trip.trangThai,
+          gioBatDauThucTe: trip.gioBatDauThucTe,
+          gioKetThucThucTe: trip.gioKetThucThucTe,
+          ghiChu: trip.ghiChu,
+        },
+        schedule: schedule ? {
+          maLichTrinh: schedule.maLichTrinh,
+          maTuyen: schedule.maTuyen,
+          maXe: schedule.maXe,
+          maTaiXe: schedule.maTaiXe,
+          loaiChuyen: schedule.loaiChuyen,
+          gioKhoiHanh: schedule.gioKhoiHanh,
+          ngayChay: schedule.ngayChay,
+        } : null,
+        route: routeInfo ? {
+          maTuyen: routeInfo.maTuyen,
+          tenTuyen: routeInfo.tenTuyen,
+          diemBatDau: routeInfo.diemBatDau,
+          diemKetThuc: routeInfo.diemKetThuc,
+        } : null,
+        busInfo: busInfo ? {
+          maXe: busInfo.maXe,
+          bienSoXe: busInfo.bienSoXe,
+          dongXe: busInfo.dongXe,
+          sucChua: busInfo.sucChua,
+        } : null,
+        driverInfo: driverInfo ? {
+          maTaiXe: driverInfo.maTaiXe,
+          tenTaiXe: driverInfo.tenTaiXe,
+        } : null,
+        stops: stopsWithStudents, // 🔥 Format chuẩn: stops[] với studentCount và students[]
+        summary: {
+          totalStudents,
+          pickedCount,
+          absentCount,
+          waitingCount,
+          droppedCount,
+        },
+        // Legacy: giữ lại để backward compatibility
+        students: students,
+        routeInfo: routeInfo ? {
+          ...routeInfo,
+          diemDung: stopsWithStudents,
+        } : null,
       });
     } catch (error) {
       if (error.message === "TRIP_NOT_FOUND") {

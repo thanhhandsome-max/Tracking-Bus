@@ -112,10 +112,13 @@ class ScheduleController {
         });
       }
 
+      // Sử dụng ScheduleService để lấy đầy đủ thông tin (bao gồm stops với students)
+      const scheduleDetail = await ScheduleService.getById(id);
+
       // Lấy thông tin chi tiết xe buýt và tài xế
-      const busInfo = await XeBuytModel.getById(schedule.maXe);
-      const driverInfo = await TaiXeModel.getById(schedule.maTaiXe);
-      const routeInfo = await TuyenDuongModel.getById(schedule.maTuyen);
+      const busInfo = await XeBuytModel.getById(scheduleDetail.maXe);
+      const driverInfo = await TaiXeModel.getById(scheduleDetail.maTaiXe);
+      const routeInfo = await TuyenDuongModel.getById(scheduleDetail.maTuyen);
 
       // Lấy lịch sử chuyến đi của lịch trình này
       const tripHistory = await ChuyenDiModel.getByScheduleId(id);
@@ -123,7 +126,7 @@ class ScheduleController {
       res.status(200).json({
         success: true,
         data: {
-          ...schedule,
+          ...scheduleDetail,
           busInfo,
           driverInfo,
           routeInfo,
@@ -144,8 +147,15 @@ class ScheduleController {
   // Tạo lịch trình mới
   static async create(req, res) {
     try {
-      const { maTuyen, maXe, maTaiXe, loaiChuyen, gioKhoiHanh, ngayChay, dangApDung } =
+      const { maTuyen, maXe, maTaiXe, loaiChuyen, gioKhoiHanh, ngayChay, dangApDung, students } =
         req.body;
+
+      console.log(`[ScheduleController] create: Received request with students:`, {
+        studentsCount: students ? students.length : 0,
+        students: students ? students.slice(0, 3) : null,
+        maTuyen,
+        ngayChay,
+      });
 
       // Validation dữ liệu bắt buộc
       if (!maTuyen || !maXe || !maTaiXe || !loaiChuyen || !gioKhoiHanh || !ngayChay) {
@@ -154,6 +164,24 @@ class ScheduleController {
           message:
             "Mã tuyến, mã xe, mã tài xế, loại chuyến, giờ khởi hành và ngày chạy là bắt buộc",
         });
+      }
+
+      // Validate students array format nếu có
+      if (students && Array.isArray(students)) {
+        const invalidStudents = students.filter(
+          (s) => !s.maHocSinh || !s.thuTuDiem || !s.maDiem
+        );
+        if (invalidStudents.length > 0) {
+          console.warn(`[ScheduleController] create: Found ${invalidStudents.length} invalid students:`, invalidStudents);
+          return res.status(400).json({
+            success: false,
+            message: `Có ${invalidStudents.length} học sinh không hợp lệ. Mỗi học sinh cần có maHocSinh, thuTuDiem, và maDiem.`,
+            invalidStudents,
+          });
+        }
+        console.log(`[ScheduleController] create: ✅ Validated ${students.length} students`);
+      } else if (students !== undefined && students !== null) {
+        console.warn(`[ScheduleController] create: students is not an array:`, typeof students, students);
       }
 
       // Kiểm tra tuyến đường có tồn tại không
@@ -222,6 +250,23 @@ class ScheduleController {
         });
       }
 
+      // Validate students array if provided
+      if (students !== undefined) {
+        if (!Array.isArray(students)) {
+          return response.validationError(res, "students phải là một mảng", [
+            { field: "students", message: "students phải là một mảng các object {maHocSinh, thuTuDiem, maDiem}" }
+          ]);
+        }
+        // Validate each student object
+        for (const student of students) {
+          if (!student.maHocSinh || !student.thuTuDiem || !student.maDiem) {
+            return response.validationError(res, "Mỗi student phải có maHocSinh, thuTuDiem, và maDiem", [
+              { field: "students", message: "Mỗi student phải có đầy đủ: maHocSinh, thuTuDiem, maDiem" }
+            ]);
+          }
+        }
+      }
+
       // M1-M3: Dùng ScheduleService để có conflict details
       try {
         const newSchedule = await ScheduleService.create({
@@ -232,6 +277,7 @@ class ScheduleController {
           gioKhoiHanh,
           ngayChay,
           dangApDung: dangApDung !== false,
+          students: students || [],
         });
         return response.created(res, newSchedule);
       } catch (serviceError) {
@@ -268,6 +314,14 @@ class ScheduleController {
             { field: "loaiChuyen", message: "Phải là 'don_sang' hoặc 'tra_chieu'" }
           ]);
         }
+        if (serviceError.message === "INVALID_STUDENT_ASSIGNMENT") {
+          return response.validationError(res, "Phân công học sinh không hợp lệ", 
+            serviceError.validationErrors?.map((err, idx) => ({
+              field: `students[${idx}]`,
+              message: err
+            })) || [{ field: "students", message: "Có lỗi trong phân công học sinh" }]
+          );
+        }
         throw serviceError;
       }
     } catch (err) {
@@ -298,6 +352,23 @@ class ScheduleController {
       if (gioKhoiHanh !== undefined) updateData.gioKhoiHanh = gioKhoiHanh;
       if (ngayChay !== undefined) updateData.ngayChay = ngayChay;
       if (dangApDung !== undefined) updateData.dangApDung = dangApDung;
+      if (req.body.students !== undefined) {
+        // Validate students array if provided
+        if (!Array.isArray(req.body.students)) {
+          return response.validationError(res, "students phải là một mảng", [
+            { field: "students", message: "students phải là một mảng các object {maHocSinh, thuTuDiem, maDiem}" }
+          ]);
+        }
+        // Validate each student object
+        for (const student of req.body.students) {
+          if (!student.maHocSinh || !student.thuTuDiem || !student.maDiem) {
+            return response.validationError(res, "Mỗi student phải có maHocSinh, thuTuDiem, và maDiem", [
+              { field: "students", message: "Mỗi student phải có đầy đủ: maHocSinh, thuTuDiem, maDiem" }
+            ]);
+          }
+        }
+        updateData.students = req.body.students;
+      }
 
       try {
         const updatedSchedule = await ScheduleService.update(id, updateData);
@@ -333,6 +404,14 @@ class ScheduleController {
           return response.validationError(res, "Loại chuyến không hợp lệ", [
             { field: "loaiChuyen", message: "Phải là 'don_sang' hoặc 'tra_chieu'" }
           ]);
+        }
+        if (serviceError.message === "INVALID_STUDENT_ASSIGNMENT") {
+          return response.validationError(res, "Phân công học sinh không hợp lệ", 
+            serviceError.validationErrors?.map((err, idx) => ({
+              field: `students[${idx}]`,
+              message: err
+            })) || [{ field: "students", message: "Có lỗi trong phân công học sinh" }]
+          );
         }
         throw serviceError;
       }
@@ -575,6 +654,67 @@ class ScheduleController {
         message: "Lỗi server khi lấy thống kê lịch trình",
         error: error.message,
       });
+    }
+  }
+
+  // Lấy danh sách học sinh của một schedule, nhóm theo điểm dừng
+  static async getStudents(req, res) {
+    try {
+      const { id } = req.params;
+
+      if (!id) {
+        return response.validationError(res, "Mã lịch trình là bắt buộc", [
+          { field: "id", message: "Mã lịch trình không được để trống" }
+        ]);
+      }
+
+      // Kiểm tra schedule có tồn tại không
+      const schedule = await LichTrinhModel.getById(id);
+      if (!schedule) {
+        return response.notFound(res, "Không tìm thấy lịch trình");
+      }
+
+      // Import ScheduleStudentStopModel
+      const ScheduleStudentStopModel = (await import("../models/ScheduleStudentStopModel.js")).default;
+      
+      // Lấy tất cả students của schedule
+      const students = await ScheduleStudentStopModel.getByScheduleId(id);
+
+      // Nhóm students theo điểm dừng
+      const studentsByStop = {};
+      students.forEach((student) => {
+        const stopKey = `${student.thuTuDiem}_${student.maDiem}`;
+        if (!studentsByStop[stopKey]) {
+          studentsByStop[stopKey] = {
+            thuTuDiem: student.thuTuDiem,
+            maDiem: student.maDiem,
+            tenDiem: student.tenDiem,
+            stopAddress: student.stopAddress,
+            stopLat: student.stopLat,
+            stopLng: student.stopLng,
+            students: [],
+          };
+        }
+        studentsByStop[stopKey].students.push({
+          maHocSinh: student.maHocSinh,
+          hoTen: student.hoTen,
+          lop: student.lop,
+          anhDaiDien: student.anhDaiDien,
+          diaChi: student.diaChi,
+        });
+      });
+
+      // Convert to array and sort by thuTuDiem
+      const result = Object.values(studentsByStop).sort((a, b) => a.thuTuDiem - b.thuTuDiem);
+
+      return response.ok(res, {
+        scheduleId: id,
+        studentsByStop: result,
+        totalStudents: students.length,
+      });
+    } catch (error) {
+      console.error("Error in ScheduleController.getStudents:", error);
+      return response.serverError(res, "Lỗi server khi lấy danh sách học sinh", error);
     }
   }
 }

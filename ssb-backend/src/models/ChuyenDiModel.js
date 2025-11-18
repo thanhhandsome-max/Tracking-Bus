@@ -9,9 +9,14 @@ const ChuyenDiModel = {
         lt.loaiChuyen,
         lt.gioKhoiHanh,
         lt.maTaiXe,
+        lt.maTuyen,
         td.tenTuyen,
         xb.bienSoXe,
-        nd.hoTen as tenTaiXe
+        nd.hoTen as tenTaiXe,
+        -- Đếm số điểm dừng của route
+        (SELECT COUNT(*) FROM route_stops WHERE route_id = lt.maTuyen) as soDiemDung,
+        -- Đếm số học sinh trong chuyến đi
+        (SELECT COUNT(*) FROM TrangThaiHocSinh WHERE maChuyen = cd.maChuyen) as soHocSinh
       FROM ChuyenDi cd
       INNER JOIN LichTrinh lt ON cd.maLichTrinh = lt.maLichTrinh
       INNER JOIN TuyenDuong td ON lt.maTuyen = td.maTuyen

@@ -522,30 +522,30 @@ WHERE (hs.diaChi LIKE '%Bình Thạnh%' OR (hs.diaChi LIKE '%Quận 7%' AND hs.m
 -- Mỗi tuyến có 20-30 điểm dừng (trạm + trường)
 -- Điểm cuối: Đại học Sài Gòn
 
-INSERT INTO TuyenDuong (tenTuyen, diemBatDau, diemKetThuc, thoiGianUocTinh, origin_lat, origin_lng, dest_lat, dest_lng, polyline) VALUES
-('Tuyến 1 - Đi', 'Khu vực Quận 7', 'Đại học Sài Gòn', 45, NULL, NULL, 10.7602396, 106.6807235, NULL),
-('Tuyến 2 - Đi', 'Khu vực Quận 4', 'Đại học Sài Gòn', 40, NULL, NULL, 10.7602396, 106.6807235, NULL),
-('Tuyến 3 - Đi', 'Khu vực Quận 1', 'Đại học Sài Gòn', 35, NULL, NULL, 10.7602396, 106.6807235, NULL),
-('Tuyến 4 - Đi', 'Khu vực Quận 2', 'Đại học Sài Gòn', 50, NULL, NULL, 10.7602396, 106.6807235, NULL),
-('Tuyến 5 - Đi', 'Khu vực Quận 3', 'Đại học Sài Gòn', 30, NULL, NULL, 10.7602396, 106.6807235, NULL),
-('Tuyến 6 - Đi', 'Khu vực Quận 8', 'Đại học Sài Gòn', 40, NULL, NULL, 10.7602396, 106.6807235, NULL),
-('Tuyến 7 - Đi', 'Khu vực Quận 10', 'Đại học Sài Gòn', 35, NULL, NULL, 10.7602396, 106.6807235, NULL),
-('Tuyến 8 - Đi', 'Khu vực Quận 11', 'Đại học Sài Gòn', 40, NULL, NULL, 10.7602396, 106.6807235, NULL),
-('Tuyến 9 - Đi', 'Khu vực Nhà Bè', 'Đại học Sài Gòn', 55, NULL, NULL, 10.7602396, 106.6807235, NULL),
-('Tuyến 10 - Đi', 'Khu vực Bình Thạnh', 'Đại học Sài Gòn', 50, NULL, NULL, 10.7602396, 106.6807235, NULL);
+-- INSERT INTO TuyenDuong (tenTuyen, diemBatDau, diemKetThuc, thoiGianUocTinh, origin_lat, origin_lng, dest_lat, dest_lng, polyline) VALUES
+-- ('Tuyến 1 - Đi', 'Khu vực Quận 7', 'Đại học Sài Gòn', 45, NULL, NULL, 10.7602396, 106.6807235, NULL),
+-- ('Tuyến 2 - Đi', 'Khu vực Quận 4', 'Đại học Sài Gòn', 40, NULL, NULL, 10.7602396, 106.6807235, NULL),
+-- ('Tuyến 3 - Đi', 'Khu vực Quận 1', 'Đại học Sài Gòn', 35, NULL, NULL, 10.7602396, 106.6807235, NULL),
+-- ('Tuyến 4 - Đi', 'Khu vực Quận 2', 'Đại học Sài Gòn', 50, NULL, NULL, 10.7602396, 106.6807235, NULL),
+-- ('Tuyến 5 - Đi', 'Khu vực Quận 3', 'Đại học Sài Gòn', 30, NULL, NULL, 10.7602396, 106.6807235, NULL),
+-- ('Tuyến 6 - Đi', 'Khu vực Quận 8', 'Đại học Sài Gòn', 40, NULL, NULL, 10.7602396, 106.6807235, NULL),
+-- ('Tuyến 7 - Đi', 'Khu vực Quận 10', 'Đại học Sài Gòn', 35, NULL, NULL, 10.7602396, 106.6807235, NULL),
+-- ('Tuyến 8 - Đi', 'Khu vực Quận 11', 'Đại học Sài Gòn', 40, NULL, NULL, 10.7602396, 106.6807235, NULL),
+-- ('Tuyến 9 - Đi', 'Khu vực Nhà Bè', 'Đại học Sài Gòn', 55, NULL, NULL, 10.7602396, 106.6807235, NULL),
+-- ('Tuyến 10 - Đi', 'Khu vực Bình Thạnh', 'Đại học Sài Gòn', 50, NULL, NULL, 10.7602396, 106.6807235, NULL);
 
--- Tạo tuyến về (tra_chieu) - 10 tuyến
-INSERT INTO TuyenDuong (tenTuyen, diemBatDau, diemKetThuc, thoiGianUocTinh, origin_lat, origin_lng, dest_lat, dest_lng, polyline) VALUES
-('Tuyến 1 - Về', 'Đại học Sài Gòn', 'Khu vực Quận 7', 45, 10.7602396, 106.6807235, NULL, NULL, NULL),
-('Tuyến 2 - Về', 'Đại học Sài Gòn', 'Khu vực Quận 4', 40, 10.7602396, 106.6807235, NULL, NULL, NULL),
-('Tuyến 3 - Về', 'Đại học Sài Gòn', 'Khu vực Quận 1', 35, 10.7602396, 106.6807235, NULL, NULL, NULL),
-('Tuyến 4 - Về', 'Đại học Sài Gòn', 'Khu vực Quận 2', 50, 10.7602396, 106.6807235, NULL, NULL, NULL),
-('Tuyến 5 - Về', 'Đại học Sài Gòn', 'Khu vực Quận 3', 30, 10.7602396, 106.6807235, NULL, NULL, NULL),
-('Tuyến 6 - Về', 'Đại học Sài Gòn', 'Khu vực Quận 8', 40, 10.7602396, 106.6807235, NULL, NULL, NULL),
-('Tuyến 7 - Về', 'Đại học Sài Gòn', 'Khu vực Quận 10', 35, 10.7602396, 106.6807235, NULL, NULL, NULL),
-('Tuyến 8 - Về', 'Đại học Sài Gòn', 'Khu vực Quận 11', 40, 10.7602396, 106.6807235, NULL, NULL, NULL),
-('Tuyến 9 - Về', 'Đại học Sài Gòn', 'Khu vực Nhà Bè', 55, 10.7602396, 106.6807235, NULL, NULL, NULL),
-('Tuyến 10 - Về', 'Đại học Sài Gòn', 'Khu vực Bình Thạnh', 50, 10.7602396, 106.6807235, NULL, NULL, NULL);
+-- -- Tạo tuyến về (tra_chieu) - 10 tuyến
+-- INSERT INTO TuyenDuong (tenTuyen, diemBatDau, diemKetThuc, thoiGianUocTinh, origin_lat, origin_lng, dest_lat, dest_lng, polyline) VALUES
+-- ('Tuyến 1 - Về', 'Đại học Sài Gòn', 'Khu vực Quận 7', 45, 10.7602396, 106.6807235, NULL, NULL, NULL),
+-- ('Tuyến 2 - Về', 'Đại học Sài Gòn', 'Khu vực Quận 4', 40, 10.7602396, 106.6807235, NULL, NULL, NULL),
+-- ('Tuyến 3 - Về', 'Đại học Sài Gòn', 'Khu vực Quận 1', 35, 10.7602396, 106.6807235, NULL, NULL, NULL),
+-- ('Tuyến 4 - Về', 'Đại học Sài Gòn', 'Khu vực Quận 2', 50, 10.7602396, 106.6807235, NULL, NULL, NULL),
+-- ('Tuyến 5 - Về', 'Đại học Sài Gòn', 'Khu vực Quận 3', 30, 10.7602396, 106.6807235, NULL, NULL, NULL),
+-- ('Tuyến 6 - Về', 'Đại học Sài Gòn', 'Khu vực Quận 8', 40, 10.7602396, 106.6807235, NULL, NULL, NULL),
+-- ('Tuyến 7 - Về', 'Đại học Sài Gòn', 'Khu vực Quận 10', 35, 10.7602396, 106.6807235, NULL, NULL, NULL),
+-- ('Tuyến 8 - Về', 'Đại học Sài Gòn', 'Khu vực Quận 11', 40, 10.7602396, 106.6807235, NULL, NULL, NULL),
+-- ('Tuyến 9 - Về', 'Đại học Sài Gòn', 'Khu vực Nhà Bè', 55, 10.7602396, 106.6807235, NULL, NULL, NULL),
+-- ('Tuyến 10 - Về', 'Đại học Sài Gòn', 'Khu vực Bình Thạnh', 50, 10.7602396, 106.6807235, NULL, NULL, NULL);
 
 -- =================================================================
 -- KHỐI 16: ROUTE_STOPS - Tuyến đi (don_sang)
@@ -553,473 +553,531 @@ INSERT INTO TuyenDuong (tenTuyen, diemBatDau, diemKetThuc, thoiGianUocTinh, orig
 -- Tuyến 1 - Đi: Quận 7 -> Đại học Sài Gòn
 -- Lấy các trạm từ temp_student_stop_mapping cho route_number = 1
 -- Sắp xếp theo khoảng cách từ xa đến gần trường (đơn giản: sắp xếp theo viDo tăng dần)
-SET @seq := 0;
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 1, tssm.maDiem, (@seq := @seq + 1), 30
-FROM temp_student_stop_mapping tssm
-JOIN DiemDung d ON d.maDiem = tssm.maDiem
-WHERE tssm.route_number = 1
-GROUP BY tssm.maDiem, d.viDo
-ORDER BY d.viDo ASC;
+-- SET @seq := 0;
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 1, tssm.maDiem, (@seq := @seq + 1), 30
+-- FROM temp_student_stop_mapping tssm
+-- JOIN DiemDung d ON d.maDiem = tssm.maDiem
+-- WHERE tssm.route_number = 1
+-- GROUP BY tssm.maDiem, d.viDo
+-- ORDER BY d.viDo ASC;
 
--- Thêm điểm cuối: Đại học Sài Gòn
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 1, @school_stop_id, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM route_stops WHERE route_id = 1), 60;
+-- -- Thêm điểm cuối: Đại học Sài Gòn
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 1, @school_stop_id, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM route_stops WHERE route_id = 1), 60;
 
--- Tuyến 2 - Đi: Quận 4 -> Đại học Sài Gòn
-SET @seq := 0;
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 2, tssm.maDiem, (@seq := @seq + 1), 30
-FROM temp_student_stop_mapping tssm
-JOIN DiemDung d ON d.maDiem = tssm.maDiem
-WHERE tssm.route_number = 2
-GROUP BY tssm.maDiem, d.viDo
-ORDER BY d.viDo ASC;
+-- -- Tuyến 2 - Đi: Quận 4 -> Đại học Sài Gòn
+-- SET @seq := 0;
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 2, tssm.maDiem, (@seq := @seq + 1), 30
+-- FROM temp_student_stop_mapping tssm
+-- JOIN DiemDung d ON d.maDiem = tssm.maDiem
+-- WHERE tssm.route_number = 2
+-- GROUP BY tssm.maDiem, d.viDo
+-- ORDER BY d.viDo ASC;
 
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 2, @school_stop_id, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM route_stops WHERE route_id = 2), 60;
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 2, @school_stop_id, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM route_stops WHERE route_id = 2), 60;
 
--- Tuyến 3 - Đi: Quận 1 -> Đại học Sài Gòn
-SET @seq := 0;
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 3, tssm.maDiem, (@seq := @seq + 1), 30
-FROM temp_student_stop_mapping tssm
-JOIN DiemDung d ON d.maDiem = tssm.maDiem
-WHERE tssm.route_number = 3
-GROUP BY tssm.maDiem, d.viDo
-ORDER BY d.viDo DESC;
+-- -- Tuyến 3 - Đi: Quận 1 -> Đại học Sài Gòn
+-- SET @seq := 0;
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 3, tssm.maDiem, (@seq := @seq + 1), 30
+-- FROM temp_student_stop_mapping tssm
+-- JOIN DiemDung d ON d.maDiem = tssm.maDiem
+-- WHERE tssm.route_number = 3
+-- GROUP BY tssm.maDiem, d.viDo
+-- ORDER BY d.viDo DESC;
 
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 3, @school_stop_id, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM route_stops WHERE route_id = 3), 60;
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 3, @school_stop_id, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM route_stops WHERE route_id = 3), 60;
 
--- Tuyến 4 - Đi: Quận 2 -> Đại học Sài Gòn
-SET @seq := 0;
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 4, tssm.maDiem, (@seq := @seq + 1), 30
-FROM temp_student_stop_mapping tssm
-JOIN DiemDung d ON d.maDiem = tssm.maDiem
-WHERE tssm.route_number = 4
-GROUP BY tssm.maDiem, d.viDo
-ORDER BY d.viDo DESC;
+-- -- Tuyến 4 - Đi: Quận 2 -> Đại học Sài Gòn
+-- SET @seq := 0;
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 4, tssm.maDiem, (@seq := @seq + 1), 30
+-- FROM temp_student_stop_mapping tssm
+-- JOIN DiemDung d ON d.maDiem = tssm.maDiem
+-- WHERE tssm.route_number = 4
+-- GROUP BY tssm.maDiem, d.viDo
+-- ORDER BY d.viDo DESC;
 
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 4, @school_stop_id, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM route_stops WHERE route_id = 4), 60;
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 4, @school_stop_id, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM route_stops WHERE route_id = 4), 60;
 
--- Tuyến 5 - Đi: Quận 3 -> Đại học Sài Gòn
-SET @seq := 0;
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 5, tssm.maDiem, (@seq := @seq + 1), 30
-FROM temp_student_stop_mapping tssm
-JOIN DiemDung d ON d.maDiem = tssm.maDiem
-WHERE tssm.route_number = 5
-GROUP BY tssm.maDiem, d.viDo
-ORDER BY d.viDo DESC;
+-- -- Tuyến 5 - Đi: Quận 3 -> Đại học Sài Gòn
+-- SET @seq := 0;
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 5, tssm.maDiem, (@seq := @seq + 1), 30
+-- FROM temp_student_stop_mapping tssm
+-- JOIN DiemDung d ON d.maDiem = tssm.maDiem
+-- WHERE tssm.route_number = 5
+-- GROUP BY tssm.maDiem, d.viDo
+-- ORDER BY d.viDo DESC;
 
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 5, @school_stop_id, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM route_stops WHERE route_id = 5), 60;
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 5, @school_stop_id, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM route_stops WHERE route_id = 5), 60;
 
--- Tuyến 6 - Đi: Quận 8 -> Đại học Sài Gòn
-SET @seq := 0;
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 6, tssm.maDiem, (@seq := @seq + 1), 30
-FROM temp_student_stop_mapping tssm
-JOIN DiemDung d ON d.maDiem = tssm.maDiem
-WHERE tssm.route_number = 6
-GROUP BY tssm.maDiem, d.viDo
-ORDER BY d.viDo ASC;
+-- -- Tuyến 6 - Đi: Quận 8 -> Đại học Sài Gòn
+-- SET @seq := 0;
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 6, tssm.maDiem, (@seq := @seq + 1), 30
+-- FROM temp_student_stop_mapping tssm
+-- JOIN DiemDung d ON d.maDiem = tssm.maDiem
+-- WHERE tssm.route_number = 6
+-- GROUP BY tssm.maDiem, d.viDo
+-- ORDER BY d.viDo ASC;
 
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 6, @school_stop_id, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM route_stops WHERE route_id = 6), 60;
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 6, @school_stop_id, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM route_stops WHERE route_id = 6), 60;
 
--- Tuyến 7 - Đi: Quận 10 -> Đại học Sài Gòn
-SET @seq := 0;
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 7, tssm.maDiem, (@seq := @seq + 1), 30
-FROM temp_student_stop_mapping tssm
-JOIN DiemDung d ON d.maDiem = tssm.maDiem
-WHERE tssm.route_number = 7
-GROUP BY tssm.maDiem, d.viDo
-ORDER BY d.viDo DESC;
+-- -- Tuyến 7 - Đi: Quận 10 -> Đại học Sài Gòn
+-- SET @seq := 0;
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 7, tssm.maDiem, (@seq := @seq + 1), 30
+-- FROM temp_student_stop_mapping tssm
+-- JOIN DiemDung d ON d.maDiem = tssm.maDiem
+-- WHERE tssm.route_number = 7
+-- GROUP BY tssm.maDiem, d.viDo
+-- ORDER BY d.viDo DESC;
 
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 7, @school_stop_id, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM route_stops WHERE route_id = 7), 60;
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 7, @school_stop_id, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM route_stops WHERE route_id = 7), 60;
 
--- Tuyến 8 - Đi: Quận 11 -> Đại học Sài Gòn
-SET @seq := 0;
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 8, tssm.maDiem, (@seq := @seq + 1), 30
-FROM temp_student_stop_mapping tssm
-JOIN DiemDung d ON d.maDiem = tssm.maDiem
-WHERE tssm.route_number = 8
-GROUP BY tssm.maDiem, d.viDo
-ORDER BY d.viDo DESC;
+-- -- Tuyến 8 - Đi: Quận 11 -> Đại học Sài Gòn
+-- SET @seq := 0;
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 8, tssm.maDiem, (@seq := @seq + 1), 30
+-- FROM temp_student_stop_mapping tssm
+-- JOIN DiemDung d ON d.maDiem = tssm.maDiem
+-- WHERE tssm.route_number = 8
+-- GROUP BY tssm.maDiem, d.viDo
+-- ORDER BY d.viDo DESC;
 
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 8, @school_stop_id, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM route_stops WHERE route_id = 8), 60;
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 8, @school_stop_id, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM route_stops WHERE route_id = 8), 60;
 
--- Tuyến 9 - Đi: Nhà Bè -> Đại học Sài Gòn
-SET @seq := 0;
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 9, tssm.maDiem, (@seq := @seq + 1), 30
-FROM temp_student_stop_mapping tssm
-JOIN DiemDung d ON d.maDiem = tssm.maDiem
-WHERE tssm.route_number = 9
-GROUP BY tssm.maDiem, d.viDo
-ORDER BY d.viDo ASC;
+-- -- Tuyến 9 - Đi: Nhà Bè -> Đại học Sài Gòn
+-- SET @seq := 0;
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 9, tssm.maDiem, (@seq := @seq + 1), 30
+-- FROM temp_student_stop_mapping tssm
+-- JOIN DiemDung d ON d.maDiem = tssm.maDiem
+-- WHERE tssm.route_number = 9
+-- GROUP BY tssm.maDiem, d.viDo
+-- ORDER BY d.viDo ASC;
 
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 9, @school_stop_id, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM route_stops WHERE route_id = 9), 60;
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 9, @school_stop_id, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM route_stops WHERE route_id = 9), 60;
 
--- Tuyến 10 - Đi: Bình Thạnh -> Đại học Sài Gòn
-SET @seq := 0;
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 10, tssm.maDiem, (@seq := @seq + 1), 30
-FROM temp_student_stop_mapping tssm
-JOIN DiemDung d ON d.maDiem = tssm.maDiem
-WHERE tssm.route_number = 10
-GROUP BY tssm.maDiem, d.viDo
-ORDER BY d.viDo DESC;
+-- -- Tuyến 10 - Đi: Bình Thạnh -> Đại học Sài Gòn
+-- SET @seq := 0;
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 10, tssm.maDiem, (@seq := @seq + 1), 30
+-- FROM temp_student_stop_mapping tssm
+-- JOIN DiemDung d ON d.maDiem = tssm.maDiem
+-- WHERE tssm.route_number = 10
+-- GROUP BY tssm.maDiem, d.viDo
+-- ORDER BY d.viDo DESC;
 
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 10, @school_stop_id, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM route_stops WHERE route_id = 10), 60;
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 10, @school_stop_id, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM route_stops WHERE route_id = 10), 60;
 
--- =================================================================
--- KHỐI 17: ROUTE_STOPS - Tuyến về (tra_chieu) - Sequence ngược lại
--- =================================================================
--- Tuyến về: Đại học Sài Gòn -> các trạm (sequence ngược lại tuyến đi)
+-- -- =================================================================
+-- -- KHỐI 17: ROUTE_STOPS - Tuyến về (tra_chieu) - Sequence ngược lại
+-- -- =================================================================
+-- -- Tuyến về: Đại học Sài Gòn -> các trạm (sequence ngược lại tuyến đi)
 
--- Tuyến 1 - Về: Đại học Sài Gòn -> Quận 7 (sequence ngược lại)
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 11, @school_stop_id, 1, 60;
+-- -- Tuyến 1 - Về: Đại học Sài Gòn -> Quận 7 (sequence ngược lại)
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 11, @school_stop_id, 1, 60;
 
-SET @seq := 1;
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 11, tssm.maDiem, (@seq := @seq + 1), 30
-FROM temp_student_stop_mapping tssm
-JOIN DiemDung d ON d.maDiem = tssm.maDiem
-WHERE tssm.route_number = 1
-GROUP BY tssm.maDiem, d.viDo
-ORDER BY d.viDo DESC;
+-- SET @seq := 1;
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 11, tssm.maDiem, (@seq := @seq + 1), 30
+-- FROM temp_student_stop_mapping tssm
+-- JOIN DiemDung d ON d.maDiem = tssm.maDiem
+-- WHERE tssm.route_number = 1
+-- GROUP BY tssm.maDiem, d.viDo
+-- ORDER BY d.viDo DESC;
 
--- Tuyến 2 - Về
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 12, @school_stop_id, 1, 60;
+-- -- Tuyến 2 - Về
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 12, @school_stop_id, 1, 60;
 
-SET @seq := 1;
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 12, tssm.maDiem, (@seq := @seq + 1), 30
-FROM temp_student_stop_mapping tssm
-JOIN DiemDung d ON d.maDiem = tssm.maDiem
-WHERE tssm.route_number = 2
-GROUP BY tssm.maDiem, d.viDo
-ORDER BY d.viDo DESC;
+-- SET @seq := 1;
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 12, tssm.maDiem, (@seq := @seq + 1), 30
+-- FROM temp_student_stop_mapping tssm
+-- JOIN DiemDung d ON d.maDiem = tssm.maDiem
+-- WHERE tssm.route_number = 2
+-- GROUP BY tssm.maDiem, d.viDo
+-- ORDER BY d.viDo DESC;
 
--- Tuyến 3 - Về
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 13, @school_stop_id, 1, 60;
+-- -- Tuyến 3 - Về
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 13, @school_stop_id, 1, 60;
 
-SET @seq := 1;
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 13, tssm.maDiem, (@seq := @seq + 1), 30
-FROM temp_student_stop_mapping tssm
-JOIN DiemDung d ON d.maDiem = tssm.maDiem
-WHERE tssm.route_number = 3
-GROUP BY tssm.maDiem, d.viDo
-ORDER BY d.viDo ASC;
+-- SET @seq := 1;
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 13, tssm.maDiem, (@seq := @seq + 1), 30
+-- FROM temp_student_stop_mapping tssm
+-- JOIN DiemDung d ON d.maDiem = tssm.maDiem
+-- WHERE tssm.route_number = 3
+-- GROUP BY tssm.maDiem, d.viDo
+-- ORDER BY d.viDo ASC;
 
--- Tuyến 4 - Về
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 14, @school_stop_id, 1, 60;
+-- -- Tuyến 4 - Về
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 14, @school_stop_id, 1, 60;
 
-SET @seq := 1;
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 14, tssm.maDiem, (@seq := @seq + 1), 30
-FROM temp_student_stop_mapping tssm
-JOIN DiemDung d ON d.maDiem = tssm.maDiem
-WHERE tssm.route_number = 4
-GROUP BY tssm.maDiem, d.viDo
-ORDER BY d.viDo ASC;
+-- SET @seq := 1;
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 14, tssm.maDiem, (@seq := @seq + 1), 30
+-- FROM temp_student_stop_mapping tssm
+-- JOIN DiemDung d ON d.maDiem = tssm.maDiem
+-- WHERE tssm.route_number = 4
+-- GROUP BY tssm.maDiem, d.viDo
+-- ORDER BY d.viDo ASC;
 
--- Tuyến 5 - Về
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 15, @school_stop_id, 1, 60;
+-- -- Tuyến 5 - Về
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 15, @school_stop_id, 1, 60;
 
-SET @seq := 1;
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 15, tssm.maDiem, (@seq := @seq + 1), 30
-FROM temp_student_stop_mapping tssm
-JOIN DiemDung d ON d.maDiem = tssm.maDiem
-WHERE tssm.route_number = 5
-GROUP BY tssm.maDiem, d.viDo
-ORDER BY d.viDo ASC;
+-- SET @seq := 1;
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 15, tssm.maDiem, (@seq := @seq + 1), 30
+-- FROM temp_student_stop_mapping tssm
+-- JOIN DiemDung d ON d.maDiem = tssm.maDiem
+-- WHERE tssm.route_number = 5
+-- GROUP BY tssm.maDiem, d.viDo
+-- ORDER BY d.viDo ASC;
 
--- Tuyến 6 - Về
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 16, @school_stop_id, 1, 60;
+-- -- Tuyến 6 - Về
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 16, @school_stop_id, 1, 60;
 
-SET @seq := 1;
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 16, tssm.maDiem, (@seq := @seq + 1), 30
-FROM temp_student_stop_mapping tssm
-JOIN DiemDung d ON d.maDiem = tssm.maDiem
-WHERE tssm.route_number = 6
-GROUP BY tssm.maDiem, d.viDo
-ORDER BY d.viDo DESC;
+-- SET @seq := 1;
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 16, tssm.maDiem, (@seq := @seq + 1), 30
+-- FROM temp_student_stop_mapping tssm
+-- JOIN DiemDung d ON d.maDiem = tssm.maDiem
+-- WHERE tssm.route_number = 6
+-- GROUP BY tssm.maDiem, d.viDo
+-- ORDER BY d.viDo DESC;
 
--- Tuyến 7 - Về
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 17, @school_stop_id, 1, 60;
+-- -- Tuyến 7 - Về
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 17, @school_stop_id, 1, 60;
 
-SET @seq := 1;
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 17, tssm.maDiem, (@seq := @seq + 1), 30
-FROM temp_student_stop_mapping tssm
-JOIN DiemDung d ON d.maDiem = tssm.maDiem
-WHERE tssm.route_number = 7
-GROUP BY tssm.maDiem, d.viDo
-ORDER BY d.viDo ASC;
+-- SET @seq := 1;
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 17, tssm.maDiem, (@seq := @seq + 1), 30
+-- FROM temp_student_stop_mapping tssm
+-- JOIN DiemDung d ON d.maDiem = tssm.maDiem
+-- WHERE tssm.route_number = 7
+-- GROUP BY tssm.maDiem, d.viDo
+-- ORDER BY d.viDo ASC;
 
--- Tuyến 8 - Về
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 18, @school_stop_id, 1, 60;
+-- -- Tuyến 8 - Về
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 18, @school_stop_id, 1, 60;
 
-SET @seq := 1;
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 18, tssm.maDiem, (@seq := @seq + 1), 30
-FROM temp_student_stop_mapping tssm
-JOIN DiemDung d ON d.maDiem = tssm.maDiem
-WHERE tssm.route_number = 8
-GROUP BY tssm.maDiem, d.viDo
-ORDER BY d.viDo ASC;
+-- SET @seq := 1;
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 18, tssm.maDiem, (@seq := @seq + 1), 30
+-- FROM temp_student_stop_mapping tssm
+-- JOIN DiemDung d ON d.maDiem = tssm.maDiem
+-- WHERE tssm.route_number = 8
+-- GROUP BY tssm.maDiem, d.viDo
+-- ORDER BY d.viDo ASC;
 
--- Tuyến 9 - Về
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 19, @school_stop_id, 1, 60;
+-- -- Tuyến 9 - Về
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 19, @school_stop_id, 1, 60;
 
-SET @seq := 1;
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 19, tssm.maDiem, (@seq := @seq + 1), 30
-FROM temp_student_stop_mapping tssm
-JOIN DiemDung d ON d.maDiem = tssm.maDiem
-WHERE tssm.route_number = 9
-GROUP BY tssm.maDiem, d.viDo
-ORDER BY d.viDo DESC;
+-- SET @seq := 1;
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 19, tssm.maDiem, (@seq := @seq + 1), 30
+-- FROM temp_student_stop_mapping tssm
+-- JOIN DiemDung d ON d.maDiem = tssm.maDiem
+-- WHERE tssm.route_number = 9
+-- GROUP BY tssm.maDiem, d.viDo
+-- ORDER BY d.viDo DESC;
 
--- Tuyến 10 - Về
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 20, @school_stop_id, 1, 60;
+-- -- Tuyến 10 - Về
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 20, @school_stop_id, 1, 60;
 
-SET @seq := 1;
-INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-SELECT 20, tssm.maDiem, (@seq := @seq + 1), 30
-FROM temp_student_stop_mapping tssm
-JOIN DiemDung d ON d.maDiem = tssm.maDiem
-WHERE tssm.route_number = 10
-GROUP BY tssm.maDiem, d.viDo
-ORDER BY d.viDo ASC;
+-- SET @seq := 1;
+-- INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+-- SELECT 20, tssm.maDiem, (@seq := @seq + 1), 30
+-- FROM temp_student_stop_mapping tssm
+-- JOIN DiemDung d ON d.maDiem = tssm.maDiem
+-- WHERE tssm.route_number = 10
+-- GROUP BY tssm.maDiem, d.viDo
+-- ORDER BY d.viDo ASC;
 
--- =================================================================
--- KHỐI 18: BACKFILL ORIGIN/DEST CHO TUYẾN ĐƯỜNG
--- =================================================================
+-- -- =================================================================
+-- -- KHỐI 18: BACKFILL ORIGIN/DEST CHO TUYẾN ĐƯỜNG
+-- -- =================================================================
 
--- Update origin (stop có MIN(sequence))
-UPDATE TuyenDuong r
-JOIN route_stops rs_origin ON rs_origin.route_id = r.maTuyen
-JOIN (
-    SELECT route_id, MIN(sequence) AS min_sequence
-    FROM route_stops
-    GROUP BY route_id
-) min_seq ON min_seq.route_id = rs_origin.route_id AND min_seq.min_sequence = rs_origin.sequence
-JOIN DiemDung d_origin ON d_origin.maDiem = rs_origin.stop_id
-SET r.origin_lat = d_origin.viDo, r.origin_lng = d_origin.kinhDo;
+-- -- Update origin (stop có MIN(sequence))
+-- UPDATE TuyenDuong r
+-- JOIN route_stops rs_origin ON rs_origin.route_id = r.maTuyen
+-- JOIN (
+--     SELECT route_id, MIN(sequence) AS min_sequence
+--     FROM route_stops
+--     GROUP BY route_id
+-- ) min_seq ON min_seq.route_id = rs_origin.route_id AND min_seq.min_sequence = rs_origin.sequence
+-- JOIN DiemDung d_origin ON d_origin.maDiem = rs_origin.stop_id
+-- SET r.origin_lat = d_origin.viDo, r.origin_lng = d_origin.kinhDo;
 
--- Update dest (stop có MAX(sequence))
-UPDATE TuyenDuong r
-JOIN route_stops rs_dest ON rs_dest.route_id = r.maTuyen
-JOIN (
-    SELECT route_id, MAX(sequence) AS max_sequence
-    FROM route_stops
-    GROUP BY route_id
-) max_seq ON max_seq.route_id = rs_dest.route_id AND max_seq.max_sequence = rs_dest.sequence
-JOIN DiemDung d_dest ON d_dest.maDiem = rs_dest.stop_id
-SET r.dest_lat = d_dest.viDo, r.dest_lng = d_dest.kinhDo;
+-- -- Update dest (stop có MAX(sequence))
+-- UPDATE TuyenDuong r
+-- JOIN route_stops rs_dest ON rs_dest.route_id = r.maTuyen
+-- JOIN (
+--     SELECT route_id, MAX(sequence) AS max_sequence
+--     FROM route_stops
+--     GROUP BY route_id
+-- ) max_seq ON max_seq.route_id = rs_dest.route_id AND max_seq.max_sequence = rs_dest.sequence
+-- JOIN DiemDung d_dest ON d_dest.maDiem = rs_dest.stop_id
+-- SET r.dest_lat = d_dest.viDo, r.dest_lng = d_dest.kinhDo;
 
--- =================================================================
--- KHỐI 19: LỊCH TRÌNH MẪU
--- =================================================================
--- Tuyến đi (don_sang): maTuyen 1-10
--- Tuyến về (tra_chieu): maTuyen 11-20
+-- -- =================================================================
+-- -- KHỐI 19: LỊCH TRÌNH MẪU
+-- -- =================================================================
+-- -- Tuyến đi (don_sang): maTuyen 1-10
+-- -- Tuyến về (tra_chieu): maTuyen 11-20
 
-INSERT INTO LichTrinh (maTuyen, maXe, maTaiXe, loaiChuyen, gioKhoiHanh, ngayChay, dangApDung) VALUES
--- Sáng: đón học sinh (tuyến đi)
-(1, 1, 2, 'don_sang', '06:30:00', '2025-11-12', TRUE),
-(2, 2, 3, 'don_sang', '06:45:00', '2025-11-12', TRUE),
-(3, 3, 4, 'don_sang', '07:00:00', '2025-11-12', TRUE),
-(4, 4, 5, 'don_sang', '06:15:00', '2025-11-12', TRUE),
-(5, 5, 6, 'don_sang', '07:15:00', '2025-11-12', TRUE),
-(6, 6, 7, 'don_sang', '06:30:00', '2025-11-12', TRUE),
-(7, 1, 2, 'don_sang', '07:00:00', '2025-11-12', TRUE),
-(8, 2, 3, 'don_sang', '06:45:00', '2025-11-12', TRUE),
-(9, 3, 4, 'don_sang', '06:00:00', '2025-11-12', TRUE),
-(10, 4, 5, 'don_sang', '06:15:00', '2025-11-12', TRUE),
--- Chiều: trả học sinh (tuyến về)
-(11, 1, 2, 'tra_chieu', '16:45:00', '2025-11-12', TRUE),
-(12, 2, 3, 'tra_chieu', '17:00:00', '2025-11-12', TRUE),
-(13, 3, 4, 'tra_chieu', '17:15:00', '2025-11-12', TRUE),
-(14, 4, 5, 'tra_chieu', '16:30:00', '2025-11-12', TRUE),
-(15, 5, 6, 'tra_chieu', '17:30:00', '2025-11-12', TRUE),
-(16, 6, 7, 'tra_chieu', '16:45:00', '2025-11-12', TRUE),
-(17, 1, 2, 'tra_chieu', '17:00:00', '2025-11-12', TRUE),
-(18, 2, 3, 'tra_chieu', '17:15:00', '2025-11-12', TRUE),
-(19, 3, 4, 'tra_chieu', '16:30:00', '2025-11-12', TRUE),
-(20, 4, 5, 'tra_chieu', '16:45:00', '2025-11-12', TRUE);
+-- INSERT INTO LichTrinh (maTuyen, maXe, maTaiXe, loaiChuyen, gioKhoiHanh, ngayChay, dangApDung) VALUES
+-- -- Sáng: đón học sinh (tuyến đi)
+-- (1, 1, 2, 'don_sang', '06:30:00', '2025-11-12', TRUE),
+-- (2, 2, 3, 'don_sang', '06:45:00', '2025-11-12', TRUE),
+-- (3, 3, 4, 'don_sang', '07:00:00', '2025-11-12', TRUE),
+-- (4, 4, 5, 'don_sang', '06:15:00', '2025-11-12', TRUE),
+-- (5, 5, 6, 'don_sang', '07:15:00', '2025-11-12', TRUE),
+-- (6, 6, 7, 'don_sang', '06:30:00', '2025-11-12', TRUE),
+-- (7, 1, 2, 'don_sang', '07:00:00', '2025-11-12', TRUE),
+-- (8, 2, 3, 'don_sang', '06:45:00', '2025-11-12', TRUE),
+-- (9, 3, 4, 'don_sang', '06:00:00', '2025-11-12', TRUE),
+-- (10, 4, 5, 'don_sang', '06:15:00', '2025-11-12', TRUE),
+-- -- Chiều: trả học sinh (tuyến về)
+-- (11, 1, 2, 'tra_chieu', '16:45:00', '2025-11-12', TRUE),
+-- (12, 2, 3, 'tra_chieu', '17:00:00', '2025-11-12', TRUE),
+-- (13, 3, 4, 'tra_chieu', '17:15:00', '2025-11-12', TRUE),
+-- (14, 4, 5, 'tra_chieu', '16:30:00', '2025-11-12', TRUE),
+-- (15, 5, 6, 'tra_chieu', '17:30:00', '2025-11-12', TRUE),
+-- (16, 6, 7, 'tra_chieu', '16:45:00', '2025-11-12', TRUE),
+-- (17, 1, 2, 'tra_chieu', '17:00:00', '2025-11-12', TRUE),
+-- (18, 2, 3, 'tra_chieu', '17:15:00', '2025-11-12', TRUE),
+-- (19, 3, 4, 'tra_chieu', '16:30:00', '2025-11-12', TRUE),
+-- (20, 4, 5, 'tra_chieu', '16:45:00', '2025-11-12', TRUE);
 
--- =================================================================
--- KHỐI 20: TRANGTHAIHOCSINH - Gán học sinh vào chuyến đi
--- =================================================================
--- Gán học sinh vào chuyến đi với thuTuDiemDon tương ứng với sequence của điểm dừng
+-- -- =================================================================
+-- -- KHỐI 20: SCHEDULE_STUDENT_STOPS - Gán học sinh vào schedule
+-- -- =================================================================
+-- -- Gán học sinh vào schedule với điểm dừng tương ứng
+-- -- Lấy sequence của điểm dừng từ route_stops
+-- -- Đảm bảo mỗi học sinh chỉ được gán vào một điểm dừng trong một schedule
 
--- Tạo chuyến đi mẫu từ lịch trình
-INSERT INTO ChuyenDi (maLichTrinh, ngayChay, trangThai, gioBatDauThucTe, gioKetThucThucTe, ghiChu)
-SELECT maLichTrinh, '2025-11-12', 'chua_khoi_hanh', NULL, NULL, 'Chuyến đi mẫu'
-FROM LichTrinh
-WHERE ngayChay = '2025-11-12';
+-- -- Gán học sinh vào schedule đi (don_sang)
+-- -- Chọn điểm dừng có sequence nhỏ nhất cho mỗi học sinh trong mỗi schedule
+-- INSERT INTO schedule_student_stops (maLichTrinh, maHocSinh, thuTuDiem, maDiem)
+-- SELECT 
+--     lt.maLichTrinh,
+--     tssm.maHocSinh,
+--     MIN(rs.sequence) AS thuTuDiem,
+--     -- Lấy maDiem tương ứng với sequence nhỏ nhất bằng cách sử dụng subquery
+--     (SELECT tssm2.maDiem 
+--      FROM temp_student_stop_mapping tssm2
+--      JOIN route_stops rs2 ON rs2.route_id = lt.maTuyen AND rs2.stop_id = tssm2.maDiem
+--      WHERE tssm2.maHocSinh = tssm.maHocSinh 
+--        AND tssm2.route_number = tssm.route_number
+--      ORDER BY rs2.sequence ASC
+--      LIMIT 1
+--     ) AS maDiem
+-- FROM temp_student_stop_mapping tssm
+-- JOIN LichTrinh lt ON lt.loaiChuyen = 'don_sang' AND lt.maTuyen = tssm.route_number AND lt.ngayChay = '2025-11-12'
+-- JOIN route_stops rs ON rs.route_id = lt.maTuyen AND rs.stop_id = tssm.maDiem
+-- GROUP BY lt.maLichTrinh, tssm.maHocSinh
+-- ON DUPLICATE KEY UPDATE
+--     thuTuDiem = VALUES(thuTuDiem),
+--     maDiem = VALUES(maDiem),
+--     ngayCapNhat = CURRENT_TIMESTAMP;
 
--- Gán học sinh vào chuyến đi với thuTuDiemDon
--- Lấy sequence của điểm dừng từ route_stops
--- Tách riêng cho tuyến đi (don_sang) và tuyến về (tra_chieu) để tránh duplicate
+-- -- Gán học sinh vào schedule về (tra_chieu)
+-- -- Chọn điểm dừng có sequence nhỏ nhất cho mỗi học sinh trong mỗi schedule
+-- INSERT INTO schedule_student_stops (maLichTrinh, maHocSinh, thuTuDiem, maDiem)
+-- SELECT 
+--     lt.maLichTrinh,
+--     tssm.maHocSinh,
+--     MIN(rs.sequence) AS thuTuDiem,
+--     -- Lấy maDiem tương ứng với sequence nhỏ nhất bằng cách sử dụng subquery
+--     (SELECT tssm2.maDiem 
+--      FROM temp_student_stop_mapping tssm2
+--      JOIN route_stops rs2 ON rs2.route_id = lt.maTuyen AND rs2.stop_id = tssm2.maDiem
+--      WHERE tssm2.maHocSinh = tssm.maHocSinh 
+--        AND tssm2.route_number = tssm.route_number
+--      ORDER BY rs2.sequence ASC
+--      LIMIT 1
+--     ) AS maDiem
+-- FROM temp_student_stop_mapping tssm
+-- JOIN LichTrinh lt ON lt.loaiChuyen = 'tra_chieu' AND lt.maTuyen = tssm.route_number + 10 AND lt.ngayChay = '2025-11-12'
+-- JOIN route_stops rs ON rs.route_id = lt.maTuyen AND rs.stop_id = tssm.maDiem
+-- GROUP BY lt.maLichTrinh, tssm.maHocSinh
+-- ON DUPLICATE KEY UPDATE
+--     thuTuDiem = VALUES(thuTuDiem),
+--     maDiem = VALUES(maDiem),
+--     ngayCapNhat = CURRENT_TIMESTAMP;
 
--- Gán học sinh vào chuyến đi (don_sang)
--- GROUP BY để đảm bảo mỗi học sinh chỉ được gán một lần cho mỗi chuyến đi
-INSERT INTO TrangThaiHocSinh (maChuyen, maHocSinh, thuTuDiemDon, trangThai, thoiGianThucTe, ghiChu)
-SELECT 
-    cd.maChuyen,
-    tssm.maHocSinh,
-    MIN(rs.sequence) AS thuTuDiemDon,  -- Lấy sequence nhỏ nhất nếu có nhiều stops
-    'cho_don' AS trangThai,
-    NULL AS thoiGianThucTe,
-    NULL AS ghiChu
-FROM temp_student_stop_mapping tssm
-JOIN LichTrinh lt ON lt.loaiChuyen = 'don_sang' AND lt.maTuyen = tssm.route_number
-JOIN ChuyenDi cd ON cd.maLichTrinh = lt.maLichTrinh AND cd.ngayChay = '2025-11-12'
-JOIN route_stops rs ON rs.route_id = lt.maTuyen AND rs.stop_id = tssm.maDiem
-WHERE lt.ngayChay = '2025-11-12'
-GROUP BY cd.maChuyen, tssm.maHocSinh;
+-- -- =================================================================
+-- -- KHỐI 21: TRANGTHAIHOCSINH - Gán học sinh vào chuyến đi
+-- -- =================================================================
+-- -- Gán học sinh vào chuyến đi với thuTuDiemDon tương ứng với sequence của điểm dừng
 
--- Gán học sinh vào chuyến về (tra_chieu)
--- GROUP BY để đảm bảo mỗi học sinh chỉ được gán một lần cho mỗi chuyến đi
-INSERT INTO TrangThaiHocSinh (maChuyen, maHocSinh, thuTuDiemDon, trangThai, thoiGianThucTe, ghiChu)
-SELECT 
-    cd.maChuyen,
-    tssm.maHocSinh,
-    MIN(rs.sequence) AS thuTuDiemDon,  -- Lấy sequence nhỏ nhất nếu có nhiều stops
-    'cho_don' AS trangThai,
-    NULL AS thoiGianThucTe,
-    NULL AS ghiChu
-FROM temp_student_stop_mapping tssm
-JOIN LichTrinh lt ON lt.loaiChuyen = 'tra_chieu' AND lt.maTuyen = tssm.route_number + 10
-JOIN ChuyenDi cd ON cd.maLichTrinh = lt.maLichTrinh AND cd.ngayChay = '2025-11-12'
-JOIN route_stops rs ON rs.route_id = lt.maTuyen AND rs.stop_id = tssm.maDiem
-WHERE lt.ngayChay = '2025-11-12'
-GROUP BY cd.maChuyen, tssm.maHocSinh;
+-- -- Tạo chuyến đi mẫu từ lịch trình
+-- INSERT INTO ChuyenDi (maLichTrinh, ngayChay, trangThai, gioBatDauThucTe, gioKetThucThucTe, ghiChu)
+-- SELECT maLichTrinh, '2025-11-12', 'chua_khoi_hanh', NULL, NULL, 'Chuyến đi mẫu'
+-- FROM LichTrinh
+-- WHERE ngayChay = '2025-11-12';
 
--- Xóa bảng tạm
-DROP TEMPORARY TABLE IF EXISTS temp_student_stop_mapping;
+-- -- Gán học sinh vào chuyến đi với thuTuDiemDon
+-- -- Lấy sequence của điểm dừng từ route_stops
+-- -- Tách riêng cho tuyến đi (don_sang) và tuyến về (tra_chieu) để tránh duplicate
 
--- =================================================================
--- KHỐI 21: VALIDATION & KIỂM TRA
--- =================================================================
+-- -- Gán học sinh vào chuyến đi (don_sang)
+-- -- GROUP BY để đảm bảo mỗi học sinh chỉ được gán một lần cho mỗi chuyến đi
+-- INSERT INTO TrangThaiHocSinh (maChuyen, maHocSinh, thuTuDiemDon, trangThai, thoiGianThucTe, ghiChu)
+-- SELECT 
+--     cd.maChuyen,
+--     tssm.maHocSinh,
+--     MIN(rs.sequence) AS thuTuDiemDon,  -- Lấy sequence nhỏ nhất nếu có nhiều stops
+--     'cho_don' AS trangThai,
+--     NULL AS thoiGianThucTe,
+--     NULL AS ghiChu
+-- FROM temp_student_stop_mapping tssm
+-- JOIN LichTrinh lt ON lt.loaiChuyen = 'don_sang' AND lt.maTuyen = tssm.route_number
+-- JOIN ChuyenDi cd ON cd.maLichTrinh = lt.maLichTrinh AND cd.ngayChay = '2025-11-12'
+-- JOIN route_stops rs ON rs.route_id = lt.maTuyen AND rs.stop_id = tssm.maDiem
+-- WHERE lt.ngayChay = '2025-11-12'
+-- GROUP BY cd.maChuyen, tssm.maHocSinh;
 
--- Đếm số lượng
-SELECT '=== THỐNG KÊ DỮ LIỆU ===' as info;
-SELECT COUNT(*) AS totalHocSinh FROM HocSinh;
-SELECT COUNT(*) AS totalPhuHuynh FROM NguoiDung WHERE vaiTro = 'phu_huynh';
-SELECT COUNT(*) AS totalTaiXe FROM TaiXe;
-SELECT COUNT(*) AS totalXeBuyt FROM XeBuyt;
-SELECT COUNT(*) AS totalTuyenDuong FROM TuyenDuong;
-SELECT COUNT(*) AS totalDiemDung FROM DiemDung;
-SELECT COUNT(*) AS totalRouteStops FROM route_stops;
-SELECT COUNT(*) AS totalLichTrinh FROM LichTrinh;
-SELECT COUNT(*) AS totalChuyenDi FROM ChuyenDi;
+-- -- Gán học sinh vào chuyến về (tra_chieu)
+-- -- GROUP BY để đảm bảo mỗi học sinh chỉ được gán một lần cho mỗi chuyến đi
+-- INSERT INTO TrangThaiHocSinh (maChuyen, maHocSinh, thuTuDiemDon, trangThai, thoiGianThucTe, ghiChu)
+-- SELECT 
+--     cd.maChuyen,
+--     tssm.maHocSinh,
+--     MIN(rs.sequence) AS thuTuDiemDon,  -- Lấy sequence nhỏ nhất nếu có nhiều stops
+--     'cho_don' AS trangThai,
+--     NULL AS thoiGianThucTe,
+--     NULL AS ghiChu
+-- FROM temp_student_stop_mapping tssm
+-- JOIN LichTrinh lt ON lt.loaiChuyen = 'tra_chieu' AND lt.maTuyen = tssm.route_number + 10
+-- JOIN ChuyenDi cd ON cd.maLichTrinh = lt.maLichTrinh AND cd.ngayChay = '2025-11-12'
+-- JOIN route_stops rs ON rs.route_id = lt.maTuyen AND rs.stop_id = tssm.maDiem
+-- WHERE lt.ngayChay = '2025-11-12'
+-- GROUP BY cd.maChuyen, tssm.maHocSinh;
 
--- Kiểm tra phân bố học sinh theo quận
-SELECT 
-    CASE 
-        WHEN diaChi LIKE '%Quận 7%' THEN 'Quận 7'
-        WHEN diaChi LIKE '%Quận 4%' THEN 'Quận 4'
-        WHEN diaChi LIKE '%Quận 1%' THEN 'Quận 1'       
-        WHEN diaChi LIKE '%Quận 2%' THEN 'Quận 2'
-        WHEN diaChi LIKE '%Quận 3%' THEN 'Quận 3'
-        WHEN diaChi LIKE '%Quận 8%' THEN 'Quận 8'
-        WHEN diaChi LIKE '%Quận 10%' THEN 'Quận 10'
-        WHEN diaChi LIKE '%Quận 11%' THEN 'Quận 11'
-        WHEN diaChi LIKE '%Nhà Bè%' THEN 'Nhà Bè'
-        WHEN diaChi LIKE '%Bình Thạnh%' THEN 'Bình Thạnh'
-        ELSE 'Khác'
-    END AS quan,
-    COUNT(*) AS soLuong
-FROM HocSinh
-GROUP BY quan
-ORDER BY soLuong DESC;
+-- -- Xóa bảng tạm
+-- DROP TEMPORARY TABLE IF EXISTS temp_student_stop_mapping;
 
--- Kiểm tra tuyến đường đã có origin/dest
-SELECT maTuyen, tenTuyen, origin_lat, origin_lng, dest_lat, dest_lng
-FROM TuyenDuong
-ORDER BY maTuyen;
+-- -- =================================================================
+-- -- KHỐI 22: VALIDATION & KIỂM TRA
+-- -- =================================================================
 
--- Kiểm tra số điểm dừng mỗi tuyến
-SELECT t.maTuyen, t.tenTuyen, COUNT(rs.stop_id) AS soDiemDung
-FROM TuyenDuong t
-LEFT JOIN route_stops rs ON rs.route_id = t.maTuyen
-GROUP BY t.maTuyen, t.tenTuyen
-ORDER BY t.maTuyen;
+-- -- Đếm số lượng
+-- SELECT '=== THỐNG KÊ DỮ LIỆU ===' as info;
+-- SELECT COUNT(*) AS totalHocSinh FROM HocSinh;
+-- SELECT COUNT(*) AS totalPhuHuynh FROM NguoiDung WHERE vaiTro = 'phu_huynh';
+-- SELECT COUNT(*) AS totalTaiXe FROM TaiXe;
+-- SELECT COUNT(*) AS totalXeBuyt FROM XeBuyt;
+-- SELECT COUNT(*) AS totalTuyenDuong FROM TuyenDuong;
+-- SELECT COUNT(*) AS totalDiemDung FROM DiemDung;
+-- SELECT COUNT(*) AS totalRouteStops FROM route_stops;
+-- SELECT COUNT(*) AS totalLichTrinh FROM LichTrinh;
+-- SELECT COUNT(*) AS totalChuyenDi FROM ChuyenDi;
+-- SELECT COUNT(*) AS totalScheduleStudentStops FROM schedule_student_stops;
 
--- Kiểm tra số học sinh mỗi tuyến (từ TrangThaiHocSinh)
-SELECT 
-    lt.maTuyen,
-    t.tenTuyen,
-    lt.loaiChuyen,
-    COUNT(DISTINCT tths.maHocSinh) AS soHocSinh
-FROM LichTrinh lt
-JOIN TuyenDuong t ON t.maTuyen = lt.maTuyen
-LEFT JOIN ChuyenDi cd ON cd.maLichTrinh = lt.maLichTrinh
-LEFT JOIN TrangThaiHocSinh tths ON tths.maChuyen = cd.maChuyen
-WHERE lt.ngayChay = '2025-11-12'
-GROUP BY lt.maTuyen, t.tenTuyen, lt.loaiChuyen
-ORDER BY lt.maTuyen;
+-- -- Kiểm tra phân bố học sinh theo quận
+-- SELECT 
+--     CASE 
+--         WHEN diaChi LIKE '%Quận 7%' THEN 'Quận 7'
+--         WHEN diaChi LIKE '%Quận 4%' THEN 'Quận 4'
+--         WHEN diaChi LIKE '%Quận 1%' THEN 'Quận 1'       
+--         WHEN diaChi LIKE '%Quận 2%' THEN 'Quận 2'
+--         WHEN diaChi LIKE '%Quận 3%' THEN 'Quận 3'
+--         WHEN diaChi LIKE '%Quận 8%' THEN 'Quận 8'
+--         WHEN diaChi LIKE '%Quận 10%' THEN 'Quận 10'
+--         WHEN diaChi LIKE '%Quận 11%' THEN 'Quận 11'
+--         WHEN diaChi LIKE '%Nhà Bè%' THEN 'Nhà Bè'
+--         WHEN diaChi LIKE '%Bình Thạnh%' THEN 'Bình Thạnh'
+--         ELSE 'Khác'
+--     END AS quan,
+--     COUNT(*) AS soLuong
+-- FROM HocSinh
+-- GROUP BY quan
+-- ORDER BY soLuong DESC;
 
--- Kiểm tra tuyến đi có điểm cuối là Đại học Sài Gòn
-SELECT 
-    t.maTuyen,
-    t.tenTuyen,
-    d.tenDiem AS diemCuoi,
-    rs.sequence AS sequenceCuoi
-FROM TuyenDuong t
-JOIN route_stops rs ON rs.route_id = t.maTuyen
-JOIN (
-    SELECT route_id, MAX(sequence) AS max_seq
-    FROM route_stops
-    GROUP BY route_id
-) max_seq ON max_seq.route_id = rs.route_id AND max_seq.max_seq = rs.sequence
-JOIN DiemDung d ON d.maDiem = rs.stop_id
-WHERE t.tenTuyen LIKE '%Đi%'
-ORDER BY t.maTuyen;
+-- -- Kiểm tra tuyến đường đã có origin/dest
+-- SELECT maTuyen, tenTuyen, origin_lat, origin_lng, dest_lat, dest_lng
+-- FROM TuyenDuong
+-- ORDER BY maTuyen;
 
--- Kiểm tra tuyến về có điểm đầu là Đại học Sài Gòn
-SELECT 
-    t.maTuyen,
-    t.tenTuyen,
-    d.tenDiem AS diemDau,
-    rs.sequence AS sequenceDau
-FROM TuyenDuong t
-JOIN route_stops rs ON rs.route_id = t.maTuyen
-JOIN (
-    SELECT route_id, MIN(sequence) AS min_seq
-    FROM route_stops
-    GROUP BY route_id
-) min_seq ON min_seq.route_id = rs.route_id AND min_seq.min_seq = rs.sequence
-JOIN DiemDung d ON d.maDiem = rs.stop_id
-WHERE t.tenTuyen LIKE '%Về%'
-ORDER BY t.maTuyen;
+-- -- Kiểm tra số điểm dừng mỗi tuyến
+-- SELECT t.maTuyen, t.tenTuyen, COUNT(rs.stop_id) AS soDiemDung
+-- FROM TuyenDuong t
+-- LEFT JOIN route_stops rs ON rs.route_id = t.maTuyen
+-- GROUP BY t.maTuyen, t.tenTuyen
+-- ORDER BY t.maTuyen;
 
-SELECT 'Sample data (100 HỌC SINH TP.HCM - 10 TUYẾN ĐI/VỀ) inserted successfully!' as message;
+-- -- Kiểm tra số học sinh mỗi tuyến (từ TrangThaiHocSinh)
+-- SELECT 
+--     lt.maTuyen,
+--     t.tenTuyen,
+--     lt.loaiChuyen,
+--     COUNT(DISTINCT tths.maHocSinh) AS soHocSinh
+-- FROM LichTrinh lt
+-- JOIN TuyenDuong t ON t.maTuyen = lt.maTuyen
+-- LEFT JOIN ChuyenDi cd ON cd.maLichTrinh = lt.maLichTrinh
+-- LEFT JOIN TrangThaiHocSinh tths ON tths.maChuyen = cd.maChuyen
+-- WHERE lt.ngayChay = '2025-11-12'
+-- GROUP BY lt.maTuyen, t.tenTuyen, lt.loaiChuyen
+-- ORDER BY lt.maTuyen;
+
+-- -- Kiểm tra tuyến đi có điểm cuối là Đại học Sài Gòn
+-- SELECT 
+--     t.maTuyen,
+--     t.tenTuyen,
+--     d.tenDiem AS diemCuoi,
+--     rs.sequence AS sequenceCuoi
+-- FROM TuyenDuong t
+-- JOIN route_stops rs ON rs.route_id = t.maTuyen
+-- JOIN (
+--     SELECT route_id, MAX(sequence) AS max_seq
+--     FROM route_stops
+--     GROUP BY route_id
+-- ) max_seq ON max_seq.route_id = rs.route_id AND max_seq.max_seq = rs.sequence
+-- JOIN DiemDung d ON d.maDiem = rs.stop_id
+-- WHERE t.tenTuyen LIKE '%Đi%'
+-- ORDER BY t.maTuyen;
+
+-- -- Kiểm tra tuyến về có điểm đầu là Đại học Sài Gòn
+-- SELECT 
+--     t.maTuyen,
+--     t.tenTuyen,
+--     d.tenDiem AS diemDau,
+--     rs.sequence AS sequenceDau
+-- FROM TuyenDuong t
+-- JOIN route_stops rs ON rs.route_id = t.maTuyen
+-- JOIN (
+--     SELECT route_id, MIN(sequence) AS min_seq
+--     FROM route_stops
+--     GROUP BY route_id
+-- ) min_seq ON min_seq.route_id = rs.route_id AND min_seq.min_seq = rs.sequence
+-- JOIN DiemDung d ON d.maDiem = rs.stop_id
+-- WHERE t.tenTuyen LIKE '%Về%'
+-- ORDER BY t.maTuyen;
+
+-- SELECT 'Sample data (100 HỌC SINH TP.HCM - 10 TUYẾN ĐI/VỀ) inserted successfully!' as message;

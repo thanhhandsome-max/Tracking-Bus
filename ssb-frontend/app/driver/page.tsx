@@ -259,11 +259,11 @@ export default function DriverDashboard() {
                           </div>
                           <div className="flex items-center gap-1">
                             <MapPin className="w-4 h-4" />
-                            {Array.isArray(trip.diemDung) ? trip.diemDung.length : (trip.stops || '-')} điểm dừng
+                            {trip.soDiemDung || (Array.isArray(trip.diemDung) ? trip.diemDung.length : (trip.stops || 0))} điểm dừng
                           </div>
                           <div className="flex items-center gap-1">
                             <Users className="w-4 h-4" />
-                            {trip.soHocSinh || trip.students || '-'} học sinh
+                            {trip.soHocSinh || (Array.isArray(trip.students) ? trip.students.length : 0)} học sinh
                           </div>
                         </div>
                       </div>

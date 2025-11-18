@@ -83,4 +83,13 @@ router.post(
   ScheduleController.updateStatus
 );
 
+// GET /api/v1/schedules/:id/students - Lấy danh sách học sinh của schedule
+router.get(
+  "/:id/students",
+  AuthMiddleware.authenticate,
+  AuthMiddleware.authorize("quan_tri", "tai_xe"),
+  ValidationMiddleware.validateId,
+  ScheduleController.getStudents
+);
+
 export default router;

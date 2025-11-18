@@ -3,7 +3,7 @@ import pool from "../config/db.js";
 const TuyenDuongModel = {
   // Lấy tất cả tuyến đường (bao gồm số điểm dừng)
   async getAll(options = {}) {
-    const { search, trangThai } = options;
+    const { search, trangThai, routeType } = options;
     let query = `
       SELECT 
         t.*,
@@ -19,6 +19,11 @@ const TuyenDuongModel = {
       params.push(trangThai === 'true' || trangThai === true || trangThai === '1' || trangThai === 1);
     }
     // Nếu không có filter trangThai, lấy tất cả (không filter theo trangThai)
+
+    if (routeType) {
+      conditions.push('t.routeType = ?');
+      params.push(routeType);
+    }
 
     if (search) {
       conditions.push('(t.tenTuyen LIKE ? OR t.diemBatDau LIKE ? OR t.diemKetThuc LIKE ?)');
@@ -87,6 +92,8 @@ const TuyenDuongModel = {
       dest_lng,
       polyline,
       trangThai,
+      routeType, // 'di' hoặc 've'
+      pairedRouteId, // ID của tuyến đối ứng
     } = data;
     
     // Đảm bảo trangThai mặc định là true (hoạt động) nếu không được cung cấp
@@ -96,8 +103,8 @@ const TuyenDuongModel = {
     const [result] = await pool.query(
       `INSERT INTO TuyenDuong 
        (tenTuyen, diemBatDau, diemKetThuc, thoiGianUocTinh, 
-        origin_lat, origin_lng, dest_lat, dest_lng, polyline, trangThai)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        origin_lat, origin_lng, dest_lat, dest_lng, polyline, trangThai, routeType, pairedRouteId)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         tenTuyen,
         diemBatDau,
@@ -109,6 +116,8 @@ const TuyenDuongModel = {
         dest_lng || null,
         polyline || null,
         finalTrangThai,
+        routeType || null,
+        pairedRouteId || null,
       ]
     );
     return result.insertId;

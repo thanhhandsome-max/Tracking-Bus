@@ -307,11 +307,12 @@ export default function TripDetailPage() {
       "[Driver Trip] Fetching dynamic directions from current position to next stop"
     );
 
-    apiClient
+      apiClient
       .getDirections({
         origin: `${busLocation.lat},${busLocation.lng}`,
         destination: `${nextStopLat},${nextStopLng}`,
-        mode: "driving",
+        mode: "driving", // Mode driving phù hợp với xe buýt
+        vehicleType: "bus", // Chỉ định loại xe là buýt
       })
       .then((response: any) => {
         if (response.success && response.data) {
@@ -482,8 +483,30 @@ export default function TripDetailPage() {
                   : ""
               }`;
 
-        // Map stops from routeInfo.diemDung (already sorted by sequence from backend)
-        const routeStops = data?.routeInfo?.diemDung || [];
+        // 🔥 UPDATE: Sử dụng data.stops[] mới (format chuẩn từ backend)
+        // Fallback về data.routeInfo.diemDung nếu chưa có data.stops
+        const routeStops = data?.stops || data?.routeInfo?.diemDung || [];
+        
+        // Lấy summary từ API response
+        const summary = data?.summary || {
+          totalStudents: data?.students?.length || 0,
+          pickedCount: 0,
+          absentCount: 0,
+          waitingCount: 0,
+          droppedCount: 0,
+        };
+        
+        console.log("[Driver Trip] Route stops from API:", {
+          count: routeStops.length,
+          stops: routeStops.map((s: any) => ({
+            sequence: s.sequence,
+            name: s.tenDiem,
+            studentCount: s.studentCount,
+            hasStudents: s.students?.length > 0,
+          })),
+        });
+        
+        console.log("[Driver Trip] Summary:", summary);
 
         // Debug: Log raw stop data from API
         console.log(
@@ -513,17 +536,13 @@ export default function TripDetailPage() {
           // Use stop.sequence if available, otherwise use index + 1
           const stopSequence = stop.sequence || index + 1;
 
-          // Find students for this stop (by thuTuDiemDon matching sequence)
-          const stopStudents = (data?.students || [])
-            .filter((student: any) => {
-              // Match students to stops by thuTuDiemDon (sequence) or maDiem
-              return (
-                student.thuTuDiemDon === stopSequence ||
-                student.maDiem === stop.maDiem ||
-                student.thuTuDiemDon === index + 1
-              );
-            })
-            .map((student: any) => ({
+          // 🔥 FIX: Ưu tiên sử dụng students từ stop (backend đã tính sẵn)
+          // Nếu không có, fallback về students từ data?.students
+          let stopStudents = [];
+          
+          if (stop.students && Array.isArray(stop.students) && stop.students.length > 0) {
+            // Sử dụng students từ stop (backend đã match đúng)
+            stopStudents = stop.students.map((student: any) => ({
               id: String(student.maHocSinh || student.id || ""),
               name: student.hoTen || student.name || "Học sinh",
               status:
@@ -536,6 +555,38 @@ export default function TripDetailPage() {
                 student.anhDaiDien || "/placeholder.svg?height=40&width=40",
               parent: student.soDienThoaiPhuHuynh || student.parentPhone || "",
             }));
+          } else {
+            // Fallback: Match từ data?.students
+            stopStudents = (data?.students || [])
+              .filter((student: any) => {
+                // Match students to stops by thuTuDiemDon (sequence)
+                return (
+                  student.thuTuDiemDon === stopSequence ||
+                  student.thuTuDiemDon === index + 1
+                );
+              })
+              .map((student: any) => ({
+                id: String(student.maHocSinh || student.id || ""),
+                name: student.hoTen || student.name || "Học sinh",
+                status:
+                  student.trangThai === "da_don"
+                    ? "picked"
+                    : student.trangThai === "vang"
+                    ? "absent"
+                    : "pending",
+                avatar:
+                  student.anhDaiDien || "/placeholder.svg?height=40&width=40",
+                parent: student.soDienThoaiPhuHuynh || student.parentPhone || "",
+              }));
+          }
+          
+          console.log(`[Driver Trip] Stop ${stopSequence} (${stop.tenDiem}): ${stopStudents.length} students`, {
+            stopSequence,
+            stopName: stop.tenDiem,
+            studentCount: stop.studentCount,
+            studentsFromStop: stop.students?.length || 0,
+            studentsMapped: stopStudents.length,
+          });
 
           // Determine stop status
           let stopStatus: "completed" | "current" | "upcoming" = "upcoming";
@@ -756,7 +807,8 @@ export default function TripDetailPage() {
   const currentStop = trip.stops[trip.currentStop];
   const progress = ((trip.currentStop + 1) / trip.stops.length) * 100;
 
-  const handleStudentCheck = async (studentId: string, checked: boolean) => {
+  // 🔥 UPDATE: Sử dụng API endpoints mới (POST /checkin, /absent, /checkout)
+  const handleStudentCheckin = async (studentId: string) => {
     // Update UI optimistically
     setTrip((prev) => ({
       ...prev,
@@ -766,7 +818,7 @@ export default function TripDetailPage() {
               ...stop,
               students: stop.students.map((student) =>
                 student.id === studentId
-                  ? { ...student, status: checked ? "picked" : "pending" }
+                  ? { ...student, status: "picked" }
                   : student
               ),
             }
@@ -774,48 +826,70 @@ export default function TripDetailPage() {
       ),
     }));
 
-    // Call API to update student status and notify parent
+    // Call API POST /checkin
     try {
       const token = localStorage.getItem("ssb_token");
       const API_URL =
         process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
-      const trangThai = checked ? "da_don" : "cho_don";
 
       const response = await fetch(
-        `${API_URL}/trips/${tripIdNum}/students/${studentId}/status`,
+        `${API_URL}/trips/${tripIdNum}/students/${studentId}/checkin`,
         {
-          method: "PUT",
+          method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ trangThai }),
         }
       );
 
       if (!response.ok) {
-        throw new Error("Failed to update student status");
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || "Failed to checkin student");
       }
 
       const result = await response.json();
-      console.log("[Driver Trip] Student status updated:", result);
+      console.log("[Driver Trip] Student checked in:", result);
 
-      if (checked) {
-        toast({
-          title: "✅ Đã đón học sinh",
-          description: "Phụ huynh đã nhận thông báo",
-        });
+      toast({
+        title: "✅ Đã đón học sinh",
+        description: "Phụ huynh đã nhận thông báo",
+      });
+      
+      // Reload trip data để cập nhật summary
+      const res = await api.getTripById(tripIdNum);
+      const data: any = (res as any).data || res;
+      if (data?.summary) {
+        // Update summary nếu có
+        console.log("[Driver Trip] Updated summary:", data.summary);
       }
-    } catch (error) {
-      console.error("[Driver Trip] Error updating student status:", error);
+    } catch (error: any) {
+      console.error("[Driver Trip] Error checking in student:", error);
+      // Revert UI on error
+      setTrip((prev) => ({
+        ...prev,
+        stops: prev.stops.map((stop) =>
+          stop.id === currentStop.id
+            ? {
+                ...stop,
+                students: stop.students.map((student) =>
+                  student.id === studentId
+                    ? { ...student, status: "pending" }
+                    : student
+                ),
+              }
+            : stop
+        ),
+      }));
       toast({
         title: "❌ Lỗi cập nhật",
-        description: "Không thể cập nhật trạng thái học sinh",
+        description: error?.message || "Không thể cập nhật trạng thái học sinh",
         variant: "destructive",
       });
     }
   };
 
+  // 🔥 UPDATE: Sử dụng API POST /absent
   const handleMarkAbsent = async (studentId: string) => {
     // Update UI optimistically
     setTrip((prev) => ({
@@ -834,26 +908,26 @@ export default function TripDetailPage() {
       ),
     }));
 
-    // Call API to update student status and notify parent
+    // Call API POST /absent
     try {
       const token = localStorage.getItem("ssb_token");
       const API_URL =
         process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
 
       const response = await fetch(
-        `${API_URL}/trips/${tripIdNum}/students/${studentId}/status`,
+        `${API_URL}/trips/${tripIdNum}/students/${studentId}/absent`,
         {
-          method: "PUT",
+          method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ trangThai: "vang" }),
         }
       );
 
       if (!response.ok) {
-        throw new Error("Failed to mark student as absent");
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || "Failed to mark student as absent");
       }
 
       const result = await response.json();
@@ -863,11 +937,34 @@ export default function TripDetailPage() {
         title: "⚠️ Đã đánh dấu vắng",
         description: "Phụ huynh đã nhận thông báo",
       });
-    } catch (error) {
+      
+      // Reload trip data để cập nhật summary
+      const res = await api.getTripById(tripIdNum);
+      const data: any = (res as any).data || res;
+      if (data?.summary) {
+        console.log("[Driver Trip] Updated summary:", data.summary);
+      }
+    } catch (error: any) {
       console.error("[Driver Trip] Error marking student absent:", error);
+      // Revert UI on error
+      setTrip((prev) => ({
+        ...prev,
+        stops: prev.stops.map((stop) =>
+          stop.id === currentStop.id
+            ? {
+                ...stop,
+                students: stop.students.map((student) =>
+                  student.id === studentId
+                    ? { ...student, status: "pending" }
+                    : student
+                ),
+              }
+            : stop
+        ),
+      }));
       toast({
         title: "❌ Lỗi cập nhật",
-        description: "Không thể đánh dấu học sinh vắng",
+        description: error?.message || "Không thể đánh dấu học sinh vắng",
         variant: "destructive",
       });
     }
@@ -1511,6 +1608,55 @@ export default function TripDetailPage() {
           </CardContent>
         </Card>
 
+        {/* 🔥 Summary: Tổng số học sinh theo trạng thái */}
+        {(() => {
+          // Tính summary từ trip.stops
+          let totalStudents = 0;
+          let pickedCount = 0;
+          let absentCount = 0;
+          let waitingCount = 0;
+          
+          trip.stops.forEach((stop: any) => {
+            stop.students?.forEach((student: any) => {
+              totalStudents++;
+              if (student.status === "picked") pickedCount++;
+              else if (student.status === "absent") absentCount++;
+              else waitingCount++;
+            });
+          });
+          
+          return (
+            <Card className="border-primary/50 bg-primary/5">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="w-5 h-5 text-primary" />
+                  Tổng quan học sinh
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-foreground">{totalStudents}</p>
+                    <p className="text-sm text-muted-foreground">Tổng số</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-green-600">{pickedCount}</p>
+                    <p className="text-sm text-muted-foreground">Đã đón</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-yellow-600">{absentCount}</p>
+                    <p className="text-sm text-muted-foreground">Vắng</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-muted-foreground">{waitingCount}</p>
+                    <p className="text-sm text-muted-foreground">Chưa đón</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })()}
+
         {/* Main Content */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Current Stop */}
@@ -1629,86 +1775,95 @@ export default function TripDetailPage() {
                   </CardContent>
                 </Card>
 
-                {/* Students List */}
+                {/* 🔥 Students List với nút hành động rõ ràng */}
                 <div className="space-y-3">
                   <h4 className="font-medium text-foreground">
                     Danh sách học sinh ({currentStop.students.length})
                   </h4>
-                  {currentStop.students.map((student) => (
-                    <Card key={student.id} className="border-border/50">
-                      <CardContent className="p-4">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <Checkbox
-                              checked={student.status === "picked"}
-                              onCheckedChange={(checked) =>
-                                handleStudentCheck(
-                                  student.id,
-                                  checked as boolean
-                                )
-                              }
-                              disabled={
-                                student.status === "absent" ||
-                                student.status === "picked"
-                              }
-                            />
-                            <Avatar className="w-10 h-10">
-                              <AvatarImage
-                                src={student.avatar || "/placeholder.svg"}
-                                alt={student.name}
-                              />
-                              <AvatarFallback>
-                                {student.name.charAt(0)}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div>
-                              <p className="font-medium text-foreground">
-                                {student.name}
-                              </p>
-                              <div className="flex items-center gap-2">
-                                {student.status === "picked" && (
-                                  <p className="text-xs text-success flex items-center gap-1">
-                                    <CheckCircle className="w-3 h-3" />
-                                    Đã đón
-                                  </p>
-                                )}
-                                {student.status === "absent" && (
-                                  <p className="text-xs text-warning flex items-center gap-1">
-                                    <XCircle className="w-3 h-3" />
-                                    Vắng
-                                  </p>
-                                )}
-                                {student.status === "pending" && (
-                                  <p className="text-xs text-muted-foreground">
-                                    Chờ đón
-                                  </p>
-                                )}
+                  {currentStop.students.length === 0 ? (
+                    <Card className="border-border/50">
+                      <CardContent className="p-4 text-center text-muted-foreground">
+                        Không có học sinh tại điểm dừng này
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    currentStop.students.map((student) => (
+                      <Card key={student.id} className="border-border/50">
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <Avatar className="w-10 h-10">
+                                <AvatarImage
+                                  src={student.avatar || "/placeholder.svg"}
+                                  alt={student.name}
+                                />
+                                <AvatarFallback>
+                                  {student.name.charAt(0)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <p className="font-medium text-foreground">
+                                  {student.name}
+                                </p>
+                                <div className="flex items-center gap-2">
+                                  {student.status === "picked" && (
+                                    <Badge variant="default" className="bg-green-600">
+                                      <CheckCircle className="w-3 h-3 mr-1" />
+                                      Đã đón
+                                    </Badge>
+                                  )}
+                                  {student.status === "absent" && (
+                                    <Badge variant="destructive">
+                                      <XCircle className="w-3 h-3 mr-1" />
+                                      Vắng
+                                    </Badge>
+                                  )}
+                                  {student.status === "pending" && (
+                                    <Badge variant="outline">
+                                      <Clock className="w-3 h-3 mr-1" />
+                                      Chờ đón
+                                    </Badge>
+                                  )}
+                                </div>
                               </div>
                             </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="bg-transparent"
-                            >
-                              <Phone className="w-4 h-4" />
-                            </Button>
-                            {student.status === "pending" && (
+                            <div className="flex items-center gap-2">
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => handleMarkAbsent(student.id)}
-                                className="text-warning border-warning hover:bg-warning/10"
+                                className="bg-transparent"
+                                title="Liên hệ phụ huynh"
                               >
-                                Đánh dấu vắng
+                                <Phone className="w-4 h-4" />
                               </Button>
-                            )}
+                              {student.status === "pending" && (
+                                <>
+                                  <Button
+                                    variant="default"
+                                    size="sm"
+                                    onClick={() => handleStudentCheckin(student.id)}
+                                    className="bg-green-600 hover:bg-green-700 text-white"
+                                  >
+                                    <CheckCircle className="w-4 h-4 mr-1" />
+                                    Đã đón
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleMarkAbsent(student.id)}
+                                    className="text-warning border-warning hover:bg-warning/10"
+                                  >
+                                    <XCircle className="w-4 h-4 mr-1" />
+                                    Vắng
+                                  </Button>
+                                </>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                        </CardContent>
+                      </Card>
+                    ))
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -1774,9 +1929,18 @@ export default function TripDetailPage() {
                       </div>
 
                       <div className="flex-1 pb-4">
-                        <p className="font-medium text-foreground text-sm">
-                          {stop.name}
-                        </p>
+                        <div className="flex items-center justify-between">
+                          <p className="font-medium text-foreground text-sm">
+                            {stop.name}
+                          </p>
+                          {/* 🔥 Hiển thị số học sinh tại stop */}
+                          {stop.students && stop.students.length > 0 && (
+                            <Badge variant="outline" className="text-xs">
+                              <Users className="w-3 h-3 mr-1" />
+                              {stop.students.length} học sinh
+                            </Badge>
+                          )}
+                        </div>
                         <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
                           <Clock className="w-3 h-3" />
                           <span>{stop.time}</span>

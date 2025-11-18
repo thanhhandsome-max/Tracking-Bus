@@ -39,7 +39,10 @@ import {
   Route,
   Timer,
   CheckCircle2,
-  XCircle
+  XCircle,
+  Zap,
+  Sparkles,
+  Users
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import apiClient from '@/lib/api-client';
@@ -148,6 +151,38 @@ export function RouteBuilder({
   const [draggedMarkerId, setDraggedMarkerId] = useState<string | null>(null);
   const [pendingStop, setPendingStop] = useState<Stop | null>(null);
   const pendingMarkerRef = useRef<google.maps.Marker | null>(null);
+  const [allSuggestions, setAllSuggestions] = useState<Array<{
+    id: string;
+    name: string;
+    address: string;
+    lat?: number;
+    lng?: number;
+    studentCount: number;
+    students: Array<{ maHocSinh: number; hoTen: string; diaChi: string }>;
+    suggestedSequence: number;
+  }>>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  // Tính thời gian dừng dựa trên số học sinh (1 phút/3 học sinh, tối đa 5 phút)
+  const calculateEstimatedTime = (studentCount: number): string => {
+    const minutes = Math.min(Math.ceil(studentCount / 3), 5);
+    return String(minutes);
+  };
+
+  // Lọc suggestions để chỉ hiển thị những điểm chưa được thêm vào stops
+  const filteredSuggestions = allSuggestions.filter((suggestion) => {
+    if (!suggestion.lat || !suggestion.lng) return true; // Giữ lại những điểm chưa có tọa độ
+    
+    // Kiểm tra xem điểm này đã có trong stops chưa (so sánh theo lat/lng với tolerance 0.0001)
+    const tolerance = 0.0001;
+    return !stops.some((stop) => {
+      if (!stop.lat || !stop.lng) return false;
+      const latDiff = Math.abs(stop.lat - suggestion.lat!);
+      const lngDiff = Math.abs(stop.lng - suggestion.lng!);
+      return latDiff < tolerance && lngDiff < tolerance;
+    });
+  });
 
   // Clear pending stop when map mode changes to view
   useEffect(() => {
@@ -479,7 +514,8 @@ export function RouteBuilder({
           const response = await apiClient.getDirections({
             origin: `${from.lat},${from.lng}`,
             destination: `${to.lat},${to.lng}`,
-            mode: 'driving',
+            mode: 'driving', // Mode driving phù hợp với xe buýt
+            vehicleType: 'bus', // Chỉ định loại xe là buýt
           });
 
           console.log(`📥 Directions response for segment ${i + 1}:`, {
@@ -965,10 +1001,29 @@ export function RouteBuilder({
       return;
     }
 
+    // Tìm stop bị xóa để kiểm tra xem có trong suggestions không
+    const removedStop = stops.find(s => s.id === id);
+    
     const newStops = stops
       .filter((s) => s.id !== id)
       .map((s, idx) => ({ ...s, sequence: idx + 1 }));
     setStops(newStops);
+    
+    // Nếu stop bị xóa có trong allSuggestions (match theo lat/lng), hiển thị lại suggestions
+    if (removedStop && removedStop.lat && removedStop.lng && allSuggestions.length > 0) {
+      const tolerance = 0.0001;
+      const hasMatch = allSuggestions.some((suggestion) => {
+        if (!suggestion.lat || !suggestion.lng) return false;
+        const latDiff = Math.abs(removedStop.lat! - suggestion.lat);
+        const lngDiff = Math.abs(removedStop.lng! - suggestion.lng);
+        return latDiff < tolerance && lngDiff < tolerance;
+      });
+      
+      if (hasMatch && !showSuggestions) {
+        setShowSuggestions(true);
+      }
+    }
+    
     if (selectedStopId === id) {
       setSelectedStopId(null);
     }
@@ -1061,6 +1116,148 @@ export function RouteBuilder({
     setStops(newStops);
   };
 
+  // Đề xuất điểm dừng dựa trên học sinh
+  const handleSuggestStops = async () => {
+    try {
+      setLoadingSuggestions(true);
+      setShowSuggestions(true);
+
+      // Extract area từ route name hoặc để null để lấy tất cả
+      const areaMatch = routeName.match(/Quận\s+(\d+)|Huyện\s+(\w+)/i);
+      const area = areaMatch ? areaMatch[0] : null;
+
+      // Lấy origin và destination từ originStop và destinationStop
+      const originParam = originStop?.lat && originStop?.lng 
+        ? `${originStop.lat},${originStop.lng}` 
+        : undefined;
+      const destinationParam = destinationStop?.lat && destinationStop?.lng
+        ? `${destinationStop.lat},${destinationStop.lng}`
+        : undefined;
+
+      const response = await apiClient.suggestStops({
+        area: area || undefined,
+        maxDistanceKm: 2.0,
+        minStudentsPerStop: 1, // Giảm xuống 1 để có thể đề xuất ngay cả khi chỉ có 1 học sinh
+        maxStops: 20,
+        origin: originParam,
+        destination: destinationParam,
+        optimizeRoute: true, // Tối ưu lộ trình
+      });
+
+      const data = (response as any).data || {};
+      const suggestionsList = data.suggestions || [];
+
+      if (suggestionsList.length === 0) {
+        toast({
+          title: "Không có đề xuất",
+          description: "Không tìm thấy học sinh để đề xuất điểm dừng",
+          variant: "default",
+        });
+        setShowSuggestions(false);
+        return;
+      }
+
+      setAllSuggestions(suggestionsList);
+
+      toast({
+        title: "Đề xuất thành công",
+        description: `Đã tìm thấy ${suggestionsList.length} điểm dừng đề xuất`,
+      });
+    } catch (error: any) {
+      console.error("Failed to get stop suggestions:", error);
+      toast({
+        title: "Lỗi",
+        description: error?.message || "Không thể lấy đề xuất điểm dừng",
+        variant: "destructive",
+      });
+      setShowSuggestions(false);
+    } finally {
+      setLoadingSuggestions(false);
+    }
+  };
+
+  // Chọn một đề xuất và thêm vào stops
+  const handleSelectSuggestion = (suggestion: typeof allSuggestions[0]) => {
+    if (!suggestion.lat || !suggestion.lng) {
+      toast({
+        title: "Lỗi",
+        description: "Điểm dừng này chưa có tọa độ. Vui lòng geocode địa chỉ trước.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Tính thời gian dừng dựa trên số học sinh
+    const estimatedTime = calculateEstimatedTime(suggestion.studentCount);
+
+    const newStop: Stop = {
+      id: Date.now().toString(),
+      name: suggestion.name,
+      address: suggestion.address,
+      lat: suggestion.lat,
+      lng: suggestion.lng,
+      estimatedTime: estimatedTime,
+      sequence: stops.length + 1,
+    };
+
+    setStops([...stops, newStop]);
+    setSelectedStopId(newStop.id);
+    setShowSuggestions(false);
+
+    toast({
+      title: "Đã thêm điểm dừng",
+      description: `${suggestion.name} đã được thêm (${suggestion.studentCount} học sinh)`,
+    });
+
+    // Update map markers
+    setTimeout(() => {
+      updateMarkers();
+      const updatedStops = [...stops, newStop];
+      if (updatedStops.length >= 1) {
+        updateRoute();
+      }
+    }, 100);
+  };
+
+  // Chọn tất cả đề xuất
+  const handleSelectAllSuggestions = () => {
+    const validSuggestions = filteredSuggestions.filter((s) => s.lat && s.lng);
+    if (validSuggestions.length === 0) {
+      toast({
+        title: "Lỗi",
+        description: "Không có đề xuất hợp lệ để thêm",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const newStops: Stop[] = validSuggestions.map((suggestion, idx) => ({
+      id: `suggestion_${Date.now()}_${idx}`,
+      name: suggestion.name,
+      address: suggestion.address,
+      lat: suggestion.lat!,
+      lng: suggestion.lng!,
+      estimatedTime: calculateEstimatedTime(suggestion.studentCount),
+      sequence: stops.length + idx + 1,
+    }));
+
+    setStops([...stops, ...newStops]);
+    setShowSuggestions(false);
+
+    toast({
+      title: "Đã thêm tất cả",
+      description: `Đã thêm ${newStops.length} điểm dừng từ đề xuất`,
+    });
+
+    // Update map markers
+    setTimeout(() => {
+      updateMarkers();
+      if (stops.length + newStops.length >= 2) {
+        updateRoute();
+      }
+    }, 100);
+  };
+
   const handleSubmit = async () => {
     if (!routeName.trim()) {
       toast({
@@ -1114,6 +1311,34 @@ export function RouteBuilder({
       }
 
       // Chuẩn bị diemBatDau và diemKetThuc từ origin và destination
+      // Chuẩn bị danh sách stops để gửi cùng payload (bao gồm origin và destination)
+      const allStops = [
+        {
+          stop_id: null,
+          tenDiem: originStop.name.trim(),
+          address: originStop.address.trim() || undefined,
+          viDo: Number(originStop.lat),
+          kinhDo: Number(originStop.lng),
+          sequence: 1,
+        },
+        ...stops.map((stop, idx) => ({
+          stop_id: null,
+          tenDiem: stop.name.trim(),
+          address: stop.address.trim() || undefined,
+          viDo: Number(stop.lat),
+          kinhDo: Number(stop.lng),
+          sequence: idx + 2,
+        })),
+        {
+          stop_id: null,
+          tenDiem: destinationStop.name.trim(),
+          address: destinationStop.address.trim() || undefined,
+          viDo: Number(destinationStop.lat),
+          kinhDo: Number(destinationStop.lng),
+          sequence: stops.length + 2,
+        },
+      ];
+
       const routePayload: any = {
         tenTuyen: trimmedRouteName,
         diemBatDau: originStop.name.trim().substring(0, 255),
@@ -1122,6 +1347,9 @@ export function RouteBuilder({
         origin_lng: originStop.lng,
         dest_lat: destinationStop.lat,
         dest_lng: destinationStop.lng,
+        routeType: 'di', // Mặc định là tuyến đi
+        createReturnRoute: true, // Tự động tạo tuyến về
+        stops: allStops, // Gửi danh sách stops để backend tự động tạo tuyến về với stops đảo ngược
       };
 
       if (mode === 'edit' && initialRoute?.id) {
@@ -1187,34 +1415,39 @@ export function RouteBuilder({
           throw new Error(`Không thể lấy ID tuyến đường sau khi tạo. Response: ${JSON.stringify(result)}`);
         }
 
-        // Thêm origin và destination vào route_stops trước
-        // Thêm origin (sequence = 1)
-        try {
-          const originPayload: any = {
-            tenDiem: originStop.name.trim(),
-            address: originStop.address.trim() || undefined,
-            sequence: 1,
-            dwell_seconds: 30,
-            viDo: Number(originStop.lat),
-            kinhDo: Number(originStop.lng),
-          };
-          await apiClient.addRouteStop(newRouteId, originPayload);
-          console.log('✅ Đã thêm điểm bắt đầu');
-        } catch (err: any) {
-          console.error('❌ Lỗi khi thêm điểm bắt đầu:', err);
-          toast({
-            title: 'Lỗi',
-            description: `Không thể thêm điểm bắt đầu. ${err?.message || 'Lỗi không xác định'}`,
-            variant: 'destructive',
-          });
-        }
+        // Nếu đã gửi stops trong payload, backend sẽ tự động thêm stops vào cả tuyến đi và tuyến về
+        // Chỉ thêm stops thủ công nếu không có trong payload (fallback)
+        if (!routePayload.stops || routePayload.stops.length === 0) {
+          console.log('⚠️ Không có stops trong payload, thêm stops thủ công...');
+          
+          // Thêm origin và destination vào route_stops trước
+          // Thêm origin (sequence = 1)
+          try {
+            const originPayload: any = {
+              tenDiem: originStop.name.trim(),
+              address: originStop.address.trim() || undefined,
+              sequence: 1,
+              dwell_seconds: 30,
+              viDo: Number(originStop.lat),
+              kinhDo: Number(originStop.lng),
+            };
+            await apiClient.addRouteStop(newRouteId, originPayload);
+            console.log('✅ Đã thêm điểm bắt đầu');
+          } catch (err: any) {
+            console.error('❌ Lỗi khi thêm điểm bắt đầu:', err);
+            toast({
+              title: 'Lỗi',
+              description: `Không thể thêm điểm bắt đầu. ${err?.message || 'Lỗi không xác định'}`,
+              variant: 'destructive',
+            });
+          }
 
-        // Thêm các điểm dừng trung gian
-        if (validStops.length > 0) {
+          // Thêm các điểm dừng trung gian
           const addedStops: any[] = [];
-          for (let i = 0; i < validStops.length; i++) {
-            const stop = validStops[i];
-            try {
+          if (validStops.length > 0) {
+            for (let i = 0; i < validStops.length; i++) {
+              const stop = validStops[i];
+              try {
               const stopPayload: any = {
                 tenDiem: stop.name.trim(),
                 address: stop.address.trim() || undefined,
@@ -1355,35 +1588,36 @@ export function RouteBuilder({
               
               // Không throw error, tiếp tục với điểm dừng tiếp theo
             }
+            }
+            
+            console.log(`📊 Tổng số điểm dừng trung gian đã thêm: ${addedStops.length}/${validStops.length}`);
           }
-          
-          console.log(`📊 Tổng số điểm dừng trung gian đã thêm: ${addedStops.length}/${validStops.length}`);
 
-        // Thêm destination (sequence = cuối cùng, ngay cả khi không có điểm dừng trung gian)
-        try {
-          const destinationSequence = validStops.length > 0 ? addedStops.length + 2 : 2; // +2 vì đã có origin ở sequence 1
-          const destinationPayload: any = {
-            tenDiem: destinationStop.name.trim(),
-            address: destinationStop.address.trim() || undefined,
-            sequence: destinationSequence,
-            dwell_seconds: 60, // Điểm kết thúc dừng lâu hơn
-            viDo: Number(destinationStop.lat),
-            kinhDo: Number(destinationStop.lng),
-          };
-          await apiClient.addRouteStop(newRouteId, destinationPayload);
-          console.log('✅ Đã thêm điểm kết thúc');
-        } catch (err: any) {
-          console.error('❌ Lỗi khi thêm điểm kết thúc:', err);
-          toast({
-            title: 'Lỗi',
-            description: `Không thể thêm điểm kết thúc. ${err?.message || 'Lỗi không xác định'}`,
-            variant: 'destructive',
-          });
-        }
+          // Thêm destination (sequence = cuối cùng, ngay cả khi không có điểm dừng trung gian)
+          try {
+            const destinationSequence = validStops.length > 0 ? (validStops.length + 2) : 2; // +2 vì đã có origin ở sequence 1
+            const destinationPayload: any = {
+              tenDiem: destinationStop.name.trim(),
+              address: destinationStop.address.trim() || undefined,
+              sequence: destinationSequence,
+              dwell_seconds: 60, // Điểm kết thúc dừng lâu hơn
+              viDo: Number(destinationStop.lat),
+              kinhDo: Number(destinationStop.lng),
+            };
+            await apiClient.addRouteStop(newRouteId, destinationPayload);
+            console.log('✅ Đã thêm điểm kết thúc');
+          } catch (err: any) {
+            console.error('❌ Lỗi khi thêm điểm kết thúc:', err);
+            toast({
+              title: 'Lỗi',
+              description: `Không thể thêm điểm kết thúc. ${err?.message || 'Lỗi không xác định'}`,
+              variant: 'destructive',
+            });
+          }
 
-        // Chỉ rebuild polyline nếu có ít nhất origin và destination
-        // Lưu ý: Rebuild polyline là optional, không bắt buộc
-        if (originStop && destinationStop) {
+          // Chỉ rebuild polyline nếu có ít nhất origin và destination
+          // Lưu ý: Rebuild polyline là optional, không bắt buộc
+          if (originStop && destinationStop) {
             try {
               // Đợi một chút để đảm bảo tất cả stops đã được lưu vào DB
               await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -1409,6 +1643,9 @@ export function RouteBuilder({
               }
             }
           }
+        } else {
+          // Nếu đã gửi stops trong payload, backend đã tự động thêm stops vào cả tuyến đi và tuyến về
+          console.log('✅ Backend đã tự động thêm stops vào tuyến đi và tuyến về');
         }
 
         // Invalidate routes cache để refresh danh sách
@@ -1416,7 +1653,7 @@ export function RouteBuilder({
         
         toast({
           title: 'Thành công',
-          description: 'Đã tạo tuyến đường mới',
+          description: routePayload.createReturnRoute ? 'Đã tạo tuyến đi và tuyến về' : 'Đã tạo tuyến đường mới',
         });
         onSaved?.(routeData);
         onClose();
@@ -1661,14 +1898,34 @@ export function RouteBuilder({
                   </Button>
                 </>
               ) : (
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={() => setMapMode('add')}
-                >
-                  <Plus className="w-3 h-3 mr-1" />
-                  Thêm điểm dừng
-                </Button>
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSuggestStops}
+                    disabled={loadingSuggestions}
+                  >
+                    {loadingSuggestions ? (
+                      <>
+                        <Sparkles className="w-3 h-3 mr-1 animate-spin" />
+                        Đang tải...
+                      </>
+                    ) : (
+                      <>
+                        <Zap className="w-3 h-3 mr-1" />
+                        Đề xuất
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={() => setMapMode('add')}
+                  >
+                    <Plus className="w-3 h-3 mr-1" />
+                    Thêm điểm dừng
+                  </Button>
+                </>
               )}
             </div>
           </div>
@@ -1762,6 +2019,96 @@ export function RouteBuilder({
                 </div>
               </div>
             </div>
+          )}
+
+          {/* Stop Suggestions */}
+          {showSuggestions && filteredSuggestions.length > 0 && (
+            <div className="mb-4 p-3 bg-purple-50 dark:bg-purple-950/20 rounded-lg border-2 border-purple-300 dark:border-purple-700 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                  <Label className="text-sm font-semibold text-purple-900 dark:text-purple-100">
+                    Đề xuất điểm dừng ({filteredSuggestions.length}/{allSuggestions.length})
+                  </Label>
+                </div>
+                <div className="flex gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSelectAllSuggestions}
+                    className="text-xs h-7"
+                    disabled={filteredSuggestions.length === 0}
+                  >
+                    Chọn tất cả ({filteredSuggestions.length})
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => {
+                      setShowSuggestions(false);
+                    }}
+                  >
+                    <X className="w-3 h-3" />
+                  </Button>
+                </div>
+              </div>
+              <ScrollArea className="max-h-64">
+                <div className="space-y-2">
+                  {filteredSuggestions.map((suggestion) => (
+                    <Card
+                      key={suggestion.id}
+                      className="p-2 border-purple-200 dark:border-purple-800 hover:border-purple-400 dark:hover:border-purple-600 cursor-pointer transition-colors"
+                      onClick={() => handleSelectSuggestion(suggestion)}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-purple-900 dark:text-purple-100 line-clamp-1">
+                            {suggestion.name}
+                          </p>
+                          <p className="text-xs text-muted-foreground line-clamp-1 mt-1" title={suggestion.address}>
+                            {suggestion.address}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge variant="outline" className="text-xs">
+                              <Users className="w-3 h-3 mr-1" />
+                              {suggestion.studentCount} học sinh
+                            </Badge>
+                            {suggestion.lat && suggestion.lng ? (
+                              <Badge variant="outline" className="text-xs text-green-600">
+                                <MapPin className="w-3 h-3 mr-1" />
+                                Có tọa độ
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-xs text-yellow-600">
+                                <MapPin className="w-3 h-3 mr-1" />
+                                Cần geocode
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSelectSuggestion(suggestion);
+                          }}
+                        >
+                          <Plus className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              </ScrollArea>
+            </div>
+          )}
+
+          {/* Separator nếu có cả suggestions và stops */}
+          {showSuggestions && filteredSuggestions.length > 0 && stops.length > 0 && (
+            <div className="my-3 border-t border-border"></div>
           )}
 
           <ScrollArea className="h-[calc(100vh-20rem)]">

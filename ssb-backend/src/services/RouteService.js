@@ -5,8 +5,8 @@ import pool from "../config/db.js";
 
 class RouteService {
   static async list(options = {}) {
-    const { page = 1, limit = 10 } = options;
-    const data = await TuyenDuongModel.getAll(options);
+    const { page = 1, limit = 10, routeType } = options;
+    const data = await TuyenDuongModel.getAll({ ...options, routeType });
     // TODO: Implement count method if needed
     const total = data.length;
     return {
@@ -37,8 +37,102 @@ class RouteService {
 
   static async create(payload) {
     if (!payload.tenTuyen) throw new Error("MISSING_REQUIRED_FIELDS");
-    const id = await TuyenDuongModel.create(payload);
-    return await this.getById(id);
+    
+    const routeType = payload.routeType || null;
+    const createReturnRoute = payload.createReturnRoute !== false; // Mặc định true
+    
+    // Tạo tuyến đi
+    const routeId = await TuyenDuongModel.create({
+      ...payload,
+      routeType: routeType || 'di', // Mặc định là tuyến đi
+    });
+    
+    // Thêm stops vào tuyến đi nếu có trong payload
+    if (payload.stops && Array.isArray(payload.stops) && payload.stops.length > 0) {
+      console.log(`[RouteService] Adding ${payload.stops.length} stops to route ${routeId}`);
+      for (let i = 0; i < payload.stops.length; i++) {
+        const stop = payload.stops[i];
+        try {
+          await this.addStopToRoute(routeId, {
+            stop_id: stop.stop_id || null,
+            tenDiem: stop.tenDiem || stop.name,
+            viDo: stop.viDo || stop.lat,
+            kinhDo: stop.kinhDo || stop.lng,
+            sequence: stop.sequence || i + 1,
+            address: stop.address,
+          });
+        } catch (stopError) {
+          console.warn(`[RouteService] Failed to add stop ${i + 1} to route ${routeId}:`, stopError);
+        }
+      }
+      
+      // Rebuild polyline cho tuyến đi
+      try {
+        const MapsService = (await import("./MapsService.js")).default;
+        await this.rebuildPolyline(routeId, MapsService);
+      } catch (polylineError) {
+        console.warn(`[RouteService] Failed to rebuild polyline for route ${routeId}:`, polylineError);
+      }
+    }
+    
+    let returnRouteId = null;
+    
+    // Nếu tạo tuyến đi và yêu cầu tạo tuyến về, tự động tạo tuyến về
+    if (createReturnRoute && (!routeType || routeType === 'di')) {
+      // Tạo tuyến về với thông tin đảo ngược
+      const returnRouteData = {
+        tenTuyen: `${payload.tenTuyen} (Về)`,
+        diemBatDau: payload.diemKetThuc,
+        diemKetThuc: payload.diemBatDau,
+        thoiGianUocTinh: payload.thoiGianUocTinh,
+        origin_lat: payload.dest_lat,
+        origin_lng: payload.dest_lng,
+        dest_lat: payload.origin_lat,
+        dest_lng: payload.origin_lng,
+        routeType: 've',
+        pairedRouteId: routeId,
+        trangThai: payload.trangThai !== undefined ? payload.trangThai : true,
+      };
+      
+      returnRouteId = await TuyenDuongModel.create(returnRouteData);
+      
+      // Cập nhật tuyến đi để link với tuyến về
+      await TuyenDuongModel.update(routeId, {
+        pairedRouteId: returnRouteId,
+      });
+      
+      console.log(`[RouteService] Created return route ${returnRouteId} for route ${routeId}`);
+      
+      // Nếu có stops trong payload, đảo ngược và thêm vào tuyến về
+      if (payload.stops && Array.isArray(payload.stops) && payload.stops.length > 0) {
+        const reversedStops = [...payload.stops].reverse();
+        for (let i = 0; i < reversedStops.length; i++) {
+          const stop = reversedStops[i];
+          try {
+            await this.addStopToRoute(returnRouteId, {
+              stop_id: stop.stop_id || stop.maDiem,
+              tenDiem: stop.tenDiem || stop.name,
+              viDo: stop.viDo || stop.lat,
+              kinhDo: stop.kinhDo || stop.lng,
+              sequence: i + 1,
+              address: stop.address,
+            });
+          } catch (stopError) {
+            console.warn(`[RouteService] Failed to add stop ${i + 1} to return route:`, stopError);
+          }
+        }
+        
+        // Rebuild polyline cho tuyến về
+        try {
+          const MapsService = (await import("./MapsService.js")).default;
+          await this.rebuildPolyline(returnRouteId, MapsService);
+        } catch (polylineError) {
+          console.warn(`[RouteService] Failed to rebuild polyline for return route:`, polylineError);
+        }
+      }
+    }
+    
+    return await this.getById(routeId);
   }
 
   static async update(id, data) {
@@ -53,6 +147,202 @@ class RouteService {
     if (!r) throw new Error("ROUTE_NOT_FOUND");
     await TuyenDuongModel.delete(id);
     return true;
+  }
+
+  /**
+   * Tạo nhiều tuyến đường cùng lúc bằng transaction
+   * Nếu một tuyến fail, rollback tất cả
+   */
+  static async createRoutesBatch(routesPayload) {
+    if (!Array.isArray(routesPayload) || routesPayload.length === 0) {
+      throw new Error("ROUTES_PAYLOAD_REQUIRED");
+    }
+
+    const connection = await pool.getConnection();
+    const createdRoutes = [];
+    const errors = [];
+
+    try {
+      await connection.beginTransaction();
+      console.log(`[RouteService] Starting batch create transaction for ${routesPayload.length} routes`);
+
+      for (let i = 0; i < routesPayload.length; i++) {
+        const payload = routesPayload[i];
+        const routeIndex = i + 1;
+
+        try {
+          // Validate required fields
+          if (!payload.tenTuyen) {
+            throw new Error(`Route ${routeIndex}: MISSING_REQUIRED_FIELDS - tenTuyen is required`);
+          }
+
+          // Validate stops: mỗi tuyến phải có ít nhất 2 điểm dừng
+          const stops = payload.stops || [];
+          if (stops.length < 2) {
+            throw new Error(`Route ${routeIndex}: INSUFFICIENT_STOPS - Tuyến phải có ít nhất 2 điểm dừng (hiện tại: ${stops.length})`);
+          }
+
+          // Kiểm tra duplicate tên tuyến trong batch
+          const duplicateInBatch = routesPayload.slice(0, i).find(r => r.tenTuyen === payload.tenTuyen);
+          if (duplicateInBatch) {
+            throw new Error(`Route ${routeIndex}: DUPLICATE_ROUTE_NAME - "${payload.tenTuyen}" already exists in this batch`);
+          }
+
+          // Kiểm tra duplicate với database (sử dụng connection trong transaction)
+          const [existing] = await connection.query(
+            `SELECT maTuyen FROM TuyenDuong WHERE tenTuyen = ? AND trangThai = TRUE`,
+            [payload.tenTuyen]
+          );
+          if (existing.length > 0) {
+            throw new Error(`Route ${routeIndex}: DUPLICATE_ROUTE_NAME - "${payload.tenTuyen}" already exists in database`);
+          }
+
+          // Tạo tuyến đường (sử dụng connection trong transaction)
+          const routeType = payload.routeType || 'di';
+          const finalTrangThai = payload.trangThai !== undefined 
+            ? (payload.trangThai === true || payload.trangThai === 1 || payload.trangThai === 'true' || payload.trangThai === '1')
+            : true;
+
+          const [routeResult] = await connection.query(
+            `INSERT INTO TuyenDuong 
+             (tenTuyen, diemBatDau, diemKetThuc, thoiGianUocTinh, 
+              origin_lat, origin_lng, dest_lat, dest_lng, polyline, trangThai, routeType, pairedRouteId)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              payload.tenTuyen,
+              payload.diemBatDau || null,
+              payload.diemKetThuc || null,
+              payload.thoiGianUocTinh || null,
+              payload.origin_lat || null,
+              payload.origin_lng || null,
+              payload.dest_lat || null,
+              payload.dest_lng || null,
+              payload.polyline || null,
+              finalTrangThai,
+              routeType || null,
+              payload.pairedRouteId || null,
+            ]
+          );
+
+          const routeId = routeResult.insertId;
+          console.log(`[RouteService] Created route ${routeIndex}/${routesPayload.length}: ${routeId} - ${payload.tenTuyen}`);
+
+          // Thêm stops vào tuyến nếu có
+          if (payload.stops && Array.isArray(payload.stops) && payload.stops.length > 0) {
+            const sortedStops = [...payload.stops].sort((a, b) => (a.sequence || 0) - (b.sequence || 0));
+
+            for (let j = 0; j < sortedStops.length; j++) {
+              const stop = sortedStops[j];
+              const sequence = stop.sequence || j + 1;
+
+              // Tìm hoặc tạo điểm dừng
+              let stopId = stop.stop_id;
+
+              if (!stopId) {
+                // Generate tenDiem từ address nếu không có
+                const tenDiem = stop.tenDiem || stop.address || `Điểm dừng ${sequence}`;
+                
+                // Hỗ trợ cả lat/lng và viDo/kinhDo
+                const viDo = stop.viDo !== undefined ? stop.viDo : stop.lat;
+                const kinhDo = stop.kinhDo !== undefined ? stop.kinhDo : stop.lng;
+                
+                if (viDo === undefined || kinhDo === undefined || isNaN(Number(viDo)) || isNaN(Number(kinhDo))) {
+                  throw new Error(`Route ${routeIndex}, Stop ${j + 1}: MISSING_REQUIRED_FIELDS - viDo/kinhDo (hoặc lat/lng) required`);
+                }
+
+                // Kiểm tra điểm dừng đã tồn tại (theo tọa độ, không theo tên vì tên có thể khác nhau)
+                const [existingStops] = await connection.query(
+                  `SELECT maDiem FROM DiemDung 
+                   WHERE ABS(viDo - ?) < 0.0001 
+                     AND ABS(kinhDo - ?) < 0.0001
+                   LIMIT 1`,
+                  [viDo, kinhDo]
+                );
+
+                if (existingStops.length > 0) {
+                  stopId = existingStops[0].maDiem;
+                  console.log(`[RouteService] Found existing stop ${stopId} at (${viDo}, ${kinhDo})`);
+                } else {
+                  // Tạo điểm dừng mới
+                  const [stopResult] = await connection.query(
+                    `INSERT INTO DiemDung (tenDiem, viDo, kinhDo, address)
+                     VALUES (?, ?, ?, ?)`,
+                    [
+                      tenDiem,
+                      viDo,
+                      kinhDo,
+                      stop.address || null,
+                    ]
+                  );
+                  stopId = stopResult.insertId;
+                  console.log(`[RouteService] Created new stop ${stopId}: ${tenDiem} at (${viDo}, ${kinhDo})`);
+                }
+              }
+
+              // Thêm vào route_stops
+              await connection.query(
+                `INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
+                 VALUES (?, ?, ?, ?)
+                 ON DUPLICATE KEY UPDATE sequence = VALUES(sequence)`,
+                [routeId, stopId, sequence, stop.dwell_seconds || 30]
+              );
+            }
+
+            console.log(`[RouteService] Added ${sortedStops.length} stops to route ${routeId}`);
+          }
+
+          // Lưu route info để trả về
+          createdRoutes.push({
+            routeId,
+            tenTuyen: payload.tenTuyen,
+            success: true,
+          });
+
+        } catch (routeError) {
+          // Lỗi khi tạo một tuyến
+          const errorMessage = routeError.message || `Route ${routeIndex}: Unknown error`;
+          console.error(`[RouteService] Error creating route ${routeIndex}:`, errorMessage);
+          errors.push({
+            routeIndex,
+            tenTuyen: payload.tenTuyen || `Route ${routeIndex}`,
+            error: errorMessage,
+          });
+          
+          // Nếu có lỗi, rollback toàn bộ transaction
+          throw routeError;
+        }
+      }
+
+      // Nếu tất cả thành công, commit transaction
+      await connection.commit();
+      console.log(`[RouteService] Batch create transaction committed successfully: ${createdRoutes.length} routes created`);
+
+      return {
+        success: true,
+        created: createdRoutes,
+        total: routesPayload.length,
+        errors: [],
+      };
+
+    } catch (error) {
+      // Rollback transaction nếu có lỗi
+      await connection.rollback();
+      console.error(`[RouteService] Batch create transaction rolled back:`, error.message);
+      
+      return {
+        success: false,
+        created: createdRoutes, // Các route đã tạo trước khi lỗi (sẽ bị rollback)
+        total: routesPayload.length,
+        errors: errors.length > 0 ? errors : [{
+          routeIndex: errors.length + 1,
+          tenTuyen: routesPayload[errors.length]?.tenTuyen || 'Unknown',
+          error: error.message || 'Transaction failed',
+        }],
+        message: `Transaction failed: ${error.message}`,
+      };
+    } finally {
+      connection.release();
+    }
   }
 
   /**
@@ -305,12 +595,13 @@ class RouteService {
     });
 
     try {
-      // Gọi Maps API
+      // Gọi Maps API với vehicleType="bus" để tối ưu cho xe buýt
       const directionsResult = await mapsService.getDirections({
         origin,
         destination,
         waypoints: waypoints.length > 0 ? waypoints : undefined,
-        mode: "driving",
+        mode: "driving", // Mode driving phù hợp với xe buýt
+        vehicleType: "bus", // Chỉ định loại xe là buýt
       });
 
       if (!directionsResult || !directionsResult.polyline) {

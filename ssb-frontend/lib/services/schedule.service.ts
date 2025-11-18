@@ -115,6 +115,7 @@ export async function createSchedule(data: {
   gioKhoiHanh: string
   ngayChay: string
   dangApDung?: boolean
+  students?: Array<{ maHocSinh: number; thuTuDiem: number; maDiem: number }>
 }): Promise<{ schedule: Schedule; conflict?: any }> {
   try {
     const res = await api.post('/schedules', data)
@@ -166,6 +167,29 @@ export async function deleteSchedule(id: string | number): Promise<void> {
   await api.delete(`/schedules/${id}`)
 }
 
+export async function getScheduleStudents(id: string | number): Promise<{
+  scheduleId: number
+  studentsByStop: Array<{
+    thuTuDiem: number
+    maDiem: number
+    tenDiem: string
+    stopAddress?: string
+    stopLat?: number
+    stopLng?: number
+    students: Array<{
+      maHocSinh: number
+      hoTen: string
+      lop?: string
+      anhDaiDien?: string
+      diaChi?: string
+    }>
+  }>
+  totalStudents: number
+}> {
+  const res = await api.get(`/schedules/${id}/students`)
+  return (res as any).data || { scheduleId: Number(id), studentsByStop: [], totalStudents: 0 }
+}
+
 export default {
   getSchedules,
   getSchedulesWithMeta,
@@ -173,5 +197,6 @@ export default {
   createSchedule,
   updateSchedule,
   deleteSchedule,
+  getScheduleStudents,
 }
 

@@ -45,6 +45,8 @@ import { apiClient } from "@/lib/api"
 import { useToast } from "@/hooks/use-toast"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Calendar } from "@/components/ui/calendar"
+import { getScheduleStudents } from "@/lib/services/schedule.service"
+import { MapPin, Users } from "lucide-react"
 
 type Schedule = { 
   id: string; 
@@ -66,6 +68,10 @@ export default function SchedulePage() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null)
+  const [isStudentsDialogOpen, setIsStudentsDialogOpen] = useState(false)
+  const [viewingScheduleId, setViewingScheduleId] = useState<string | number | null>(null)
+  const [scheduleStudents, setScheduleStudents] = useState<any>(null)
+  const [loadingStudents, setLoadingStudents] = useState(false)
   const [allSchedules, setAllSchedules] = useState<Schedule[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -283,6 +289,25 @@ export default function SchedulePage() {
       })
     }
   }
+
+  async function handleViewStudents(scheduleId: string | number) {
+    setViewingScheduleId(scheduleId)
+    setIsStudentsDialogOpen(true)
+    setLoadingStudents(true)
+    try {
+      const data = await getScheduleStudents(scheduleId)
+      setScheduleStudents(data)
+    } catch (err: any) {
+      toast({
+        title: "Lỗi",
+        description: err?.message || "Không thể tải danh sách học sinh",
+        variant: "destructive",
+      })
+      setScheduleStudents(null)
+    } finally {
+      setLoadingStudents(false)
+    }
+  }
   
   const selectedDateStr = formatDate(date)
   const todaysSchedules = allSchedules.filter(s => {
@@ -482,6 +507,70 @@ export default function SchedulePage() {
                         )}
                       </DialogContent>
                     </Dialog>
+                    
+                    {/* Students Dialog */}
+                    <Dialog open={isStudentsDialogOpen} onOpenChange={setIsStudentsDialogOpen}>
+                      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+                        <DialogHeader>
+                          <DialogTitle className="text-xl sm:text-2xl flex items-center gap-2">
+                            <Users className="w-5 h-5" />
+                            Danh sách học sinh
+                          </DialogTitle>
+                          <DialogDescription className="text-sm sm:text-base">
+                            Học sinh được phân công vào các điểm dừng của lịch trình
+                          </DialogDescription>
+                        </DialogHeader>
+                        {loadingStudents ? (
+                          <div className="py-8 text-center text-muted-foreground">
+                            Đang tải danh sách học sinh...
+                          </div>
+                        ) : scheduleStudents && scheduleStudents.studentsByStop?.length > 0 ? (
+                          <div className="space-y-4">
+                            <div className="text-sm text-muted-foreground">
+                              Tổng cộng: <strong>{scheduleStudents.totalStudents}</strong> học sinh
+                            </div>
+                            {scheduleStudents.studentsByStop.map((stop: any, idx: number) => (
+                              <Card key={idx} className="border-border/50">
+                                <CardHeader className="pb-3">
+                                  <CardTitle className="text-base flex items-center gap-2">
+                                    <MapPin className="w-4 h-4 text-primary" />
+                                    Điểm {stop.thuTuDiem}: {stop.tenDiem}
+                                  </CardTitle>
+                                  {stop.stopAddress && (
+                                    <p className="text-xs text-muted-foreground mt-1">{stop.stopAddress}</p>
+                                  )}
+                                </CardHeader>
+                                <CardContent>
+                                  {stop.students.length > 0 ? (
+                                    <div className="space-y-2">
+                                      {stop.students.map((student: any, sIdx: number) => (
+                                        <div key={sIdx} className="flex items-center justify-between p-2 border rounded">
+                                          <div>
+                                            <p className="font-medium text-sm">{student.hoTen}</p>
+                                            {student.lop && (
+                                              <p className="text-xs text-muted-foreground">Lớp: {student.lop}</p>
+                                            )}
+                                            {student.diaChi && (
+                                              <p className="text-xs text-muted-foreground">{student.diaChi}</p>
+                                            )}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <p className="text-sm text-muted-foreground">Chưa có học sinh</p>
+                                  )}
+                                </CardContent>
+                              </Card>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="py-8 text-center text-muted-foreground">
+                            Chưa có học sinh nào được phân công
+                          </div>
+                        )}
+                      </DialogContent>
+                    </Dialog>
                   </div>
                 </div>
               </CardHeader>
@@ -559,6 +648,14 @@ export default function SchedulePage() {
                                     title="Sao chép"
                                   >
                                     <Copy className="w-4 h-4" />
+                                  </Button>
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon"
+                                    onClick={() => handleViewStudents(schedule.id)}
+                                    title="Xem học sinh"
+                                  >
+                                    <Eye className="w-4 h-4" />
                                   </Button>
                                   <Button 
                                     variant="ghost" 
@@ -647,6 +744,15 @@ export default function SchedulePage() {
                                   title="Sao chép"
                                 >
                                   <Copy className="w-3 h-3" />
+                                </Button>
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => handleViewStudents(schedule.id)}
+                                  title="Xem học sinh"
+                                >
+                                  <Eye className="w-3 h-3" />
                                 </Button>
                                 <Button 
                                   variant="ghost" 

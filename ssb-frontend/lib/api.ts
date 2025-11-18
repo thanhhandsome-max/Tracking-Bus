@@ -434,8 +434,28 @@ class ApiClient {
     });
   }
 
+  async getRouteStopSuggestions(routeId: string | number) {
+    return this.request(`/routes/${routeId}/stop-suggestions`);
+  }
+
   async getRouteStops(routeId: string | number) {
     return this.request(`/routes/${routeId}/stops`);
+  }
+
+  async suggestStops(params?: {
+    area?: string;
+    maxDistanceKm?: number;
+    minStudentsPerStop?: number;
+    maxStops?: number;
+  }) {
+    const queryParams = new URLSearchParams();
+    if (params?.area) queryParams.append("area", params.area);
+    if (params?.maxDistanceKm) queryParams.append("maxDistanceKm", params.maxDistanceKm.toString());
+    if (params?.minStudentsPerStop) queryParams.append("minStudentsPerStop", params.minStudentsPerStop.toString());
+    if (params?.maxStops) queryParams.append("maxStops", params.maxStops.toString());
+
+    const query = queryParams.toString();
+    return this.request(`/routes/suggestions/stops${query ? `?${query}` : ""}`);
   }
 
   async addRouteStop(routeId: string | number, stopData: any) {
@@ -481,6 +501,10 @@ class ApiClient {
 
   async getScheduleById(id: string | number) {
     return this.request(`/schedules/${id}`);
+  }
+
+  async getScheduleStudents(id: string | number) {
+    return this.request(`/schedules/${id}/students`);
   }
 
   async createSchedule(scheduleData: any) {

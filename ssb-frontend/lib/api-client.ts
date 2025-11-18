@@ -271,7 +271,7 @@ class ApiClient {
   }
 
   // Routes
-  async getRoutes(params?: { page?: number; limit?: number; search?: string; trangThai?: boolean }) {
+  async getRoutes(params?: { page?: number; limit?: number; search?: string; trangThai?: boolean; routeType?: string }) {
     return this.request({ method: 'get', url: '/routes', params });
   }
 
@@ -281,6 +281,10 @@ class ApiClient {
 
   async createRoute(data: any) {
     return this.request({ method: 'post', url: '/routes', data });
+  }
+
+  async createRoutesBatch(routes: Array<any>) {
+    return this.request({ method: 'post', url: '/routes/batch', data: { routes } });
   }
 
   async updateRoute(id: string | number, data: any) {
@@ -314,6 +318,58 @@ class ApiClient {
 
   async removeStopFromRoute(routeId: string | number, stopId: number) {
     return this.request({ method: 'delete', url: `/routes/${routeId}/stops/${stopId}` });
+  }
+
+  async suggestStops(params?: {
+    area?: string;
+    maxDistanceKm?: number;
+    minStudentsPerStop?: number;
+    maxStops?: number;
+    origin?: string; // lat,lng format
+    destination?: string; // lat,lng format
+    optimizeRoute?: boolean;
+  }) {
+    return this.request({ 
+      method: 'get', 
+      url: '/routes/suggestions/stops', 
+      params: {
+        ...(params?.area && { area: params.area }),
+        ...(params?.maxDistanceKm && { maxDistanceKm: params.maxDistanceKm }),
+        ...(params?.minStudentsPerStop && { minStudentsPerStop: params.minStudentsPerStop }),
+        ...(params?.maxStops && { maxStops: params.maxStops }),
+        ...(params?.origin && { origin: params.origin }),
+        ...(params?.destination && { destination: params.destination }),
+        ...(params?.optimizeRoute !== undefined && { optimizeRoute: params.optimizeRoute }),
+      }
+    });
+  }
+
+  async suggestRoutes(params?: {
+    area?: string;
+    maxStudentsPerRoute?: number;
+    minStudentsPerRoute?: number;
+    maxStopsPerRoute?: number;
+    maxDistanceKm?: number;
+    minStudentsPerStop?: number;
+    schoolLat?: number;
+    schoolLng?: number;
+    createReturnRoutes?: boolean;
+  }) {
+    return this.request({ 
+      method: 'get', 
+      url: '/routes/suggestions/routes', 
+      params: {
+        ...(params?.area && { area: params.area }),
+        ...(params?.maxStudentsPerRoute && { maxStudentsPerRoute: params.maxStudentsPerRoute }),
+        ...(params?.minStudentsPerRoute && { minStudentsPerRoute: params.minStudentsPerRoute }),
+        ...(params?.maxStopsPerRoute && { maxStopsPerRoute: params.maxStopsPerRoute }),
+        ...(params?.maxDistanceKm && { maxDistanceKm: params.maxDistanceKm }),
+        ...(params?.minStudentsPerStop && { minStudentsPerStop: params.minStudentsPerStop }),
+        ...(params?.schoolLat && { schoolLat: params.schoolLat }),
+        ...(params?.schoolLng && { schoolLng: params.schoolLng }),
+        ...(params?.createReturnRoutes !== undefined && { createReturnRoutes: params.createReturnRoutes }),
+      }
+    });
   }
 
   
@@ -351,6 +407,7 @@ class ApiClient {
     mode?: string;
     language?: string;
     units?: string;
+    vehicleType?: string; // "bus", "car", "motorcycle" - để tối ưu routing cho xe buýt
   }) {
     // Log the request data for debugging
     console.log('[api-client] getDirections request data:');

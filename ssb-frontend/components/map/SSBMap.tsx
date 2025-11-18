@@ -438,10 +438,12 @@ function SSBMap({
           destination: string;
           waypoints?: Array<{ location: string }>;
           mode: string;
+          vehicleType?: string;
         } = {
           origin,
           destination,
-          mode: "driving",
+          mode: "driving", // Mode driving phù hợp với xe buýt
+          vehicleType: "bus", // Chỉ định loại xe là buýt
         };
 
         if (waypoints.length > 0) {

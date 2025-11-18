@@ -13,6 +13,7 @@ USE school_bus_system;
 
 -- Drop existing tables if they exist (for clean initialization)
 DROP TABLE IF EXISTS trip_stop_status;
+DROP TABLE IF EXISTS schedule_student_stops;
 DROP TABLE IF EXISTS TrangThaiHocSinh;
 DROP TABLE IF EXISTS SuCo;
 DROP TABLE IF EXISTS ThongBao;
@@ -102,13 +103,22 @@ CREATE TABLE TuyenDuong (
     
     polyline MEDIUMTEXT,
 
+    -- Tuyến đi/về: 'di' (đi), 've' (về), hoặc NULL (cả hai)
+    routeType ENUM('di', 've') DEFAULT NULL,
+    -- Liên kết với tuyến đối ứng (tuyến đi <-> tuyến về)
+    pairedRouteId INT NULL,
+    
     ngayTao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     ngayCapNhat TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     trangThai BOOLEAN DEFAULT TRUE,
 
+    -- Foreign key cho pairedRouteId
+    CONSTRAINT fk_paired_route FOREIGN KEY (pairedRouteId) REFERENCES TuyenDuong(maTuyen) ON DELETE SET NULL,
 
     INDEX idx_tenTuyen (tenTuyen),
     INDEX idx_trangThai (trangThai),
+    INDEX idx_routeType (routeType),
+    INDEX idx_pairedRouteId (pairedRouteId),
     INDEX idx_origin (origin_lat, origin_lng),
     INDEX idx_dest (dest_lat, dest_lng)
 )ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -185,6 +195,38 @@ CREATE TABLE LichTrinh (
     INDEX idx_ngayChay (ngayChay),
     INDEX idx_dangApDung (dangApDung)
 )ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Create schedule_student_stops table (Schedule Student Stop Mapping)
+CREATE TABLE schedule_student_stops (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    maLichTrinh INT NOT NULL,
+    maHocSinh INT NOT NULL,
+    thuTuDiem INT NOT NULL,              -- Thứ tự điểm dừng (sequence) trong route_stops
+    maDiem INT NOT NULL,                 -- Mã điểm dừng cụ thể
+    
+    ngayTao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    ngayCapNhat TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    -- Mỗi học sinh chỉ có 1 điểm dừng trong 1 schedule
+    UNIQUE KEY uniq_schedule_student (maLichTrinh, maHocSinh),
+    
+    -- Foreign keys
+    CONSTRAINT fk_sss_schedule
+        FOREIGN KEY (maLichTrinh) REFERENCES LichTrinh(maLichTrinh) 
+        ON DELETE CASCADE,
+    CONSTRAINT fk_sss_student
+        FOREIGN KEY (maHocSinh) REFERENCES HocSinh(maHocSinh) 
+        ON DELETE CASCADE,
+    CONSTRAINT fk_sss_stop
+        FOREIGN KEY (maDiem) REFERENCES DiemDung(maDiem) 
+        ON DELETE RESTRICT,
+    
+    -- Indexes
+    INDEX idx_schedule (maLichTrinh),
+    INDEX idx_student (maHocSinh),
+    INDEX idx_stop (maDiem),
+    INDEX idx_sequence (maLichTrinh, thuTuDiem)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Create ChuyenDi table (Trips)
 CREATE TABLE ChuyenDi (

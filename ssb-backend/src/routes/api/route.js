@@ -26,6 +26,24 @@ router.get(
   RouteController.getRouteStats
 );
 
+// GET /api/v1/routes/suggestions/routes - Đề xuất tuyến đường hoàn chỉnh
+// ⚠️ QUAN TRỌNG: Phải đặt TRƯỚC route /:id để tránh match /suggestions như là :id
+router.get(
+  "/suggestions/routes",
+  AuthMiddleware.authenticate,
+  AuthMiddleware.authorize("quan_tri"),
+  RouteController.suggestRoutes
+);
+
+// GET /api/v1/routes/suggestions/stops - Đề xuất điểm dừng dựa trên học sinh
+// ⚠️ QUAN TRỌNG: Phải đặt TRƯỚC route /:id để tránh match /suggestions như là :id
+router.get(
+  "/suggestions/stops",
+  AuthMiddleware.authenticate,
+  AuthMiddleware.authorize("quan_tri"),
+  RouteController.suggestStops
+);
+
 // GET /api/v1/routes/:id - Lấy thông tin chi tiết tuyến đường
 router.get(
   "/:id",
@@ -42,6 +60,22 @@ router.post(
   AuthMiddleware.authorize("quan_tri"),
   ValidationMiddleware.validateRoute,
   RouteController.createRoute
+);
+
+// POST /api/v1/routes/auto-create - Tạo tuyến đường tự động từ start → end với auto suggestion
+router.post(
+  "/auto-create",
+  AuthMiddleware.authenticate,
+  AuthMiddleware.authorize("quan_tri"),
+  RouteController.autoCreateRoute
+);
+
+// POST /api/v1/routes/batch - Tạo nhiều tuyến đường cùng lúc (batch) với transaction
+router.post(
+  "/batch",
+  AuthMiddleware.authenticate,
+  AuthMiddleware.authorize("quan_tri"),
+  RouteController.createRoutesBatch
 );
 
 // PUT /api/v1/routes/:id - Cập nhật tuyến đường
@@ -73,6 +107,15 @@ router.get(
   AuthMiddleware.authorize("quan_tri", "tai_xe"),
   ValidationMiddleware.validateId,
   RouteController.getRouteStops
+);
+
+// GET /api/v1/routes/:id/stop-suggestions - Lấy gợi ý điểm dừng và học sinh cho route
+router.get(
+  "/:id/stop-suggestions",
+  AuthMiddleware.authenticate,
+  AuthMiddleware.authorize("quan_tri"),
+  ValidationMiddleware.validateId,
+  RouteController.getStopSuggestions
 );
 
 // POST /api/v1/routes/:id/stops - Thêm điểm dừng vào tuyến đường

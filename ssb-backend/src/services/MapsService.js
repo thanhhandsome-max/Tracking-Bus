@@ -84,11 +84,13 @@ class MapsService {
       origin,
       destination,
       waypoints = [],
-      mode = "driving",
+      mode = "driving", // "driving" là mode phù hợp nhất cho xe buýt (xe lớn)
       alternatives = false,
-      avoid = [],
+      avoid = [], // Có thể thêm "ferries" để tránh phà
       language = "vi",
       units = "metric",
+      optimize = false, // Tối ưu thứ tự waypoints
+      vehicleType = "bus", // Loại xe: "bus", "car", "motorcycle" - để tối ưu routing
     } = params;
 
     // Validate required params
@@ -106,7 +108,15 @@ class MapsService {
       }
     );
 
-    // Generate cache key
+    // Đối với xe buýt, tránh phà và đường hẹp không phù hợp
+    // Google Maps Directions API không có option riêng cho xe buýt,
+    // nhưng mode "driving" sẽ tự động chọn đường phù hợp với xe lớn
+    const avoidList = Array.isArray(avoid) ? [...avoid] : [];
+    if (vehicleType === "bus" && !avoidList.includes("ferries")) {
+      avoidList.push("ferries"); // Tránh phà (xe buýt thường không đi phà)
+    }
+
+    // Generate cache key (bao gồm optimize và vehicleType để cache riêng biệt)
     const cacheKey = generateCacheKey("dir", {
       origin,
       destination,
@@ -115,7 +125,9 @@ class MapsService {
         .sort(),
       mode,
       alternatives,
-      avoid,
+      avoid: avoidList.sort(), // Dùng avoidList đã được xử lý
+      optimize, // Thêm optimize vào cache key
+      vehicleType, // Thêm vehicleType vào cache key
     });
 
     // Check cache
@@ -127,13 +139,14 @@ class MapsService {
     }
 
     // Build URL
+    // Nếu optimize=true, thêm optimize:waypoints vào waypointsStr
     const waypointsStr =
       validWaypoints.length > 0
-        ? `&waypoints=${validWaypoints
-            .map((w) => (typeof w === "string" ? w : w.location))
+        ? `&waypoints=${optimize ? "optimize:true|" : ""}${validWaypoints
+            .map((w) => (typeof w === "string" ? w : (w.location || w)))
             .join("|")}`
         : "";
-    const avoidStr = avoid.length > 0 ? `&avoid=${avoid.join("|")}` : "";
+    const avoidStr = avoidList.length > 0 ? `&avoid=${avoidList.join("|")}` : "";
     const alternativesStr = alternatives ? "&alternatives=true" : "";
 
     const url = `${MAPS_API_BASE_URL}/directions/json?origin=${encodeURIComponent(
@@ -142,12 +155,14 @@ class MapsService {
       destination
     )}${waypointsStr}&mode=${mode}${avoidStr}${alternativesStr}&language=${language}&units=${units}&key=${MAPS_API_KEY}`;
 
-    console.log("[MapsService] Calling Directions API:", {
-      origin,
-      destination,
-      waypointsCount: validWaypoints.length,
-      mode,
-    });
+      console.log("[MapsService] Calling Directions API:", {
+        origin,
+        destination,
+        waypointsCount: validWaypoints.length,
+        mode,
+        vehicleType,
+        avoid: avoidList,
+      });
 
     try {
       // Add timeout to fetch (30 seconds)
@@ -279,6 +294,7 @@ class MapsService {
         legs,
         distance,
         duration,
+        waypoint_order: route.waypoint_order || null, // Thứ tự waypoints đã được optimize
         cached: false,
       };
 

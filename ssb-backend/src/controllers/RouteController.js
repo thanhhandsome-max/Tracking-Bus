@@ -1,8 +1,10 @@
 // RouteController - Controller refactored for v1.1 (normalized stops + route_stops)
 import RouteService from "../services/RouteService.js";
+import RouteAutoCreateService from "../services/RouteAutoCreateService.js";
 import TuyenDuongModel from "../models/TuyenDuongModel.js";
 import LichTrinhModel from "../models/LichTrinhModel.js";
 import MapsService from "../services/MapsService.js";
+import StopSuggestionService from "../services/StopSuggestionService.js";
 import * as response from "../utils/response.js";
 
 class RouteController {
@@ -14,6 +16,7 @@ class RouteController {
         pageSize = 10,
         q, // search query
         trangThai,
+        routeType, // 'di', 've', hoặc undefined (tất cả)
         sortBy = "maTuyen",
         sortOrder = "desc",
       } = req.query;
@@ -29,6 +32,7 @@ class RouteController {
         limit, 
         search, 
         trangThai,
+        routeType, // Thêm routeType filter
         sortBy,
         sortDir,
       });
@@ -97,6 +101,9 @@ class RouteController {
         dest_lng,
         polyline,
         trangThai,
+        routeType, // 'di' hoặc 've'
+        createReturnRoute, // Có tạo tuyến về không (mặc định true)
+        stops, // Danh sách stops nếu có
       } = req.body;
 
       // Validation
@@ -133,6 +140,9 @@ class RouteController {
         dest_lng,
         polyline,
         trangThai: trangThai !== undefined ? trangThai : true,
+        routeType: routeType || 'di', // Mặc định là tuyến đi
+        createReturnRoute: createReturnRoute !== false, // Mặc định true
+        stops: stops || [], // Danh sách stops nếu có
       };
 
       const newRoute = await RouteService.create(routeData);
@@ -149,6 +159,79 @@ class RouteController {
         error: {
           code: "INTERNAL_ERROR",
           message: "Lỗi server khi tạo tuyến đường mới",
+        },
+      });
+    }
+  }
+
+  // Tạo nhiều tuyến đường cùng lúc (batch) với transaction
+  static async createRoutesBatch(req, res) {
+    try {
+      const { routes } = req.body;
+
+      if (!Array.isArray(routes) || routes.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            code: "MISSING_REQUIRED_FIELDS",
+            message: "Danh sách tuyến đường (routes) là bắt buộc và phải là mảng",
+          },
+        });
+      }
+
+      console.log(`[RouteController] createRoutesBatch called with ${routes.length} routes`);
+
+      const RouteService = (await import("../services/RouteService.js")).default;
+      const MapsService = (await import("../services/MapsService.js")).default;
+      const result = await RouteService.createRoutesBatch(routes);
+
+      if (result.success) {
+        // Sau khi tạo thành công, rebuild polyline cho tất cả routes
+        // Điều này đảm bảo routes có polyline để hiển thị trên bản đồ
+        const rebuildPromises = result.created.map(async (createdRoute) => {
+          try {
+            console.log(`[RouteController] Rebuilding polyline for route ${createdRoute.routeId}`);
+            await RouteService.rebuildPolyline(createdRoute.routeId, MapsService);
+            console.log(`[RouteController] ✅ Successfully rebuilt polyline for route ${createdRoute.routeId}`);
+            return { routeId: createdRoute.routeId, success: true };
+          } catch (rebuildError) {
+            console.error(`[RouteController] ⚠️ Failed to rebuild polyline for route ${createdRoute.routeId}:`, rebuildError.message);
+            // Không throw error, chỉ log warning - polyline có thể được rebuild sau
+            return { routeId: createdRoute.routeId, success: false, error: rebuildError.message };
+          }
+        });
+
+        // Chờ tất cả rebuild hoàn thành (không block response)
+        Promise.all(rebuildPromises).then((rebuildResults) => {
+          const successCount = rebuildResults.filter(r => r.success).length;
+          const failCount = rebuildResults.filter(r => !r.success).length;
+          console.log(`[RouteController] Polyline rebuild completed: ${successCount} success, ${failCount} failed`);
+        }).catch((err) => {
+          console.error(`[RouteController] Error in polyline rebuild batch:`, err);
+        });
+
+        return res.status(201).json({
+          success: true,
+          data: result,
+          message: `Đã tạo thành công ${result.created.length} tuyến đường`,
+        });
+      } else {
+        return res.status(400).json({
+          success: false,
+          error: {
+            code: "BATCH_CREATE_FAILED",
+            message: result.message || "Không thể tạo một số tuyến đường",
+          },
+          data: result,
+        });
+      }
+    } catch (error) {
+      console.error("Error in RouteController.createRoutesBatch:", error);
+      return res.status(500).json({
+        success: false,
+        error: {
+          code: "INTERNAL_ERROR",
+          message: "Lỗi server khi tạo tuyến đường",
         },
       });
     }
@@ -748,6 +831,298 @@ class RouteController {
           message: "Lỗi server khi lấy thống kê tuyến đường",
         },
       });
+    }
+  }
+
+  // Đề xuất tuyến đường hoàn chỉnh dựa trên học sinh
+  static async suggestRoutes(req, res) {
+    try {
+      const {
+        area, // Filter theo khu vực (quận/huyện)
+        maxStudentsPerRoute = 35, // Số học sinh tối đa mỗi tuyến (30-40)
+        minStudentsPerRoute = 30, // Số học sinh tối thiểu mỗi tuyến
+        maxStopsPerRoute = 35, // Số điểm dừng tối đa mỗi tuyến (<40)
+        maxDistanceKm = 1.5, // Khoảng cách tối đa để clustering (km) - giảm để gom gần hơn
+        minStudentsPerStop = 1, // Số học sinh tối thiểu mỗi điểm dừng
+        geocodeAddresses = true, // Có geocode địa chỉ không
+        schoolLat, // Vĩ độ trường học (nếu null sẽ dùng SGU)
+        schoolLng, // Kinh độ trường học
+        createReturnRoutes = true, // Tạo tuyến về tương ứng
+      } = req.query;
+
+      console.log(`[RouteController] suggestRoutes called with params:`, {
+        area,
+        maxStudentsPerRoute,
+        minStudentsPerRoute,
+        maxStopsPerRoute,
+        maxDistanceKm,
+        minStudentsPerStop,
+        createReturnRoutes,
+      });
+
+      // Parse school location
+      let schoolLocation = null;
+      if (schoolLat && schoolLng) {
+        try {
+          schoolLocation = {
+            lat: parseFloat(schoolLat),
+            lng: parseFloat(schoolLng),
+          };
+        } catch (e) {
+          console.warn(`[RouteController] Failed to parse school location:`, e);
+        }
+      }
+
+      const RouteSuggestionService = (await import("../services/RouteSuggestionService.js")).default;
+      
+      const result = await RouteSuggestionService.suggestRoutes({
+        area: area || null,
+        maxStudentsPerRoute: parseInt(maxStudentsPerRoute) || 35,
+        minStudentsPerRoute: parseInt(minStudentsPerRoute) || 30,
+        maxStopsPerRoute: parseInt(maxStopsPerRoute) || 35,
+        maxDistanceKm: parseFloat(maxDistanceKm) || 1.5,
+        minStudentsPerStop: parseInt(minStudentsPerStop) || 1,
+        geocodeAddresses: geocodeAddresses !== 'false',
+        schoolLocation: schoolLocation,
+        createReturnRoutes: createReturnRoutes !== 'false',
+      });
+
+      console.log(`[RouteController] suggestRoutes result:`, {
+        routesCount: result.routes?.length || 0,
+        returnRoutesCount: result.returnRoutes?.length || 0,
+        totalStudents: result.totalStudents,
+        districts: result.districts,
+      });
+
+      return response.ok(res, result);
+    } catch (error) {
+      console.error("Error in RouteController.suggestRoutes:", error);
+      console.error("Error stack:", error.stack);
+      return response.serverError(
+        res,
+        "Lỗi server khi đề xuất tuyến đường",
+        error
+      );
+    }
+  }
+
+  // Đề xuất điểm dừng dựa trên clustering học sinh
+  static async suggestStops(req, res) {
+    try {
+      const {
+        area, // Filter theo khu vực (quận/huyện)
+        maxDistanceKm = 2.0, // Khoảng cách tối đa để clustering (km)
+        minStudentsPerStop = 1, // Số học sinh tối thiểu mỗi điểm dừng (giảm xuống 1)
+        maxStops = 20, // Số điểm dừng tối đa
+        geocodeAddresses = true, // Có geocode địa chỉ không
+        origin, // Điểm bắt đầu (lat,lng hoặc {lat, lng})
+        destination, // Điểm kết thúc (lat,lng hoặc {lat, lng})
+        optimizeRoute = true, // Có tối ưu lộ trình không
+      } = req.query;
+
+      console.log(`[RouteController] suggestStops called with params:`, {
+        area,
+        maxDistanceKm,
+        minStudentsPerStop,
+        maxStops,
+        geocodeAddresses,
+      });
+
+      // Parse origin và destination
+      let parsedOrigin = null;
+      let parsedDestination = null;
+      
+      if (origin) {
+        try {
+          if (typeof origin === 'string' && origin.includes(',')) {
+            const [lat, lng] = origin.split(',').map(Number);
+            parsedOrigin = { lat, lng };
+          } else if (typeof origin === 'string' && origin.includes('{')) {
+            parsedOrigin = JSON.parse(origin);
+          } else {
+            parsedOrigin = origin;
+          }
+        } catch (e) {
+          console.warn(`[RouteController] Failed to parse origin:`, e);
+        }
+      }
+      
+      if (destination) {
+        try {
+          if (typeof destination === 'string' && destination.includes(',')) {
+            const [lat, lng] = destination.split(',').map(Number);
+            parsedDestination = { lat, lng };
+          } else if (typeof destination === 'string' && destination.includes('{')) {
+            parsedDestination = JSON.parse(destination);
+          } else {
+            parsedDestination = destination;
+          }
+        } catch (e) {
+          console.warn(`[RouteController] Failed to parse destination:`, e);
+        }
+      }
+
+      const result = await StopSuggestionService.suggestStops({
+        area: area || null,
+        maxDistanceKm: parseFloat(maxDistanceKm) || 2.0,
+        minStudentsPerStop: parseInt(minStudentsPerStop) || 1,
+        maxStops: parseInt(maxStops) || 20,
+        geocodeAddresses: geocodeAddresses !== 'false', // Default true
+        origin: parsedOrigin,
+        destination: parsedDestination,
+        optimizeRoute: optimizeRoute !== 'false', // Default true
+      });
+
+      console.log(`[RouteController] suggestStops result:`, {
+        suggestionsCount: result.suggestions?.length || 0,
+        totalStudents: result.totalStudents,
+        totalClusters: result.totalClusters,
+        validClusters: result.validClusters,
+      });
+
+      return response.ok(res, result);
+    } catch (error) {
+      console.error("Error in RouteController.suggestStops:", error);
+      console.error("Error stack:", error.stack);
+      return response.serverError(
+        res,
+        "Lỗi server khi đề xuất điểm dừng",
+        error
+      );
+    }
+  }
+
+  // Tạo tuyến đường tự động từ start → end với auto suggestion
+  static async autoCreateRoute(req, res) {
+    try {
+      const {
+        tenTuyen,
+        startPoint,
+        endPoint,
+        options,
+      } = req.body;
+
+      // Validation
+      if (!tenTuyen || !startPoint || !endPoint) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            code: "MISSING_REQUIRED_FIELDS",
+            message: "Tên tuyến, điểm bắt đầu và điểm kết thúc là bắt buộc",
+          },
+        });
+      }
+
+      if (!startPoint.lat || !startPoint.lng || !endPoint.lat || !endPoint.lng) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            code: "INVALID_COORDINATES",
+            message: "Điểm bắt đầu và điểm kết thúc phải có tọa độ hợp lệ",
+          },
+        });
+      }
+
+      // Kiểm tra tên tuyến đã tồn tại chưa
+      const existingRoute = await TuyenDuongModel.getByName(tenTuyen);
+      if (existingRoute) {
+        return res.status(409).json({
+          success: false,
+          error: {
+            code: "DUPLICATE_ROUTE_NAME",
+            message: "Tên tuyến đường đã tồn tại trong hệ thống",
+          },
+        });
+      }
+
+      const result = await RouteAutoCreateService.createAutoRoute({
+        tenTuyen,
+        startPoint,
+        endPoint,
+        options,
+      });
+
+      return response.ok(res, result, {
+        message: "Tạo tuyến đường tự động thành công",
+      });
+    } catch (error) {
+      console.error("Error in RouteController.autoCreateRoute:", error);
+      
+      if (error.message === "MISSING_REQUIRED_FIELDS" || error.message === "INVALID_COORDINATES") {
+        return response.validationError(res, error.message);
+      }
+      
+      if (error.message.includes("DIRECTIONS_API_ERROR")) {
+        return response.serverError(res, "Lỗi khi lấy tuyến đường từ Google Maps API", error);
+      }
+
+      return response.serverError(res, "Lỗi server khi tạo tuyến đường tự động", error);
+    }
+  }
+
+  // Lấy stop suggestions cho một route
+  static async getStopSuggestions(req, res) {
+    try {
+      const { id } = req.params;
+
+      if (!id) {
+        return response.validationError(res, "Mã tuyến đường là bắt buộc", [
+          { field: "id", message: "Mã tuyến đường không được để trống" },
+        ]);
+      }
+
+      // Lấy route info
+      const route = await TuyenDuongModel.getById(id);
+      if (!route) {
+        return response.notFound(res, "Không tìm thấy tuyến đường");
+      }
+
+      // Lấy route stops
+      const RouteStopModel = (await import("../models/RouteStopModel.js")).default;
+      const routeStops = await RouteStopModel.getByRouteId(id);
+
+      // Lấy suggestions
+      const StudentStopSuggestionModel = (await import("../models/StudentStopSuggestionModel.js")).default;
+      const allSuggestions = await StudentStopSuggestionModel.getByRouteId(id);
+
+      // Group suggestions theo stop
+      const stopsWithSuggestions = routeStops.map((stop) => {
+        const stopSuggestions = allSuggestions.filter(
+          (s) => s.maDiemDung === stop.maDiem
+        );
+
+        return {
+          sequence: stop.sequence,
+          maDiem: stop.maDiem,
+          tenDiem: stop.tenDiem,
+          viDo: stop.viDo,
+          kinhDo: stop.kinhDo,
+          address: stop.address,
+          studentCount: stopSuggestions.length,
+          students: stopSuggestions.map((s) => ({
+            maHocSinh: s.maHocSinh,
+            hoTen: s.tenHocSinh,
+            lop: s.lop,
+            viDo: s.studentLat,
+            kinhDo: s.studentLng,
+          })),
+        };
+      });
+
+      return response.ok(res, {
+        route: {
+          maTuyen: route.maTuyen,
+          tenTuyen: route.tenTuyen,
+          diemBatDau: route.diemBatDau,
+          diemKetThuc: route.diemKetThuc,
+        },
+        stops: stopsWithSuggestions,
+        totalStudents: allSuggestions.length,
+        totalStops: stopsWithSuggestions.length,
+      });
+    } catch (error) {
+      console.error("Error in RouteController.getStopSuggestions:", error);
+      return response.serverError(res, "Lỗi server khi lấy gợi ý điểm dừng", error);
     }
   }
 }

@@ -126,7 +126,8 @@ export function RouteForm({ onClose, onCreated, onUpdated, mode = "create", init
         origin,
         destination,
         waypoints,
-        mode: "driving",
+        mode: "driving", // Mode driving phù hợp với xe buýt
+        vehicleType: "bus", // Chỉ định loại xe là buýt
       })
 
       if (response.success && (response.data as any)?.polyline) {

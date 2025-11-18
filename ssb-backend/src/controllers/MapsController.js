@@ -5,7 +5,7 @@ class MapsController {
   // Get Directions
   static async getDirections(req, res) {
     try {
-      const { origin, destination, waypoints, mode, alternatives, avoid, language, units } = req.body;
+      const { origin, destination, waypoints, mode, alternatives, avoid, language, units, vehicleType } = req.body;
 
       // Log incoming request for debugging
       console.log('[MapsController] getDirections request:', {
@@ -65,6 +65,7 @@ class MapsController {
         avoid: avoid || [],
         language: language || "vi",
         units: units || "metric",
+        vehicleType: vehicleType || "bus", // Mặc định là bus cho hệ thống xe buýt
       });
 
       res.status(200).json({

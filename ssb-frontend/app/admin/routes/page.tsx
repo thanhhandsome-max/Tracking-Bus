@@ -7,8 +7,9 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Edit, Trash2, Eye, MapPin, Clock, Search, Filter, AlertCircle, Route, Grid3x3, List, Navigation, ArrowRight, MoreVertical } from "lucide-react"
+import { Plus, Edit, Trash2, Eye, MapPin, Clock, Search, Filter, AlertCircle, Route, Grid3x3, List, Navigation, ArrowRight, MoreVertical, Sparkles } from "lucide-react"
 import { RouteBuilder } from "@/components/admin/route-builder"
+import { RouteSuggestionDialog } from "@/components/admin/route-suggestion-dialog"
 import { StatsCard } from "@/components/admin/stats-card"
 import { useRoutes, useDeleteRoute } from "@/lib/hooks/useRoutes"
 import { useRouter } from "next/navigation"
@@ -41,9 +42,11 @@ export default function RoutesPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const debouncedSearch = useDebounce(searchQuery, 300)
   const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [routeTypeFilter, setRouteTypeFilter] = useState<string>("all") // 'all', 'di', 've'
   const [viewMode, setViewMode] = useState<ViewMode>("grid")
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  const [isSuggestionDialogOpen, setIsSuggestionDialogOpen] = useState(false)
   const [editingRoute, setEditingRoute] = useState<Route | null>(null)
   
   const { mutate: deleteRoute } = useDeleteRoute()
@@ -52,6 +55,7 @@ export default function RoutesPage() {
     limit: 100,
     search: debouncedSearch || undefined,
     trangThai: statusFilter === 'all' ? undefined : statusFilter === 'active',
+    routeType: routeTypeFilter === 'all' ? undefined : routeTypeFilter,
   })
 
   function mapRoute(r: any): Route {
@@ -60,13 +64,19 @@ export default function RoutesPage() {
     if (typeof status === 'number') {
       status = status === 1;
     }
+    
+    // Get stops count - prioritize soDiemDung from database, then stops array length
+    const stopsCount = r.soDiemDung !== undefined && r.soDiemDung !== null 
+      ? Number(r.soDiemDung) 
+      : (r.stops?.length || r.diemDung?.length || 0);
+    
     return {
       id: String(r.maTuyen || r.id || r._id || ''),
-      name: r.tenTuyen || r.ten || r.name || '',
+      name: r.tenTuyen || r.ten || r.name || 'Tuyến chưa có tên',
       status: status,
-      stopsCount: r.soDiemDung || r.stops?.length || r.diemDung?.length || 0,
-      distance: r.quangDuong || r.distance || r.khoangCach,
-      duration: r.thoiLuong || r.duration || r.thoiGianUocTinh,
+      stopsCount: stopsCount,
+      distance: r.quangDuong || r.distance || r.khoangCach || r.totalDistanceKm,
+      duration: r.thoiLuong || r.duration || r.thoiGianUocTinh || r.estimatedTimeMinutes,
       assignedBus: r.xeDuocGan || r.assignedBus,
       raw: r,
     }
@@ -97,42 +107,154 @@ export default function RoutesPage() {
     }
   }, [routes])
 
-  // Filtering routes by status only (removed date filter)
+  // Group routes by pairedRouteId để hiển thị tuyến đi/về cùng nhau
+  const groupedRoutes = useMemo(() => {
+    const groups = new Map<string | number, Route[]>();
+    const unpairedRoutes: Route[] = [];
+
+    routes.forEach((route) => {
+      const raw = route.raw;
+      const pairedRouteId = raw?.pairedRouteId || raw?.paired_route_id;
+      const routeId = route.id;
+      const routeType = raw?.routeType || raw?.route_type || 'both';
+
+      // Nếu có pairedRouteId, nhóm lại
+      if (pairedRouteId) {
+        const groupKey = String(Math.min(Number(routeId), Number(pairedRouteId)));
+        if (!groups.has(groupKey)) {
+          groups.set(groupKey, []);
+        }
+        groups.get(groupKey)!.push(route);
+      } else {
+        // Nếu không có pairedRouteId, kiểm tra xem có tuyến nào khác trỏ đến nó không
+        const isPaired = routes.some(
+          (r) => (r.raw?.pairedRouteId || r.raw?.paired_route_id) === routeId
+        );
+        if (!isPaired) {
+          unpairedRoutes.push(route);
+        }
+      }
+    });
+
+    // Convert groups to array và sắp xếp
+    const groupedArray = Array.from(groups.values()).map((group) => {
+      // Sắp xếp trong group: tuyến đi trước, tuyến về sau
+      return group.sort((a, b) => {
+        const aType = a.raw?.routeType || a.raw?.route_type || 'both';
+        const bType = b.raw?.routeType || b.raw?.route_type || 'both';
+        if (aType === 'di' && bType === 've') return -1;
+        if (aType === 've' && bType === 'di') return 1;
+        return 0;
+      });
+    });
+
+    return [...groupedArray, ...unpairedRoutes.map((r) => [r])];
+  }, [routes]);
+
+  // Filtering routes by status and routeType
   const filteredRoutes = useMemo(() => {
-    let filtered = routes
+    let filtered = groupedRoutes.flat();
 
     // Filter by status
     if (statusFilter !== 'all') {
       filtered = filtered.filter((route) => {
-        const status = route.status
+        const status = route.status;
         if (statusFilter === 'active') {
-          return status === true || status === 'hoat_dong' || status === 'active'
+          return status === true || status === 'hoat_dong' || status === 'active';
         }
-        return status === false || status === 'ngung_hoat_dong' || status === 'inactive'
-      })
+        return status === false || status === 'ngung_hoat_dong' || status === 'inactive';
+      });
     }
 
-    return filtered
-  }, [routes, statusFilter])
+    // Filter by routeType (client-side filtering nếu backend chưa filter đúng)
+    if (routeTypeFilter !== 'all') {
+      filtered = filtered.filter((route) => {
+        const routeType = route.raw?.routeType || route.raw?.route_type || 'both';
+        if (routeTypeFilter === 'di') {
+          return routeType === 'di' || routeType === 'both';
+        }
+        if (routeTypeFilter === 've') {
+          return routeType === 've' || routeType === 'both';
+        }
+        return true;
+      });
+    }
+
+    // Nhóm lại sau khi filter
+    const filteredGroups = new Map<string | number, Route[]>();
+    filtered.forEach((route) => {
+      const raw = route.raw;
+      const pairedRouteId = raw?.pairedRouteId || raw?.paired_route_id;
+      const routeId = route.id;
+
+      if (pairedRouteId) {
+        const groupKey = String(Math.min(Number(routeId), Number(pairedRouteId)));
+        if (!filteredGroups.has(groupKey)) {
+          filteredGroups.set(groupKey, []);
+        }
+        filteredGroups.get(groupKey)!.push(route);
+      } else {
+        const isPaired = filtered.some(
+          (r) => (r.raw?.pairedRouteId || r.raw?.paired_route_id) === routeId
+        );
+        if (!isPaired) {
+          if (!filteredGroups.has(routeId)) {
+            filteredGroups.set(routeId, []);
+          }
+          filteredGroups.get(routeId)!.push(route);
+        }
+      }
+    });
+
+    return Array.from(filteredGroups.values()).map((group) =>
+      group.sort((a, b) => {
+        const aType = a.raw?.routeType || a.raw?.route_type || 'both';
+        const bType = b.raw?.routeType || b.raw?.route_type || 'both';
+        if (aType === 'di' && bType === 've') return -1;
+        if (aType === 've' && bType === 'di') return 1;
+        return 0;
+      })
+    );
+  }, [groupedRoutes, statusFilter, routeTypeFilter])
 
   // Helper to get route origin and destination
   const getRouteEndpoints = (route: Route) => {
     const raw = route.raw
     if (!raw) return { origin: null, destination: null }
     
-    // Try to get from diemBatDau/diemKetThuc
-    const origin = raw.diemBatDau || raw.origin || null
-    const destination = raw.diemKetThuc || raw.destination || null
+    // Priority 1: Use diemBatDau/diemKetThuc (from database)
+    let origin = raw.diemBatDau || raw.origin || null
+    let destination = raw.diemKetThuc || raw.destination || null
     
-    // If we have stops, get first and last stop names
+    // Priority 2: If we have stops array, get first and last stop names
     const stops = raw.stops || raw.diemDung || []
-    if (stops.length > 0) {
-      const sortedStops = [...stops].sort((a: any, b: any) => (a.sequence || a.thuTu || 0) - (b.sequence || b.thuTu || 0))
-      return {
-        origin: origin || sortedStops[0]?.tenDiem || sortedStops[0]?.name || 'Điểm bắt đầu',
-        destination: destination || sortedStops[sortedStops.length - 1]?.tenDiem || sortedStops[sortedStops.length - 1]?.name || 'Điểm kết thúc'
+    if (stops.length > 0 && Array.isArray(stops)) {
+      const sortedStops = [...stops].sort((a: any, b: any) => {
+        const seqA = a.sequence || a.thuTu || 0
+        const seqB = b.sequence || b.thuTu || 0
+        return seqA - seqB
+      })
+      
+      if (!origin && sortedStops[0]) {
+        origin = sortedStops[0].tenDiem || sortedStops[0].name || sortedStops[0].tenDiemDung || 'Điểm bắt đầu'
+      }
+      if (!destination && sortedStops[sortedStops.length - 1]) {
+        const lastStop = sortedStops[sortedStops.length - 1]
+        destination = lastStop.tenDiem || lastStop.name || lastStop.tenDiemDung || 'Điểm kết thúc'
       }
     }
+    
+    // Priority 3: Use origin_lat/origin_lng and dest_lat/dest_lng if available (for display)
+    if (!origin && (raw.origin_lat && raw.origin_lng)) {
+      origin = `Tọa độ: ${raw.origin_lat.toFixed(4)}, ${raw.origin_lng.toFixed(4)}`
+    }
+    if (!destination && (raw.dest_lat && raw.dest_lng)) {
+      destination = `Tọa độ: ${raw.dest_lat.toFixed(4)}, ${raw.dest_lng.toFixed(4)}`
+    }
+    
+    // Fallback
+    if (!origin) origin = 'Chưa xác định'
+    if (!destination) destination = 'Chưa xác định'
     
     return { origin, destination }
   }
@@ -178,13 +300,22 @@ export default function RoutesPage() {
             <h1 className="text-3xl font-bold text-foreground">Quản lý Tuyến đường</h1>
             <p className="text-muted-foreground mt-1">Quản lý và cấu hình các tuyến đường xe buýt</p>
           </div>
-          <Button 
-            className="bg-primary hover:bg-primary/90"
-            onClick={() => setIsAddDialogOpen(true)}
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Thêm tuyến mới
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setIsSuggestionDialogOpen(true)}
+            >
+              <Sparkles className="w-4 h-4 mr-2" />
+              Đề xuất tuyến đường
+            </Button>
+            <Button 
+              className="bg-primary hover:bg-primary/90"
+              onClick={() => setIsAddDialogOpen(true)}
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Thêm tuyến mới
+            </Button>
+          </div>
         </div>
 
         {/* Stats */}
@@ -269,55 +400,99 @@ export default function RoutesPage() {
                   <span className="text-sm font-medium text-muted-foreground">Lọc:</span>
                 </div>
                 
-                {/* Status Filter */}
-                <div className="flex gap-2">
-                  <Button
-                    variant={statusFilter === 'all' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setStatusFilter('all')}
-                  >
-                    Tất cả
-                  </Button>
-                  <Button
-                    variant={statusFilter === 'active' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setStatusFilter('active')}
-                  >
-                    Hoạt động
-                  </Button>
-                  <Button
-                    variant={statusFilter === 'inactive' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setStatusFilter('inactive')}
-                  >
-                    Tạm ngừng
-                  </Button>
-                </div>
+                 {/* Status Filter */}
+                 <div className="flex gap-2">
+                   <Button
+                     variant={statusFilter === 'all' ? 'default' : 'outline'}
+                     size="sm"
+                     onClick={() => setStatusFilter('all')}
+                   >
+                     Tất cả
+                   </Button>
+                   <Button
+                     variant={statusFilter === 'active' ? 'default' : 'outline'}
+                     size="sm"
+                     onClick={() => setStatusFilter('active')}
+                   >
+                     Hoạt động
+                   </Button>
+                   <Button
+                     variant={statusFilter === 'inactive' ? 'default' : 'outline'}
+                     size="sm"
+                     onClick={() => setStatusFilter('inactive')}
+                   >
+                     Tạm ngừng
+                   </Button>
+                 </div>
+
+                 {/* Route Type Filter */}
+                 <div className="flex items-center gap-2 ml-2 pl-2 border-l">
+                   <span className="text-sm font-medium text-muted-foreground">Loại:</span>
+                   <div className="flex gap-2">
+                     <Button
+                       variant={routeTypeFilter === 'all' ? 'default' : 'outline'}
+                       size="sm"
+                       onClick={() => setRouteTypeFilter('all')}
+                     >
+                       Tất cả
+                     </Button>
+                     <Button
+                       variant={routeTypeFilter === 'di' ? 'default' : 'outline'}
+                       size="sm"
+                       onClick={() => setRouteTypeFilter('di')}
+                     >
+                       Tuyến đi
+                     </Button>
+                     <Button
+                       variant={routeTypeFilter === 've' ? 'default' : 'outline'}
+                       size="sm"
+                       onClick={() => setRouteTypeFilter('ve')}
+                     >
+                       Tuyến về
+                     </Button>
+                   </div>
+                 </div>
               </div>
 
-              {/* Active Filters Summary */}
-              {statusFilter !== 'all' && (
-                <div className="flex items-center gap-2 pt-2 border-t">
-                  <span className="text-xs text-muted-foreground">Đang lọc:</span>
-                  <Badge variant="secondary" className="gap-1">
-                    Trạng thái: {statusFilter === 'active' ? 'Hoạt động' : 'Tạm ngừng'}
-                    <button
-                      className="ml-1 hover:bg-muted rounded-full p-0.5"
-                      onClick={() => setStatusFilter('all')}
-                    >
-                      ×
-                    </button>
-                  </Badge>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 px-2 text-xs ml-auto"
-                    onClick={() => setStatusFilter('all')}
-                  >
-                    Xóa bộ lọc
-                  </Button>
-                </div>
-              )}
+               {/* Active Filters Summary */}
+               {(statusFilter !== 'all' || routeTypeFilter !== 'all') && (
+                 <div className="flex items-center gap-2 pt-2 border-t">
+                   <span className="text-xs text-muted-foreground">Đang lọc:</span>
+                   {statusFilter !== 'all' && (
+                     <Badge variant="secondary" className="gap-1">
+                       Trạng thái: {statusFilter === 'active' ? 'Hoạt động' : 'Tạm ngừng'}
+                       <button
+                         className="ml-1 hover:bg-muted rounded-full p-0.5"
+                         onClick={() => setStatusFilter('all')}
+                       >
+                         ×
+                       </button>
+                     </Badge>
+                   )}
+                   {routeTypeFilter !== 'all' && (
+                     <Badge variant="secondary" className="gap-1">
+                       Loại: {routeTypeFilter === 'di' ? 'Tuyến đi' : 'Tuyến về'}
+                       <button
+                         className="ml-1 hover:bg-muted rounded-full p-0.5"
+                         onClick={() => setRouteTypeFilter('all')}
+                       >
+                         ×
+                       </button>
+                     </Badge>
+                   )}
+                   <Button
+                     variant="ghost"
+                     size="sm"
+                     className="h-6 px-2 text-xs ml-auto"
+                     onClick={() => {
+                       setStatusFilter('all');
+                       setRouteTypeFilter('all');
+                     }}
+                   >
+                     Xóa tất cả
+                   </Button>
+                 </div>
+               )}
             </div>
           </CardContent>
         </Card>
@@ -395,9 +570,26 @@ export default function RoutesPage() {
               </div>
             </CardContent>
           </Card>
-        ) : viewMode === "grid" ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-            {filteredRoutes.map((route) => {
+         ) : viewMode === "grid" ? (
+           <div className="space-y-4">
+             {filteredRoutes.map((routeGroup, groupIndex) => {
+               // Nếu group có nhiều hơn 1 route, hiển thị như paired route
+               const isPaired = routeGroup.length > 1;
+               
+               return (
+                 <div key={groupIndex} className={isPaired ? "space-y-2" : ""}>
+                   {isPaired && (
+                     <div className="flex items-center gap-2 px-2 py-1 bg-muted/30 rounded-md">
+                       <Badge variant="outline" className="text-xs">
+                         Cặp tuyến đi/về
+                       </Badge>
+                       <span className="text-xs text-muted-foreground">
+                         {routeGroup.length} tuyến
+                       </span>
+                     </div>
+                   )}
+                   <div className={`grid grid-cols-1 ${isPaired ? 'lg:grid-cols-2' : 'lg:grid-cols-2 xl:grid-cols-3'} gap-4`}>
+                     {routeGroup.map((route) => {
               const endpoints = getRouteEndpoints(route)
               const isActive = route.status === true || route.status === "active" || route.status === "hoat_dong"
               
@@ -406,19 +598,41 @@ export default function RoutesPage() {
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="space-y-1 flex-1 min-w-0">
-                        <CardTitle className="text-lg line-clamp-2 group-hover:text-primary transition-colors">
-                          {route.name}
-                        </CardTitle>
-                        <Badge
-                          variant="outline"
-                          className={
-                            isActive
-                              ? "border-success text-success bg-success/10 shrink-0 mt-1"
-                              : "border-muted-foreground text-muted-foreground bg-muted/10 shrink-0 mt-1"
-                          }
-                        >
-                          {isActive ? "Hoạt động" : "Tạm ngừng"}
-                        </Badge>
+                         <CardTitle className="text-lg line-clamp-2 group-hover:text-primary transition-colors">
+                           {route.name}
+                         </CardTitle>
+                         <div className="flex items-center gap-1 flex-wrap">
+                           <Badge
+                             variant="outline"
+                             className={
+                               isActive
+                                 ? "border-success text-success bg-success/10 shrink-0 mt-1"
+                                 : "border-muted-foreground text-muted-foreground bg-muted/10 shrink-0 mt-1"
+                             }
+                           >
+                             {isActive ? "Hoạt động" : "Tạm ngừng"}
+                           </Badge>
+                           {(route.raw?.routeType === 'di' || route.raw?.routeType === 've') && (
+                             <Badge
+                               variant="outline"
+                               className={`shrink-0 mt-1 ${
+                                 route.raw?.routeType === 'di'
+                                   ? "border-blue-500 text-blue-600 bg-blue-50 dark:bg-blue-950/20"
+                                   : "border-purple-500 text-purple-600 bg-purple-50 dark:bg-purple-950/20"
+                               }`}
+                             >
+                               {route.raw?.routeType === 'di' ? 'Đi' : 'Về'}
+                             </Badge>
+                           )}
+                           {route.stopsCount < 2 && (
+                             <Badge
+                               variant="outline"
+                               className="border-amber-500 text-amber-600 bg-amber-50 dark:bg-amber-950/20 shrink-0 mt-1"
+                             >
+                               ⚠️ Thiếu điểm dừng
+                             </Badge>
+                           )}
+                         </div>
                       </div>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -486,17 +700,25 @@ export default function RoutesPage() {
                     <div className="grid grid-cols-2 gap-3 text-sm">
                       <div className="flex items-center gap-2 p-2 bg-muted/20 rounded">
                         <MapPin className="w-4 h-4 text-muted-foreground" />
-                        <div>
+                        <div className="min-w-0 flex-1">
                           <p className="text-xs text-muted-foreground">Điểm dừng</p>
-                          <p className="font-semibold">{route.stopsCount ?? '-'}</p>
+                          <p className="font-semibold">{route.stopsCount ?? 0}</p>
                         </div>
                       </div>
-                      {route.duration && (
+                      {route.duration ? (
                         <div className="flex items-center gap-2 p-2 bg-muted/20 rounded">
                           <Clock className="w-4 h-4 text-muted-foreground" />
-                          <div>
+                          <div className="min-w-0 flex-1">
                             <p className="text-xs text-muted-foreground">Thời gian</p>
-                            <p className="font-semibold">{route.duration} phút</p>
+                            <p className="font-semibold">{typeof route.duration === 'number' ? `${route.duration} phút` : route.duration}</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 p-2 bg-muted/20 rounded">
+                          <Clock className="w-4 h-4 text-muted-foreground" />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs text-muted-foreground">Thời gian</p>
+                            <p className="font-semibold text-muted-foreground">-</p>
                           </div>
                         </div>
                       )}
@@ -522,13 +744,33 @@ export default function RoutesPage() {
                       </Button>
                     </div>
                   </CardContent>
-                </Card>
-              )
-            })}
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {filteredRoutes.map((route) => {
+                 </Card>
+                     );
+                   })}
+                   </div>
+                 </div>
+               );
+             })}
+           </div>
+         ) : (
+           <div className="space-y-3">
+             {filteredRoutes.map((routeGroup, groupIndex) => {
+               const isPaired = routeGroup.length > 1;
+               
+               return (
+                 <div key={groupIndex} className={isPaired ? "space-y-2" : ""}>
+                   {isPaired && (
+                     <div className="flex items-center gap-2 px-2 py-1 bg-muted/30 rounded-md">
+                       <Badge variant="outline" className="text-xs">
+                         Cặp tuyến đi/về
+                       </Badge>
+                       <span className="text-xs text-muted-foreground">
+                         {routeGroup.length} tuyến
+                       </span>
+                     </div>
+                   )}
+                   <div className={isPaired ? "space-y-2 pl-4 border-l-2 border-primary/20" : ""}>
+                     {routeGroup.map((route) => {
               const endpoints = getRouteEndpoints(route)
               const isActive = route.status === true || route.status === "active" || route.status === "hoat_dong"
               
@@ -537,19 +779,41 @@ export default function RoutesPage() {
                   <CardContent className="pt-6">
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-3 mb-2">
-                          <CardTitle className="text-lg line-clamp-1">{route.name}</CardTitle>
-                          <Badge
-                            variant="outline"
-                            className={
-                              isActive
-                                ? "border-success text-success bg-success/10"
-                                : "border-muted-foreground text-muted-foreground bg-muted/10"
-                            }
-                          >
-                            {isActive ? "Hoạt động" : "Tạm ngừng"}
-                          </Badge>
-                        </div>
+                         <div className="flex items-center gap-3 mb-2 flex-wrap">
+                           <CardTitle className="text-lg line-clamp-1">{route.name}</CardTitle>
+                           <div className="flex items-center gap-1">
+                             <Badge
+                               variant="outline"
+                               className={
+                                 isActive
+                                   ? "border-success text-success bg-success/10"
+                                   : "border-muted-foreground text-muted-foreground bg-muted/10"
+                               }
+                             >
+                               {isActive ? "Hoạt động" : "Tạm ngừng"}
+                             </Badge>
+                             {(route.raw?.routeType === 'di' || route.raw?.routeType === 've') && (
+                               <Badge
+                                 variant="outline"
+                                 className={
+                                   route.raw?.routeType === 'di'
+                                     ? "border-blue-500 text-blue-600 bg-blue-50 dark:bg-blue-950/20"
+                                     : "border-purple-500 text-purple-600 bg-purple-50 dark:bg-purple-950/20"
+                                 }
+                               >
+                                 {route.raw?.routeType === 'di' ? 'Đi' : 'Về'}
+                               </Badge>
+                             )}
+                             {route.stopsCount < 2 && (
+                               <Badge
+                                 variant="outline"
+                                 className="border-amber-500 text-amber-600 bg-amber-50 dark:bg-amber-950/20"
+                               >
+                                 ⚠️ Thiếu điểm dừng
+                               </Badge>
+                             )}
+                           </div>
+                         </div>
                         
                         {/* Route Endpoints */}
                         {(endpoints.origin || endpoints.destination) && (
@@ -574,17 +838,24 @@ export default function RoutesPage() {
                         
                         <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
                           <div className="flex items-center gap-1">
-                            <MapPin className="w-4 h-4" />
-                            {route.stopsCount ?? '-'} điểm dừng
+                            <MapPin className="w-4 h-4 shrink-0" />
+                            <span>{route.stopsCount ?? 0} điểm dừng</span>
                           </div>
                           {route.duration && (
                             <div className="flex items-center gap-1">
-                              <Clock className="w-4 h-4" />
-                              {route.duration} phút
+                              <Clock className="w-4 h-4 shrink-0" />
+                              <span>{typeof route.duration === 'number' ? `${route.duration} phút` : route.duration}</span>
                             </div>
                           )}
                           {route.distance && (
-                            <span>Khoảng cách: {route.distance}</span>
+                            <div className="flex items-center gap-1">
+                              <Navigation className="w-4 h-4 shrink-0" />
+                              <span>
+                                {typeof route.distance === 'number' 
+                                  ? `${route.distance.toFixed(1)} km` 
+                                  : route.distance}
+                              </span>
+                            </div>
                           )}
                         </div>
                       </div>
@@ -625,13 +896,27 @@ export default function RoutesPage() {
                       </div>
                     </div>
                   </CardContent>
-                </Card>
-              )
-            })}
-          </div>
-        )}
+                 </Card>
+                     );
+                   })}
+                   </div>
+                 </div>
+               );
+             })}
+           </div>
+         )}
 
       </div>
+
+      {/* Route Suggestion Dialog */}
+      <RouteSuggestionDialog
+        open={isSuggestionDialogOpen}
+        onOpenChange={setIsSuggestionDialogOpen}
+        onRoutesCreated={() => {
+          // Refresh routes list
+          window.location.reload();
+        }}
+      />
     </DashboardLayout>
   )
 }

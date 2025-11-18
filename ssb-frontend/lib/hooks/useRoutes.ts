@@ -13,7 +13,7 @@ export const routeKeys = {
 };
 
 // Get route list
-export function useRoutes(params?: { page?: number; limit?: number; search?: string; trangThai?: boolean }) {
+export function useRoutes(params?: { page?: number; limit?: number; search?: string; trangThai?: boolean; routeType?: string }) {
   return useQuery({
     queryKey: routeKeys.list(params || {}),
     queryFn: async () => {
