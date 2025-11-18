@@ -2,19 +2,38 @@ import express from "express";
 import rateLimit from "express-rate-limit";
 import TripController from "../../controllers/TripController.js";
 import AuthMiddleware from "../../middlewares/AuthMiddleware.js";
+import ValidationMiddleware from "../../middlewares/ValidationMiddleware.js";
 
 const router = express.Router();
 
+// =============================================================================
+// CRUD Endpoints for Trips
+// =============================================================================
+
+// GET /api/v1/trips/history - Lịch sử chuyến đi cho phụ huynh
+router.get(
+  "/history",
+  AuthMiddleware.authenticate,
+  AuthMiddleware.authorize("quan_tri", "phu_huynh"),
+  TripController.getHistory
+);
+
+// GET /api/v1/trips/stats - Lấy thống kê chuyến đi
 router.get(
   "/stats",
   AuthMiddleware.authenticate,
-  AuthMiddleware.requireAdmin,
+  AuthMiddleware.authorize("quan_tri"),
   TripController.getStats
 );
 
-// M4-M6: Trip lifecycle routes
-// List trips with optional filters (ngayChay, trangThai, maTaiXe...)
-router.get("/", AuthMiddleware.authenticate, TripController.getAll);
+// GET /api/v1/trips - Lấy danh sách chuyến đi
+router.get(
+  "/",
+  AuthMiddleware.authenticate,
+  AuthMiddleware.authorize("quan_tri", "tai_xe", "phu_huynh"),
+  ValidationMiddleware.validatePagination,
+  TripController.getAll
+);
 
 // M8: Rate limit for trip creation (burst protection)
 const tripCreateLimiter = rateLimit({
@@ -29,78 +48,136 @@ const tripCreateLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Create trip from schedule (Admin only)
+// POST /api/v1/trips - Tạo chuyến đi mới (Admin only)
 router.post(
   "/",
   tripCreateLimiter,
   AuthMiddleware.authenticate,
-  AuthMiddleware.requireAdmin,
+  AuthMiddleware.authorize("quan_tri"),
+  ValidationMiddleware.validateTrip,
   TripController.create
 );
 
-// 🔥 FIX: Specific routes MUST be defined BEFORE generic /:id route
 // POST /api/v1/trips/:id/incident - Báo cáo sự cố
+// 🔥 FIX: Route này phải được định nghĩa TRƯỚC route /:id để tránh conflict
 router.post(
   "/:id/incident",
   AuthMiddleware.authenticate,
   AuthMiddleware.authorize("quan_tri", "tai_xe"),
+  ValidationMiddleware.validateId,
   TripController.reportIncident
 );
 
-// Get trip by ID
-router.get("/:id", AuthMiddleware.authenticate, TripController.getById);
+// =============================================================================
+// 🔥 FIX: Specific routes MUST be defined BEFORE generic /:id route
+// =============================================================================
+// Trip State Management Endpoints
+// =============================================================================
 
-// Start trip (Driver only)
+// POST /api/v1/trips/:id/start - Bắt đầu chuyến đi
 router.post(
   "/:id/start",
   AuthMiddleware.authenticate,
-  AuthMiddleware.requireDriver,
+  AuthMiddleware.checkTripAccess,
+  ValidationMiddleware.validateId,
   TripController.startTrip
 );
 
-// End trip (Driver only)
+// POST /api/v1/trips/:id/end - Kết thúc chuyến đi
 router.post(
   "/:id/end",
   AuthMiddleware.authenticate,
-  AuthMiddleware.requireDriver,
+  AuthMiddleware.checkTripAccess,
+  ValidationMiddleware.validateId,
   TripController.endTrip
 );
 
-// Cancel trip (Admin or Driver of trip)
+// POST /api/v1/trips/:id/cancel - Hủy chuyến đi
 router.post(
   "/:id/cancel",
   AuthMiddleware.authenticate,
+  AuthMiddleware.checkTripAccess,
+  ValidationMiddleware.validateId,
   TripController.cancelTrip
 );
 
-// M4-M6: Attendance routes (Driver only)
+// =============================================================================
+// Student Management in Trips
+// =============================================================================
+
+// POST /api/v1/trips/:id/students/:studentId/checkin - Check-in học sinh (lên xe)
 router.post(
   "/:id/students/:studentId/checkin",
   AuthMiddleware.authenticate,
-  AuthMiddleware.requireDriver,
+  AuthMiddleware.authorize("quan_tri", "tai_xe"),
+  ValidationMiddleware.validateId,
   TripController.checkinStudent
 );
 
+// POST /api/v1/trips/:id/students/:studentId/checkout - Check-out học sinh (xuống xe)
 router.post(
   "/:id/students/:studentId/checkout",
   AuthMiddleware.authenticate,
-  AuthMiddleware.requireDriver,
+  AuthMiddleware.authorize("quan_tri", "tai_xe"),
+  ValidationMiddleware.validateId,
   TripController.checkoutStudent
 );
 
-// Update student status (Driver only) - notify parent when student picked up
+// POST /api/v1/trips/:id/students/:studentId/absent - Đánh vắng học sinh
+router.post(
+  "/:id/students/:studentId/absent",
+  AuthMiddleware.authenticate,
+  AuthMiddleware.authorize("quan_tri", "tai_xe"),
+  ValidationMiddleware.validateId,
+  TripController.markStudentAbsent
+);
+
+// POST /api/v1/trips/:id/students - Thêm học sinh vào chuyến đi
+router.post(
+  "/:id/students",
+  AuthMiddleware.authenticate,
+  AuthMiddleware.authorize("quan_tri", "tai_xe"),
+  ValidationMiddleware.validateId,
+  TripController.addStudent
+);
+
+// PUT /api/v1/trips/:id/students/:studentId - Cập nhật trạng thái học sinh (Legacy)
+router.put(
+  "/:id/students/:studentId",
+  AuthMiddleware.authenticate,
+  AuthMiddleware.authorize("quan_tri", "tai_xe"),
+  ValidationMiddleware.validateId,
+  TripController.updateStudentStatus
+);
+
+// PUT /api/v1/trips/:id/students/:studentId/status - Cập nhật trạng thái học sinh (Alternative)
 router.put(
   "/:id/students/:studentId/status",
   AuthMiddleware.authenticate,
-  AuthMiddleware.requireDriver,
+  AuthMiddleware.authorize("quan_tri", "tai_xe"),
+  ValidationMiddleware.validateId,
   TripController.updateStudentStatus
+);
+
+// =============================================================================
+// Stop Management Routes (must be BEFORE generic /:id route)
+// =============================================================================
+
+// GET /api/v1/trips/:id/stops/:sequence/students - Lấy danh sách học sinh tại điểm dừng
+router.get(
+  "/:id/stops/:sequence/students",
+  AuthMiddleware.authenticate,
+  AuthMiddleware.checkTripAccess,
+  ValidationMiddleware.validateId,
+  TripController.getStudentsAtStop
 );
 
 // M5: Arrive at stop (Driver only) - notify parents when bus arrives at stop
 router.post(
   "/:id/stops/:stopId/arrive",
   AuthMiddleware.authenticate,
-  AuthMiddleware.requireDriver,
+  AuthMiddleware.authorize("quan_tri", "tai_xe"),
+  ValidationMiddleware.validateId,
   TripController.arriveAtStop
 );
 
@@ -108,7 +185,8 @@ router.post(
 router.post(
   "/:id/stops/:stopId/leave",
   AuthMiddleware.authenticate,
-  AuthMiddleware.requireDriver,
+  AuthMiddleware.authorize("quan_tri", "tai_xe"),
+  ValidationMiddleware.validateId,
   TripController.leaveStop
 );
 
@@ -116,7 +194,40 @@ router.post(
 router.get(
   "/:id/stops/status",
   AuthMiddleware.authenticate,
+  AuthMiddleware.checkTripAccess,
+  ValidationMiddleware.validateId,
   TripController.getStopStatus
+);
+
+// =============================================================================
+// Generic CRUD Endpoints (must be AFTER specific routes)
+// =============================================================================
+
+// GET /api/v1/trips/:id - Lấy thông tin chi tiết chuyến đi
+router.get(
+  "/:id",
+  AuthMiddleware.authenticate,
+  AuthMiddleware.checkTripAccess,
+  ValidationMiddleware.validateId,
+  TripController.getById
+);
+
+// PUT /api/v1/trips/:id - Cập nhật chuyến đi
+router.put(
+  "/:id",
+  AuthMiddleware.authenticate,
+  AuthMiddleware.checkTripAccess,
+  ValidationMiddleware.validateId,
+  TripController.update
+);
+
+// DELETE /api/v1/trips/:id - Xóa chuyến đi
+router.delete(
+  "/:id",
+  AuthMiddleware.authenticate,
+  AuthMiddleware.authorize("quan_tri"),
+  ValidationMiddleware.validateId,
+  TripController.delete
 );
 
 export default router;

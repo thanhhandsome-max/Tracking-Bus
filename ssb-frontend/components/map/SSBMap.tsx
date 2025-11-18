@@ -32,7 +32,7 @@ export interface BusMarker {
   lat: number;
   lng: number;
   label?: string;
-  status?: "running" | "idle" | "late";
+  status?: "running" | "idle" | "late" | "incident";
   heading?: number; // Direction in degrees (0-360, 0=North, 90=East)
 }
 
@@ -1328,7 +1328,16 @@ function SSBMap({
                   (err) => {
                     // Only show error if location wasn't successfully obtained
                     if (!locationSuccess) {
-                      console.error("[SSBMap] Geolocation error:", err);
+                      // Log error safely without triggering Next.js error handler
+                      const errorInfo = {
+                        code: err?.code,
+                        message: err?.message || "Unknown geolocation error",
+                        PERMISSION_DENIED: err?.code === 1,
+                        POSITION_UNAVAILABLE: err?.code === 2,
+                        TIMEOUT: err?.code === 3,
+                      };
+                      console.warn("[SSBMap] Geolocation error:", JSON.stringify(errorInfo));
+                      
                       let errorMsg = "Không thể lấy vị trí hiện tại.";
                       if (err.code === 1) {
                         errorMsg =
@@ -1562,14 +1571,27 @@ function SSBMap({
           return;
         }
 
-        // Create polyline with route color
+        // Create polyline with route color (distinct color for each route)
         const routePolyline = new g.maps.Polyline({
           path: path,
           geodesic: true,
           strokeColor: route.color || "#4285F4",
-          strokeOpacity: 0.7,
-          strokeWeight: 4,
+          strokeOpacity: 0.8, // More visible
+          strokeWeight: 5, // Thicker line for better visibility
           zIndex: 50, // Lower than single polyline but visible
+          icons: [
+            {
+              icon: {
+                path: g.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+                scale: 3,
+                strokeColor: route.color || "#4285F4",
+                fillColor: route.color || "#4285F4",
+                fillOpacity: 1,
+              },
+              offset: "100%", // Arrow at the end of the line
+              repeat: "200px", // Repeat arrow every 200px
+            },
+          ],
         });
 
         routePolyline.setMap(mapInstanceRef.current);
@@ -1810,31 +1832,34 @@ function SSBMap({
       const key = `bus-${bus.id}`;
       let marker = markersRef.current.get(key);
 
+      // Status colors mapping
+      const statusColors: Record<string, string> = {
+        running: "#22c55e", // green-500 (đang chạy)
+        idle: "#6b7280", // gray-500 (đứng yên) - FIXED: was black, now gray
+        late: "#eab308", // yellow-500 (trễ)
+        incident: "#ef4444", // red-500 (sự cố)
+      };
+
+      const busStatus = bus.status || "idle"
+      const statusColor = statusColors[busStatus] || "#6b7280"
+      const rotation = typeof bus.heading === "number" ? bus.heading : 0
+
       if (!marker) {
-        // Create new bus marker
-        const statusColors: Record<string, string> = {
-          running: "#22c55e", // green-500 (đang chạy)
-          idle: "#000000", // black (đứng im)
-          late: "#eab308", // yellow-500 (trễ)
-          incident: "#ef4444", // red-500 (sự cố)
-        };
-
-        // Use heading for rotation if available, otherwise default to 0 (pointing North)
-        const rotation = typeof bus.heading === "number" ? bus.heading : 0;
-
+        // Create new bus marker with status-based color
         marker = new g.maps.Marker({
           position: { lat, lng },
           map: mapInstanceRef.current,
           icon: {
             path: g.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-            scale: 6,
-            fillColor: statusColors[bus.status || "idle"] || "#6B7280",
+            scale: 7, // Slightly larger for better visibility
+            fillColor: statusColor,
             fillOpacity: 1,
             strokeColor: "#FFFFFF",
-            strokeWeight: 2,
+            strokeWeight: 2.5,
             rotation: rotation,
           },
           title: bus.label || bus.id,
+          zIndex: busStatus === "incident" ? 1000 : busStatus === "late" ? 500 : 100, // Higher z-index for alerts
         });
 
         if (onBusClick) {
@@ -1843,19 +1868,19 @@ function SSBMap({
 
         markersRef.current.set(key, marker);
       } else {
-        // Update existing marker position and rotation
+        // Update existing marker position, rotation, and color
         const lat = Number(bus.lat);
         const lng = Number(bus.lng);
         if (!isNaN(lat) && !isNaN(lng) && isFinite(lat) && isFinite(lng)) {
           marker.setPosition({ lat, lng });
 
-          // Update rotation if heading is provided
-          if (typeof bus.heading === "number") {
-            const icon = marker.getIcon() as google.maps.Symbol;
-            if (icon) {
-              icon.rotation = bus.heading;
-              marker.setIcon(icon);
-            }
+          // Update icon with new status color and rotation
+          const icon = marker.getIcon() as google.maps.Symbol;
+          if (icon) {
+            icon.fillColor = statusColor;
+            icon.rotation = rotation;
+            marker.setIcon(icon);
+            marker.setZIndex(busStatus === "incident" ? 1000 : busStatus === "late" ? 500 : 100);
           }
         }
       }

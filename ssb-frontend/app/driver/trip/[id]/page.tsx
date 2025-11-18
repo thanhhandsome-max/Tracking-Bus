@@ -11,6 +11,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
 import {
   MapPin,
   Navigation,
@@ -32,6 +34,7 @@ import {
   TrendingUp,
   AlertCircle,
   MapPinned,
+  Radio,
 } from "lucide-react";
 import {
   Dialog,
@@ -213,6 +216,7 @@ export default function TripDetailPage() {
     "chua_khoi_hanh" | "dang_chay" | "hoan_thanh" | "huy" | undefined
   >(undefined);
   const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
+  const [locationSource, setLocationSource] = useState<"demo" | "real">("real");
   const { toast } = useToast();
 
   // Realtime: join driver's trip room and move the vehicle marker when updates arrive
@@ -340,17 +344,74 @@ export default function TripDetailPage() {
 
   // Day 5: Show toast notifications for trip alerts
   useEffect(() => {
-    if (approachStop) {
+    if (approachStop && tripStatus === "dang_chay") {
       const stopName =
         approachStop.stopName || approachStop.stop_name || "điểm dừng";
       const distance = approachStop.distance || 0;
+      const stopSequence = approachStop.stopSequence || approachStop.sequence;
+      
       toast({
         title: "🚏 Gần đến điểm dừng",
         description: `Xe đang cách ${stopName} khoảng ${Math.round(distance)}m`,
         variant: "default",
       });
+
+      // Auto-load students when approaching stop (< 60m)
+      if (distance < 60 && stopSequence && tripIdNum) {
+        const token =
+          typeof window !== "undefined"
+            ? localStorage.getItem("ssb_token")
+            : null;
+
+        const API_URL =
+          process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
+
+        // Load students at this stop
+        fetch(`${API_URL}/trips/${tripIdNum}/stops/${stopSequence}/students`, {
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        })
+          .then((res) => res.json())
+          .then((data) => {
+            const studentsList = data.data?.students || [];
+            
+            // Find stop index by sequence
+            const stopIndex = trip.stops.findIndex(
+              (s: any) => s.sequence === stopSequence || s.id === stopSequence
+            );
+
+            if (stopIndex >= 0) {
+              setTrip((prev) => ({
+                ...prev,
+                stops: prev.stops.map((stop, idx) =>
+                  idx === stopIndex
+                    ? {
+                        ...stop,
+                        students: studentsList.map((s: any) => ({
+                          id: String(s.maHocSinh),
+                          name: s.hoTen || "Học sinh",
+                          status:
+                            s.trangThai === "da_don"
+                              ? "picked"
+                              : s.trangThai === "vang"
+                              ? "absent"
+                              : "pending",
+                          avatar: s.anhDaiDien || "/placeholder.svg?height=40&width=40",
+                          parent: "",
+                        })),
+                      }
+                    : stop
+                ),
+              }));
+            }
+          })
+          .catch((err) => {
+            console.warn("[Driver Trip] Failed to auto-load students:", err);
+          });
+      }
     }
-  }, [approachStop, toast]);
+  }, [approachStop, tripStatus, tripIdNum, trip.stops, toast]);
 
   useEffect(() => {
     if (delayAlert) {
@@ -818,42 +879,85 @@ export default function TripDetailPage() {
       setProcessing(true);
       const stopName = currentStop.name || `Điểm dừng ${trip.currentStop + 1}`;
       const stopId = (currentStop as any).id || (currentStop as any).maDiem;
+      const stopSequence = (currentStop as any).sequence || trip.currentStop + 1;
 
       console.log("[Driver Trip] Arriving at stop:", {
         stopId,
+        stopSequence,
         stopName,
         tripIdNum,
       });
 
-      // Call API to notify arrival at stop
-      // This will trigger WebSocket notification to parents
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("ssb_token")
+          : null;
+
+      const API_URL =
+        process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
+
+      // 1. Load students at this stop
       try {
-        const token =
-          typeof window !== "undefined"
-            ? localStorage.getItem("ssb_token")
-            : null;
-
-        const apiUrl = `${
-          process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1"
-        }/trips/${tripIdNum}/stops/${stopId}/arrive`;
-
-        console.log(
-          "[Driver Trip] Calling API:",
-          apiUrl,
-          "with token:",
-          token ? "YES" : "NO"
+        const studentsResponse = await fetch(
+          `${API_URL}/trips/${tripIdNum}/stops/${stopSequence}/students`,
+          {
+            headers: {
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+          }
         );
 
-        const response = await fetch(apiUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify({
-            arrivedAt: new Date().toISOString(),
-          }),
-        });
+        if (studentsResponse.ok) {
+          const studentsData = await studentsResponse.json();
+          const studentsList = studentsData.data?.students || [];
+
+          // Update trip state with students at this stop
+          setTrip((prev) => ({
+            ...prev,
+            stops: prev.stops.map((stop, idx) =>
+              idx === trip.currentStop
+                ? {
+                    ...stop,
+                    students: studentsList.map((s: any) => ({
+                      id: String(s.maHocSinh),
+                      name: s.hoTen || "Học sinh",
+                      status:
+                        s.trangThai === "da_don"
+                          ? "picked"
+                          : s.trangThai === "vang"
+                          ? "absent"
+                          : "pending",
+                      avatar: s.anhDaiDien || "/placeholder.svg?height=40&width=40",
+                      parent: "",
+                    })),
+                  }
+                : stop
+            ),
+          }));
+
+          console.log(
+            `[Driver Trip] Loaded ${studentsList.length} students at stop ${stopSequence}`
+          );
+        }
+      } catch (err) {
+        console.warn("[Driver Trip] Failed to load students:", err);
+      }
+
+      // 2. Call API to notify arrival at stop (triggers parent notification)
+      try {
+        const response = await fetch(
+          `${API_URL}/trips/${tripIdNum}/stops/${stopSequence}/arrive`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({
+              arrivedAt: new Date().toISOString(),
+            }),
+          }
+        );
 
         if (!response.ok) {
           console.warn(
@@ -871,7 +975,7 @@ export default function TripDetailPage() {
       // Show notification
       toast({
         title: "🚏 Đã đến điểm dừng",
-        description: `Xe đã đến ${stopName}`,
+        description: `Xe đã đến ${stopName}. Đã tải danh sách học sinh.`,
       });
     } catch (error) {
       console.error("[Driver Trip] Error arriving at stop:", error);
@@ -893,6 +997,7 @@ export default function TripDetailPage() {
         const currentStopName =
           currentStop.name || `Điểm dừng ${trip.currentStop + 1}`;
         const stopId = (currentStop as any).id || (currentStop as any).maDiem;
+        const stopSequence = (currentStop as any).sequence || trip.currentStop + 1;
 
         // Call API to notify leaving stop
         // This will trigger WebSocket notification to parents
@@ -904,7 +1009,7 @@ export default function TripDetailPage() {
           const response = await fetch(
             `${
               process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1"
-            }/trips/${tripIdNum}/stops/${stopId}/leave`,
+            }/trips/${tripIdNum}/stops/${stopSequence}/leave`,
             {
               method: "POST",
               headers: {
@@ -976,8 +1081,10 @@ export default function TripDetailPage() {
         (res as any)?.maChuyen ||
         tripIdNum;
 
-      // Start GPS tracking
-      startGPS();
+      // Start GPS tracking only if REAL mode is selected
+      if (locationSource === "real") {
+        startGPS();
+      }
       setStarted(true);
       setTripStatus("dang_chay");
 
@@ -1123,16 +1230,24 @@ export default function TripDetailPage() {
   // Single CTA simplified to: if GPS not running → Start Trip; else follow stop flow
   const showStart = !gpsRunning && !started;
 
-  // Auto-start GPS if trip is already running
+  // Auto-start GPS if trip is already running and REAL mode is selected
   useEffect(() => {
-    if (tripStatus === "dang_chay" && !gpsRunning && effectiveTripId) {
+    if (
+      tripStatus === "dang_chay" &&
+      !gpsRunning &&
+      effectiveTripId &&
+      locationSource === "real"
+    ) {
       console.log(
         "[Driver Trip] Auto-starting GPS for running trip",
         effectiveTripId
       );
       startGPS();
+    } else if (locationSource === "demo" && gpsRunning) {
+      // Stop GPS if switching to DEMO mode
+      stopGPS();
     }
-  }, [tripStatus, gpsRunning, effectiveTripId, startGPS]);
+  }, [tripStatus, gpsRunning, effectiveTripId, startGPS, stopGPS, locationSource]);
 
   // Derive UI display for status/speed/time
   const currentSpeed =
@@ -1224,11 +1339,87 @@ export default function TripDetailPage() {
                 onClose={() => setIsIncidentDialogOpen(false)}
                 tripId={trip.id}
                 currentLocation={busLocation}
-                gpsLastPoint={gpsLastPoint}
+                gpsLastPoint={gpsLastPoint ?? undefined}
               />
             </DialogContent>
           </Dialog>
         </div>
+
+        {/* Location Source Mode Toggle */}
+        <Card className="border-border/50">
+          <CardHeader>
+            <CardTitle className="text-lg">Nguồn vị trí (Location Source)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <RadioGroup
+              value={locationSource}
+              onValueChange={(value) => {
+                setLocationSource(value as "demo" | "real");
+                if (value === "demo" && gpsRunning) {
+                  stopGPS();
+                  toast({
+                    title: "Chuyển sang chế độ DEMO",
+                    description: "Đang chờ script demo gửi vị trí...",
+                  });
+                } else if (value === "real" && tripStatus === "dang_chay" && !gpsRunning) {
+                  startGPS();
+                  toast({
+                    title: "Chuyển sang chế độ REAL",
+                    description: "Đang lấy vị trí GPS từ thiết bị...",
+                  });
+                }
+              }}
+              className="space-y-3"
+            >
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="demo" id="demo" />
+                <Label htmlFor="demo" className="cursor-pointer flex-1">
+                  <div className="flex flex-col">
+                    <span className="font-medium">DEMO - Script mô phỏng (server)</span>
+                    <span className="text-sm text-muted-foreground">
+                      Vị trí được gửi từ script backend (npm run ws:demo)
+                    </span>
+                  </div>
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="real" id="real" />
+                <Label htmlFor="real" className="cursor-pointer flex-1">
+                  <div className="flex flex-col">
+                    <span className="font-medium">REAL - GPS từ thiết bị</span>
+                    <span className="text-sm text-muted-foreground">
+                      Lấy vị trí thật từ GPS của điện thoại/thiết bị
+                    </span>
+                  </div>
+                </Label>
+              </div>
+            </RadioGroup>
+            {locationSource === "demo" && (
+              <div className="mt-4 p-3 bg-muted rounded-lg">
+                <p className="text-sm text-muted-foreground">
+                  💡 <strong>Hướng dẫn:</strong> Chạy script demo từ backend:
+                </p>
+                <code className="block mt-2 p-2 bg-background rounded text-xs">
+                  npm run ws:demo -- --tripId={effectiveTripId || 16}
+                </code>
+              </div>
+            )}
+            {locationSource === "real" && gpsRunning && (
+              <div className="mt-4 p-3 bg-green-50 dark:bg-green-950 rounded-lg">
+                <p className="text-sm text-green-700 dark:text-green-300">
+                  ✅ GPS đang hoạt động - Đang gửi vị trí thật lên server
+                </p>
+              </div>
+            )}
+            {locationSource === "real" && tripStatus === "dang_chay" && !gpsRunning && (
+              <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-950 rounded-lg">
+                <p className="text-sm text-yellow-700 dark:text-yellow-300">
+                  ⚠️ GPS chưa được bật. Vui lòng cho phép truy cập vị trí khi trình duyệt yêu cầu.
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card className="border-border/50">

@@ -15,7 +15,7 @@ interface Bus {
   id: string;
   plateNumber: string;
   route: string;
-  status: "running" | "late" | "incident";
+  status: "running" | "late" | "incident" | "idle";
   lat: number;
   lng: number;
   speed: number;
@@ -71,7 +71,7 @@ export function MapView({
       lat: b.lat,
       lng: b.lng,
       label: `${b.plateNumber} · ${b.route}`,
-      status: b.status as "running" | "idle" | "late",
+      status: b.status as "running" | "idle" | "late" | "incident",
       heading: b.heading,
     }));
   }, [buses]);
@@ -196,28 +196,28 @@ export function MapView({
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <div
-                  className="w-3 h-3 rounded-full"
+                  className="w-3 h-3 rounded-full border-2 border-white"
                   style={{ backgroundColor: "#22c55e" }}
                 />
                 <span className="text-xs text-foreground">Đang chạy</span>
               </div>
               <div className="flex items-center gap-2">
                 <div
-                  className="w-3 h-3 rounded-full"
-                  style={{ backgroundColor: "#000000" }}
+                  className="w-3 h-3 rounded-full border-2 border-white"
+                  style={{ backgroundColor: "#6b7280" }}
                 />
                 <span className="text-xs text-foreground">Đứng yên</span>
               </div>
               <div className="flex items-center gap-2">
                 <div
-                  className="w-3 h-3 rounded-full"
+                  className="w-3 h-3 rounded-full border-2 border-white"
                   style={{ backgroundColor: "#eab308" }}
                 />
                 <span className="text-xs text-foreground">Trễ</span>
               </div>
               <div className="flex items-center gap-2">
                 <div
-                  className="w-3 h-3 rounded-full"
+                  className="w-3 h-3 rounded-full border-2 border-white animate-pulse"
                   style={{ backgroundColor: "#ef4444" }}
                 />
                 <span className="text-xs text-foreground">Sự cố</span>

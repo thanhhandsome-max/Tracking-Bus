@@ -194,21 +194,26 @@ const DELAY_THRESHOLD_MIN = 5;
 const DELAY_ALERT_INTERVAL_MS = 3 * 60 * 1000; // 3 minutes
 
 /**
- * 📱 LẤY FCM TOKENS CỦA PHỤ HUYNH
- *
+ * 🔔 Lấy FCM tokens của phụ huynh trong chuyến đi
  * @param {number} tripId - ID chuyến đi
+ * @param {number[]} [specificParentIds] - Optional: Chỉ lấy tokens của các parents này
  * @returns {Promise<string[]>} Danh sách FCM tokens
  */
-async function getParentTokensForTrip(tripId) {
+async function getParentTokensForTrip(tripId, specificParentIds = null) {
   try {
-    // 1. Lấy danh sách học sinh trên chuyến đi
-    const students = await HocSinhModel.getByTripId(tripId);
-    if (!students || students.length === 0) {
-      return [];
-    }
+    let parentIds = specificParentIds;
 
-    // 2. Lấy danh sách mã phụ huynh
-    const parentIds = students.map((s) => s.maPhuHuynh).filter((id) => id); // Loại bỏ null/undefined
+    // Nếu không có specificParentIds, lấy tất cả parents trong trip
+    if (!parentIds || parentIds.length === 0) {
+      // 1. Lấy danh sách học sinh trên chuyến đi
+      const students = await HocSinhModel.getByTripId(tripId);
+      if (!students || students.length === 0) {
+        return [];
+      }
+
+      // 2. Lấy danh sách mã phụ huynh
+      parentIds = students.map((s) => s.maPhuHuynh).filter((id) => id); // Loại bỏ null/undefined
+    }
 
     if (parentIds.length === 0) {
       return [];
@@ -512,9 +517,15 @@ class TelemetryService {
 
           const eventData = {
             tripId,
+            trip_id: tripId, // Alias for FE compatibility
             stopId: stop.maDiem,
+            stop_id: stop.maDiem, // Alias for FE compatibility
+            stopSequence: stop.sequence,
+            sequence: stop.sequence, // Alias for FE compatibility
             stopName: stop.tenDiem,
+            stop_name: stop.tenDiem, // Alias for FE compatibility
             distance_m: Math.round(distance),
+            distance: Math.round(distance), // Alias for FE compatibility
             timestamp: new Date().toISOString(),
             eta: etaData, // 📊 P1: Include ETA data
           };
@@ -528,67 +539,105 @@ class TelemetryService {
           emittedStops.set(tripId, tripEmittedStops);
 
           // 📬 M5: Create notification in database for parents
+          // 🔥 FIX: Chỉ gửi notification cho parents có con ở điểm dừng này
           try {
-            const students = await HocSinhModel.getByTripId(tripId);
-            const parentIds = students
-              .map((s) => s.maPhuHuynh)
-              .filter((id) => id);
+            const TrangThaiHocSinhModel = (await import("../models/TrangThaiHocSinhModel.js")).default;
+            const ThongBaoModel = (await import("../models/ThongBaoModel.js")).default;
+            
+            // Lấy tất cả students trong trip
+            const allStudents = await TrangThaiHocSinhModel.getByTripId(tripId);
+            
+            // Filter students có thuTuDiemDon = stop.sequence (chỉ students ở điểm dừng này)
+            const studentsAtThisStop = allStudents.filter(
+              (s) => s.thuTuDiemDon && parseInt(s.thuTuDiemDon) === parseInt(stop.sequence)
+            );
 
-            if (parentIds.length > 0) {
-              const ThongBaoModel = (await import("../models/ThongBaoModel.js"))
-                .default;
-              const route = await TuyenDuongModel.getById(schedule.maTuyen);
-
-              await ThongBaoModel.createMultiple(
-                parentIds,
-                "Xe đến gần điểm dừng",
-                `Xe buýt tuyến ${route?.tenTuyen || "N/A"} đang đến gần ${
-                  stop.tenDiem
-                } (cách ${Math.round(distance)}m)`,
-                "approach_stop"
-              );
-
-              // Emit notification:new event to each parent
-              for (const parentId of parentIds) {
-                io.to(`user-${parentId}`).emit("notification:new", {
-                  tieuDe: "Xe đến gần điểm dừng",
-                  noiDung: `Xe buýt tuyến ${
-                    route?.tenTuyen || "N/A"
-                  } đang đến gần ${stop.tenDiem} (cách ${Math.round(
-                    distance
-                  )}m)`,
-                  loaiThongBao: "approach_stop",
-                  thoiGianTao: new Date().toISOString(),
-                });
-              }
-
+            if (studentsAtThisStop.length === 0) {
               console.log(
-                `📬 Sent approach_stop notifications to ${parentIds.length} parents`
+                `[M5] No students at stop ${stop.tenDiem} (sequence ${stop.sequence}), skipping notification`
               );
+            } else {
+              // Lấy parent IDs từ students ở điểm dừng này
+              const studentIds = studentsAtThisStop.map((s) => s.maHocSinh);
+              const pool = (await import("../config/db.js")).default;
+              const [parents] = await pool.query(
+                `SELECT DISTINCT h.maPhuHuynh, h.hoTen as tenHocSinh, n.hoTen as tenPhuHuynh
+                 FROM HocSinh h
+                 JOIN NguoiDung n ON h.maPhuHuynh = n.maNguoiDung
+                 WHERE h.maHocSinh IN (?) AND h.maPhuHuynh IS NOT NULL`,
+                [studentIds]
+              );
+
+              const parentIds = parents.map((p) => p.maPhuHuynh);
+
+              if (parentIds.length > 0) {
+                const route = await TuyenDuongModel.getById(schedule.maTuyen);
+
+                await ThongBaoModel.createMultiple({
+                  danhSachNguoiNhan: parentIds,
+                  tieuDe: "🚏 Xe đến gần điểm dừng",
+                  noiDung: `Xe buýt tuyến ${route?.tenTuyen || "N/A"} đang đến gần ${
+                    stop.tenDiem
+                  } (cách ${Math.round(distance)}m). Con bạn sẽ được đón trong giây lát.`,
+                  loaiThongBao: "approach_stop",
+                });
+
+                // Emit notification:new event to each parent
+                for (const parentId of parentIds) {
+                  io.to(`user-${parentId}`).emit("notification:new", {
+                    maNguoiNhan: parentId,
+                    tieuDe: "🚏 Xe đến gần điểm dừng",
+                    noiDung: `Xe buýt tuyến ${
+                      route?.tenTuyen || "N/A"
+                    } đang đến gần ${stop.tenDiem} (cách ${Math.round(
+                      distance
+                    )}m). Con bạn sẽ được đón trong giây lát.`,
+                    loaiThongBao: "approach_stop",
+                    tripId: tripId,
+                    stopId: stop.maDiem,
+                    stopSequence: stop.sequence,
+                    thoiGianGui: new Date().toISOString(),
+                    daDoc: false,
+                  });
+                }
+
+                console.log(
+                  `📬 Sent approach_stop notifications to ${parentIds.length} parents for stop ${stop.tenDiem} (${studentsAtThisStop.length} students)`
+                );
+
+                // 🔥 Day 5: Send Push Notification to parents (only those with students at this stop)
+                try {
+                  const parentTokens = await getParentTokensForTrip(tripId, parentIds);
+                  if (parentTokens.length > 0) {
+                    await notifyApproachStop(parentTokens, {
+                      ...eventData,
+                      stopSequence: stop.sequence,
+                    });
+                    console.log(
+                      `📲 Sent push notification to ${parentTokens.length} parent(s) for approach_stop at ${stop.tenDiem}`
+                    );
+                  } else {
+                    console.log(`📲 No parent FCM tokens found for stop ${stop.tenDiem}`);
+                  }
+                } catch (notifyError) {
+                  console.warn(
+                    "⚠️  Failed to send push notification:",
+                    notifyError.message
+                  );
+                  // Don't fail the entire geofence check if push notification fails
+                }
+              } else {
+                console.log(
+                  `[M5] No parents found for students at stop ${stop.tenDiem}, skipping notification`
+                );
+              }
             }
           } catch (notifError) {
             console.warn(
               "⚠️  Failed to create approach_stop notification:",
               notifError.message
             );
-          }
-
-          // 🔥 Day 5: Send Push Notification to parents
-          try {
-            const parentTokens = await getParentTokensForTrip(tripId);
-            if (parentTokens.length > 0) {
-              await notifyApproachStop(parentTokens, eventData);
-              console.log(
-                `📲 Sent push notification to ${parentTokens.length} parent(s) for approach_stop`
-              );
-            } else {
-              console.log("📲 No parent FCM tokens found for this trip");
-            }
-          } catch (notifyError) {
-            console.warn(
-              "⚠️  Failed to send push notification:",
-              notifyError.message
-            );
+            // Don't fail the entire geofence check if notification fails
           }
 
           return true;
@@ -668,10 +717,11 @@ class TelemetryService {
 
         const eventData = {
           tripId,
+          trip_id: tripId, // Alias for FE compatibility
           delay_min: Math.round(delayMin),
-          delay_minutes: Math.round(delayMin), // 🔥 Alias cho FE
-          delayMinutes: Math.round(delayMin), // 🔥 Alias cho FE (camelCase)
-          stopName: schedule?.tenTuyenDuong || "tuyến hiện tại", // 🔥 Thêm stopName cho FCM
+          delay_minutes: Math.round(delayMin), // Alias for FE compatibility
+          delayMinutes: Math.round(delayMin), // Alias for FE compatibility (camelCase)
+          stopName: schedule?.tenTuyenDuong || "tuyến hiện tại",
           timestamp: new Date().toISOString(),
         };
 

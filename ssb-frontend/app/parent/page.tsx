@@ -127,24 +127,25 @@ export default function ParentDashboard() {
 
   // Day 4: show alerts for approach_stop & delay_alert
   useEffect(() => {
-    if (approachStop) {
-      toast({
-        title: "Xe sắp đến điểm dừng",
-        description: `Trip ${selectedTripId ?? ""} sắp đến điểm ${
-          approachStop.stopName || approachStop.stopId || ""
-        }${
-          approachStop.distance
-            ? ` (còn ${Math.round(approachStop.distance)}m)`
-            : ""
-        }`,
-      });
-      setBanner({
-        type: "info",
-        title: "Xe sắp đến điểm dừng",
-        description:
-          approachStop.stopName || `Điểm ${approachStop.stopId || ""}`,
-      });
-    }
+    if (!approachStop) return;
+
+    const stopName = approachStop.stopName || approachStop.stop_name || "điểm dừng";
+    const distance = approachStop.distance_m || approachStop.distance || 0;
+    const etaMinutes = approachStop.eta?.etaMinutes || Math.round(distance / 1000 * 2);
+
+    // Show toast notification
+    toast({
+      title: "🚏 Xe sắp đến điểm dừng",
+      description: `Xe đang cách ${stopName} khoảng ${Math.round(distance)}m (~${etaMinutes} phút)`,
+      duration: 5000,
+    });
+
+    // Update banner
+    setBanner({
+      type: "info",
+      title: `🚏 Xe sắp đến ${stopName}`,
+      description: `Còn khoảng ${Math.round(distance)}m (~${etaMinutes} phút)`,
+    });
   }, [approachStop, toast]);
 
   // M5 FIX: Delay alert - Show persistent banner that updates delay minutes only

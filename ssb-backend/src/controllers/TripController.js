@@ -110,6 +110,51 @@ class TripController {
       const search = q || req.query.search;
       const sortDir = sortOrder.toLowerCase() === "asc" ? "ASC" : "DESC";
 
+      // 🔥 FIX: Tự động tạo ChuyenDi từ LichTrinh nếu chưa có khi driver xem lịch trình hôm nay
+      if (ngayChay && maTaiXe) {
+        try {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const queryDate = new Date(ngayChay);
+          queryDate.setHours(0, 0, 0, 0);
+          
+          // Chỉ tự động tạo nếu ngày query là hôm nay hoặc tương lai
+          if (queryDate >= today) {
+            // Lấy tất cả LichTrinh của driver cho ngày này
+            const schedules = await LichTrinhModel.getByDriver(maTaiXe);
+            const schedulesForDate = schedules.filter(s => {
+              const scheduleDate = new Date(s.ngayChay);
+              scheduleDate.setHours(0, 0, 0, 0);
+              return scheduleDate.getTime() === queryDate.getTime() && s.dangApDung;
+            });
+            
+            // Tạo ChuyenDi cho mỗi LichTrinh chưa có ChuyenDi
+            for (const schedule of schedulesForDate) {
+              const existingTrip = await ChuyenDiModel.getByScheduleAndDate(
+                schedule.maLichTrinh,
+                ngayChay
+              );
+              if (!existingTrip) {
+                try {
+                  const tripId = await ChuyenDiModel.create({
+                    maLichTrinh: schedule.maLichTrinh,
+                    ngayChay,
+                    trangThai: 'chua_khoi_hanh',
+                    ghiChu: null,
+                  });
+                  console.log(`✅ [Auto-create] Tạo ChuyenDi ${tripId} từ LichTrinh ${schedule.maLichTrinh} cho driver ${maTaiXe}, ngayChay: ${ngayChay}`);
+                } catch (createError) {
+                  console.error(`⚠️ [Auto-create] Không thể tạo ChuyenDi từ LichTrinh ${schedule.maLichTrinh}:`, createError.message);
+                }
+              }
+            }
+          }
+        } catch (autoCreateError) {
+          // Log lỗi nhưng không fail request
+          console.error(`⚠️ [Auto-create] Lỗi khi tự động tạo ChuyenDi:`, autoCreateError.message);
+        }
+      }
+
       // Dùng SQL-level filter
       const filters = {
         ngayChay,
@@ -1208,18 +1253,30 @@ class TripController {
       }
 
       // Get route stops
-      const routeStops = await RouteStopModel.getByRoute(schedule.maTuyen);
-      const stop = routeStops.find(
-        (s) => s.thuTu == stopId || s.maDiem == stopId
+      const routeStops = await RouteStopModel.getByRouteId(schedule.maTuyen);
+      
+      // stopId can be sequence number or stop ID (maDiem)
+      // Try to find by sequence first, then by maDiem
+      let stop = routeStops.find(
+        (s) => s.sequence == stopId || s.maDiem == stopId
       );
+      
+      // If stopId is sequence number but not found, try parsing as integer
+      if (!stop && !isNaN(parseInt(stopId))) {
+        stop = routeStops.find(
+          (s) => s.sequence === parseInt(stopId)
+        );
+      }
 
       if (!stop) {
         return response.notFound(res, "Không tìm thấy điểm dừng");
       }
 
-      // 💾 Save arrival time to database (use stop.thuTu as sequence number)
+      // Use sequence number (thuTuDiemDon maps to sequence, not maDiem)
+      const sequence = stop.sequence;
+
+      // 💾 Save arrival time to database
       try {
-        const sequence = stop.thuTu || stop.sequence || stopId;
         await TripStopStatusModel.upsertArrival(id, sequence);
         console.log(
           `✅ [DB] Saved arrival time for trip ${id}, stop sequence ${sequence}`
@@ -1230,10 +1287,10 @@ class TripController {
         // Continue anyway - notification is more important
       }
 
-      // Get students at this stop
+      // Get students at this stop - thuTuDiemDon maps to sequence number
       const students = await TrangThaiHocSinhModel.getByTripId(id);
       const studentsAtThisStop = students.filter(
-        (s) => s.thuTuDiemDon && parseInt(s.thuTuDiemDon) === parseInt(stopId)
+        (s) => s.thuTuDiemDon && parseInt(s.thuTuDiemDon) === parseInt(sequence)
       );
 
       if (studentsAtThisStop.length === 0) {
@@ -1332,6 +1389,91 @@ class TripController {
   }
 
   /**
+   * Lấy danh sách học sinh tại điểm dừng cụ thể
+   * @param {Express.Request} req
+   * @param {Express.Response} res
+   * @param {string} req.params.id - Trip ID
+   * @param {string} req.params.sequence - Stop sequence number
+   */
+  static async getStudentsAtStop(req, res) {
+    try {
+      const { id, sequence } = req.params;
+
+      if (!id || !sequence) {
+        return response.validationError(res, "Trip ID và sequence là bắt buộc", [
+          { field: "id", message: "Trip ID không được để trống" },
+          { field: "sequence", message: "Sequence không được để trống" },
+        ]);
+      }
+
+      // Get trip
+      const trip = await ChuyenDiModel.getById(id);
+      if (!trip) {
+        return response.notFound(res, "Không tìm thấy chuyến đi");
+      }
+
+      // Get schedule info
+      const schedule = await LichTrinhModel.getById(trip.maLichTrinh);
+      if (!schedule) {
+        return response.notFound(res, "Không tìm thấy lịch trình");
+      }
+
+      // Get route stops to verify sequence exists
+      const routeStops = await RouteStopModel.getByRouteId(schedule.maTuyen);
+      const stop = routeStops.find(
+        (s) => s.sequence === parseInt(sequence)
+      );
+
+      if (!stop) {
+        return response.notFound(res, "Không tìm thấy điểm dừng với sequence này");
+      }
+
+      // Get students at this stop - thuTuDiemDon maps to sequence number
+      const students = await TrangThaiHocSinhModel.getByTripId(id);
+      const studentsAtThisStop = students
+        .filter(
+          (s) => s.thuTuDiemDon && parseInt(s.thuTuDiemDon) === parseInt(sequence)
+        )
+        .map((s) => ({
+          maHocSinh: s.maHocSinh,
+          hoTen: s.hoTen,
+          lop: s.lop,
+          anhDaiDien: s.anhDaiDien,
+          trangThai: s.trangThai,
+          thuTuDiemDon: s.thuTuDiemDon,
+          thoiGianThucTe: s.thoiGianThucTe,
+          ghiChu: s.ghiChu,
+        }));
+
+      return response.success(
+        res,
+        {
+          stop: {
+            maDiem: stop.maDiem,
+            tenDiem: stop.tenDiem,
+            sequence: stop.sequence,
+            viDo: stop.viDo,
+            kinhDo: stop.kinhDo,
+            address: stop.address,
+          },
+          students: studentsAtThisStop,
+          studentsCount: studentsAtThisStop.length,
+        },
+        "Danh sách học sinh tại điểm dừng"
+      );
+    } catch (error) {
+      console.error("❌ [TripController] getStudentsAtStop error:", error);
+      return response.error(
+        res,
+        "GET_STUDENTS_AT_STOP_ERROR",
+        "Lỗi khi lấy danh sách học sinh tại điểm dừng",
+        500,
+        error
+      );
+    }
+  }
+
+  /**
    * 📌 API: POST /api/v1/trips/:id/stops/:stopId/leave
    * 👤 Role: taixe (driver marks leaving stop)
    *
@@ -1370,18 +1512,29 @@ class TripController {
       }
 
       // Get route stops
-      const routeStops = await RouteStopModel.getByRoute(schedule.maTuyen);
-      const stop = routeStops.find(
-        (s) => s.thuTu == stopId || s.maDiem == stopId
+      const routeStops = await RouteStopModel.getByRouteId(schedule.maTuyen);
+      
+      // stopId can be sequence number or stop ID (maDiem)
+      let stop = routeStops.find(
+        (s) => s.sequence == stopId || s.maDiem == stopId
       );
+      
+      // If stopId is sequence number but not found, try parsing as integer
+      if (!stop && !isNaN(parseInt(stopId))) {
+        stop = routeStops.find(
+          (s) => s.sequence === parseInt(stopId)
+        );
+      }
 
       if (!stop) {
         return response.notFound(res, "Không tìm thấy điểm dừng");
       }
 
-      // 💾 Save departure time to database (use stop.thuTu as sequence number)
+      // Use sequence number
+      const sequence = stop.sequence;
+
+      // 💾 Save departure time to database
       try {
-        const sequence = stop.thuTu || stop.sequence || stopId;
         await TripStopStatusModel.updateDeparture(id, sequence);
         console.log(
           `✅ [DB] Saved departure time for trip ${id}, stop sequence ${sequence}`
@@ -1392,10 +1545,10 @@ class TripController {
         // Continue anyway - notification is more important
       }
 
-      // Get students at this stop
+      // Get students at this stop - thuTuDiemDon maps to sequence number
       const students = await TrangThaiHocSinhModel.getByTripId(id);
       const studentsAtThisStop = students.filter(
-        (s) => s.thuTuDiemDon && parseInt(s.thuTuDiemDon) === parseInt(stopId)
+        (s) => s.thuTuDiemDon && parseInt(s.thuTuDiemDon) === parseInt(sequence)
       );
 
       if (studentsAtThisStop.length === 0) {
@@ -2330,11 +2483,16 @@ class TripController {
       // Validation trạng thái
       const validStatuses = ["cho_don", "da_don", "da_tra", "vang"];
       if (!validStatuses.includes(trangThai)) {
-        return res.status(400).json({
-          success: false,
-          message: "Trạng thái không hợp lệ",
-          validStatuses,
-        });
+        return response.validationError(
+          res,
+          "Trạng thái không hợp lệ",
+          [
+            {
+              field: "trangThai",
+              message: `Trạng thái phải là một trong: ${validStatuses.join(", ")}`,
+            },
+          ]
+        );
       }
 
       // Kiểm tra trạng thái học sinh có tồn tại không
@@ -2343,10 +2501,31 @@ class TripController {
         studentId
       );
       if (!existingStatus) {
-        return res.status(404).json({
-          success: false,
-          message: "Không tìm thấy học sinh trong chuyến đi này",
-        });
+        return response.notFound(
+          res,
+          "Không tìm thấy học sinh trong chuyến đi này"
+        );
+      }
+
+      // Validate status transitions (business logic)
+      const currentStatus = existingStatus.trangThai;
+      const allowedTransitions = {
+        cho_don: ["da_don", "vang"], // Chờ đón → Đã đón hoặc Vắng
+        da_don: ["da_tra"], // Đã đón → Đã trả
+        da_tra: [], // Đã trả → Không thể chuyển
+        vang: [], // Vắng → Không thể chuyển
+      };
+
+      if (
+        currentStatus &&
+        !allowedTransitions[currentStatus]?.includes(trangThai)
+      ) {
+        return response.error(
+          res,
+          "INVALID_STATUS_TRANSITION",
+          `Không thể chuyển từ trạng thái "${currentStatus}" sang "${trangThai}"`,
+          400
+        );
       }
 
       // Cập nhật trạng thái - use old signature with maChuyen, maHocSinh
@@ -2362,10 +2541,12 @@ class TripController {
       );
 
       if (!isUpdated) {
-        return res.status(400).json({
-          success: false,
-          message: "Không thể cập nhật trạng thái học sinh",
-        });
+        return response.error(
+          res,
+          "UPDATE_FAILED",
+          "Không thể cập nhật trạng thái học sinh",
+          400
+        );
       }
 
       const updatedStatus = await TrangThaiHocSinhModel.getById(id, studentId);

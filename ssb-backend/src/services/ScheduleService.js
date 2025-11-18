@@ -91,7 +91,14 @@ class ScheduleService {
     try {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      const scheduleDate = new Date(ngayChay);
+      
+      // Parse ngayChay (có thể là string "YYYY-MM-DD" hoặc Date object)
+      let scheduleDate;
+      if (typeof ngayChay === 'string') {
+        scheduleDate = new Date(ngayChay);
+      } else {
+        scheduleDate = new Date(ngayChay);
+      }
       scheduleDate.setHours(0, 0, 0, 0);
       
       // Chỉ tạo ChuyenDi nếu ngayChay >= hôm nay
@@ -99,18 +106,28 @@ class ScheduleService {
         // Kiểm tra xem đã có ChuyenDi cho lịch trình này chưa
         const existingTrip = await ChuyenDiModel.getByScheduleAndDate(id, ngayChay);
         if (!existingTrip) {
-          await ChuyenDiModel.create({
+          const tripId = await ChuyenDiModel.create({
             maLichTrinh: id,
             ngayChay,
             trangThai: 'chua_khoi_hanh',
             ghiChu: null,
           });
-          console.log(`✅ Tự động tạo ChuyenDi cho LichTrinh ${id}, ngayChay: ${ngayChay}`);
+          console.log(`✅ Tự động tạo ChuyenDi ${tripId} cho LichTrinh ${id}, ngayChay: ${ngayChay}`);
+        } else {
+          console.log(`ℹ️ ChuyenDi đã tồn tại cho LichTrinh ${id}, ngayChay: ${ngayChay}`);
         }
+      } else {
+        console.log(`ℹ️ Không tạo ChuyenDi cho LichTrinh ${id} vì ngayChay (${ngayChay}) < hôm nay`);
       }
     } catch (tripError) {
-      // Log lỗi nhưng không throw - việc tạo schedule vẫn thành công
+      // Log lỗi chi tiết nhưng không throw - việc tạo schedule vẫn thành công
       console.error(`⚠️ Không thể tự động tạo ChuyenDi cho LichTrinh ${id}:`, tripError);
+      console.error(`⚠️ Error details:`, {
+        message: tripError.message,
+        stack: tripError.stack,
+        ngayChay: ngayChay,
+        scheduleId: id
+      });
     }
     
     return await LichTrinhModel.getById(id);

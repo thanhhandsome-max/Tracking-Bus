@@ -63,8 +63,8 @@ const CONFIG = {
   tripId: parseInt(args.tripId) || 16, // Trip ID to simulate
   speed: parseFloat(args.speed) || 40, // km/h (average city speed)
   interval: parseFloat(args.interval) || 3, // seconds between GPS updates
-  username: args.username || "driver@ssb.vn", // Driver username
-  password: args.password || "driver123", // Driver password
+  username: args.username || process.env.DRIVER_EMAIL || "driver@ssb.vn", // Driver username
+  password: args.password || process.env.DRIVER_PASSWORD || "driver123", // Driver password
 };
 
 console.log("🚌 GPS SIMULATOR CONFIGURATION:");
@@ -72,6 +72,10 @@ console.log(`   Trip ID: ${CONFIG.tripId}`);
 console.log(`   Speed: ${CONFIG.speed} km/h`);
 console.log(`   Update Interval: ${CONFIG.interval}s`);
 console.log(`   Driver: ${CONFIG.username}`);
+console.log(`   Password: ${CONFIG.password ? "***" : "NOT SET"}`);
+console.log("");
+console.log("💡 Tip: Bạn có thể override credentials:");
+console.log(`   npm run ws:demo -- --tripId=24 --username=your@email.com --password=yourpass`);
 console.log("");
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -91,7 +95,15 @@ async function login() {
   });
 
   if (!response.ok) {
-    const error = await response.json();
+    const error = await response.json().catch(() => ({ message: response.statusText }));
+    console.error(`❌ Login failed with status ${response.status}`);
+    console.error(`   Email: ${CONFIG.username}`);
+    console.error(`   Error: ${error.message || response.statusText}`);
+    console.error("");
+    console.error("💡 Có thể thử:");
+    console.error(`   1. Kiểm tra email/password trong database`);
+    console.error(`   2. Override credentials: --username=your@email.com --password=yourpass`);
+    console.error(`   3. Hoặc set env vars: DRIVER_EMAIL=your@email.com DRIVER_PASSWORD=yourpass`);
     throw new Error(`Login failed: ${error.message || response.statusText}`);
   }
 
