@@ -12,6 +12,7 @@ CREATE DATABASE IF NOT EXISTS school_bus_system;
 USE school_bus_system;
 
 -- Drop existing tables if they exist (for clean initialization)
+DROP TABLE IF EXISTS student_stop_suggestions;
 DROP TABLE IF EXISTS trip_stop_status;
 DROP TABLE IF EXISTS schedule_student_stops;
 DROP TABLE IF EXISTS TrangThaiHocSinh;
@@ -78,6 +79,8 @@ CREATE TABLE HocSinh (
     lop VARCHAR(50),
     maPhuHuynh INT,
     diaChi TEXT,
+    viDo DECIMAL(9,6) NULL COMMENT 'Latitude (vĩ độ) - được geocode từ diaChi',
+    kinhDo DECIMAL(9,6) NULL COMMENT 'Longitude (kinh độ) - được geocode từ diaChi',
     anhDaiDien VARCHAR(255),
     ngayTao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     ngayCapNhat TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -85,7 +88,8 @@ CREATE TABLE HocSinh (
     FOREIGN KEY (maPhuHuynh) REFERENCES NguoiDung(maNguoiDung) ON DELETE SET NULL,
     INDEX idx_maPhuHuynh (maPhuHuynh),
     INDEX idx_lop (lop),
-    INDEX idx_trangThai (trangThai)
+    INDEX idx_trangThai (trangThai),
+    INDEX idx_coords (viDo, kinhDo)
 )ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Create TuyenDuong table (Routes)
@@ -334,6 +338,42 @@ CREATE TABLE IF NOT EXISTS trip_stop_status (
 
 -- Add comments
 ALTER TABLE trip_stop_status COMMENT = 'Lưu trạng thái thời gian đến/rời từng điểm dừng trong chuyến đi';
+
+-- ===========================================================================
+-- Bảng lưu mapping gợi ý học sinh - điểm dừng cho route (student_stop_suggestions)
+-- ===========================================================================
+CREATE TABLE IF NOT EXISTS student_stop_suggestions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    maTuyen INT NOT NULL,
+    maDiemDung INT NOT NULL,
+    maHocSinh INT NOT NULL,
+    
+    ngayTao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    ngayCapNhat TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    -- Mỗi học sinh chỉ có 1 điểm dừng gợi ý trong 1 route
+    UNIQUE KEY uniq_route_student (maTuyen, maHocSinh),
+    
+    -- Foreign keys
+    CONSTRAINT fk_student_stop_suggestions_route
+        FOREIGN KEY (maTuyen) REFERENCES TuyenDuong(maTuyen) 
+        ON DELETE CASCADE,
+    CONSTRAINT fk_student_stop_suggestions_stop
+        FOREIGN KEY (maDiemDung) REFERENCES DiemDung(maDiem) 
+        ON DELETE CASCADE,
+    CONSTRAINT fk_student_stop_suggestions_student
+        FOREIGN KEY (maHocSinh) REFERENCES HocSinh(maHocSinh) 
+        ON DELETE CASCADE,
+    
+    -- Indexes
+    INDEX idx_student_stop_suggestions_route (maTuyen),
+    INDEX idx_student_stop_suggestions_stop (maDiemDung),
+    INDEX idx_student_stop_suggestions_student (maHocSinh),
+    INDEX idx_student_stop_suggestions_route_stop (maTuyen, maDiemDung)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Add comment
+ALTER TABLE student_stop_suggestions COMMENT = 'Lưu mapping gợi ý học sinh - điểm dừng cho route (tự động tạo khi tạo route auto)';
 
 -- Display completion message
 SELECT 'Database initialization completed successfully!' as message;

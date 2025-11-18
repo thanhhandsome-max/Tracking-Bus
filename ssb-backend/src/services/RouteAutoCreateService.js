@@ -220,13 +220,56 @@ class RouteAutoCreateService {
    * @returns {Promise<Array>} Danh sách học sinh trong hành lang
    */
   static async scanStudentsInCorridor(startPoint, polylinePoints, startRadiusKm, corridorRadiusKm) {
-    // Lấy tất cả học sinh có tọa độ
+    // Lấy tất cả học sinh
     let allStudents = await HocSinhModel.getAll();
     
-    // Filter học sinh có tọa độ và đang hoạt động
-    const studentsWithCoords = allStudents.filter(
-      (s) => s.viDo && s.kinhDo && !isNaN(s.viDo) && !isNaN(s.kinhDo) && s.trangThai
+    // Filter học sinh đang hoạt động
+    const activeStudents = allStudents.filter(s => s.trangThai);
+    
+    // Tách học sinh có tọa độ và chưa có tọa độ
+    const studentsWithCoords = activeStudents.filter(
+      (s) => s.viDo && s.kinhDo && !isNaN(s.viDo) && !isNaN(s.kinhDo)
     );
+    
+    const studentsWithoutCoords = activeStudents.filter(
+      (s) => (!s.viDo || !s.kinhDo || isNaN(s.viDo) || isNaN(s.kinhDo)) && s.diaChi && s.diaChi.trim()
+    );
+
+    console.log(`[RouteAutoCreate] Found ${studentsWithCoords.length} students with coordinates`);
+    
+    // 🔥 Auto-geocode học sinh chưa có tọa độ (nếu có địa chỉ)
+    if (studentsWithoutCoords.length > 0) {
+      console.log(`[RouteAutoCreate] Auto-geocoding ${studentsWithoutCoords.length} students without coordinates...`);
+      try {
+        const enriched = await StopSuggestionService.enrichStudentCoordinates(studentsWithoutCoords, 2);
+        
+        // Update vào database và thêm vào danh sách có tọa độ
+        const updatePromises = enriched
+          .filter(s => s.viDo && s.kinhDo && !s.missingCoords)
+          .map(async (student) => {
+            try {
+              await HocSinhModel.update(student.maHocSinh, {
+                viDo: student.viDo,
+                kinhDo: student.kinhDo,
+              });
+              // Thêm vào danh sách có tọa độ
+              studentsWithCoords.push(student);
+              return true;
+            } catch (updateError) {
+              console.warn(`[RouteAutoCreate] Failed to update coordinates for student ${student.maHocSinh}:`, updateError.message);
+              return false;
+            }
+          });
+        
+        const updateResults = await Promise.all(updatePromises);
+        const successCount = updateResults.filter(r => r === true).length;
+        
+        console.log(`[RouteAutoCreate] ✅ Geocoded and updated ${successCount} students`);
+      } catch (geocodeError) {
+        console.warn(`[RouteAutoCreate] ⚠️ Failed to geocode some students:`, geocodeError.message);
+        // Continue với học sinh đã có tọa độ
+      }
+    }
 
     console.log(`[RouteAutoCreate] Scanning ${studentsWithCoords.length} students with coordinates...`);
 

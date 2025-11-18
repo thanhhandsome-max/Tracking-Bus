@@ -256,6 +256,31 @@ class StudentController {
       };
 
       const studentId = await HocSinhModel.create(studentData);
+      
+      // 🔥 Auto-geocode địa chỉ nếu có và chưa có tọa độ
+      if (diaChi && diaChi.trim()) {
+        try {
+          const StopSuggestionService = (await import("../services/StopSuggestionService.js")).default;
+          const enriched = await StopSuggestionService.enrichStudentCoordinates(
+            [{ maHocSinh: studentId, diaChi: diaChi.trim() }],
+            2 // Retry 2 lần
+          );
+          
+          if (enriched[0]?.viDo && enriched[0]?.kinhDo && !enriched[0]?.missingCoords) {
+            await HocSinhModel.update(studentId, {
+              viDo: enriched[0].viDo,
+              kinhDo: enriched[0].kinhDo,
+            });
+            console.log(`[StudentController] ✅ Auto-geocoded student ${studentId}: (${enriched[0].viDo}, ${enriched[0].kinhDo})`);
+          } else {
+            console.warn(`[StudentController] ⚠️ Failed to auto-geocode student ${studentId}: ${diaChi}`);
+          }
+        } catch (geocodeError) {
+          console.warn(`[StudentController] ⚠️ Auto-geocode failed for student ${studentId}:`, geocodeError.message);
+          // Không throw error - học sinh vẫn được tạo thành công
+        }
+      }
+      
       const newStudent = await HocSinhModel.getById(studentId);
 
       res.status(201).json({
@@ -430,7 +455,40 @@ class StudentController {
         });
       }
 
+      // 🔥 Auto-geocode địa chỉ nếu có thay đổi và chưa có tọa độ
       const updatedStudent = await HocSinhModel.getById(id);
+      const shouldGeocode = diaChi !== undefined && 
+                            diaChi && 
+                            diaChi.trim() && 
+                            (!updatedStudent.viDo || !updatedStudent.kinhDo);
+      
+      if (shouldGeocode) {
+        try {
+          const StopSuggestionService = (await import("../services/StopSuggestionService.js")).default;
+          const enriched = await StopSuggestionService.enrichStudentCoordinates(
+            [{ maHocSinh: id, diaChi: diaChi.trim() }],
+            2 // Retry 2 lần
+          );
+          
+          if (enriched[0]?.viDo && enriched[0]?.kinhDo && !enriched[0]?.missingCoords) {
+            await HocSinhModel.update(id, {
+              viDo: enriched[0].viDo,
+              kinhDo: enriched[0].kinhDo,
+            });
+            console.log(`[StudentController] ✅ Auto-geocoded student ${id}: (${enriched[0].viDo}, ${enriched[0].kinhDo})`);
+            // Reload để có tọa độ mới
+            const reloaded = await HocSinhModel.getById(id);
+            if (reloaded) {
+              Object.assign(updatedStudent, reloaded);
+            }
+          } else {
+            console.warn(`[StudentController] ⚠️ Failed to auto-geocode student ${id}: ${diaChi}`);
+          }
+        } catch (geocodeError) {
+          console.warn(`[StudentController] ⚠️ Auto-geocode failed for student ${id}:`, geocodeError.message);
+          // Không throw error - học sinh vẫn được cập nhật thành công
+        }
+      }
 
       res.status(200).json({
         success: true,
@@ -760,6 +818,91 @@ class StudentController {
       res.status(500).json({
         success: false,
         message: "Lỗi server khi lấy thống kê học sinh",
+        error: error.message,
+      });
+    }
+  }
+
+  // Geocode lại học sinh (lấy tọa độ từ địa chỉ)
+  static async geocodeStudents(req, res) {
+    try {
+      const { studentIds } = req.body; // Optional: array of student IDs, nếu không có thì geocode tất cả chưa có tọa độ
+
+      const StopSuggestionService = (await import("../services/StopSuggestionService.js")).default;
+      
+      let students;
+      if (studentIds && Array.isArray(studentIds) && studentIds.length > 0) {
+        // Geocode các học sinh cụ thể
+        students = await Promise.all(
+          studentIds.map(id => HocSinhModel.getById(id))
+        );
+        students = students.filter(s => s && s.trangThai);
+      } else {
+        // Geocode tất cả học sinh chưa có tọa độ
+        students = await HocSinhModel.getAll();
+      }
+      
+      // Filter học sinh cần geocode
+      const toGeocode = students.filter(
+        s => (!s.viDo || !s.kinhDo || isNaN(s.viDo) || isNaN(s.kinhDo)) 
+          && s.diaChi 
+          && s.diaChi.trim()
+          && s.trangThai
+      );
+      
+      if (toGeocode.length === 0) {
+        return res.status(200).json({
+          success: true,
+          message: "Không có học sinh nào cần geocode",
+          data: {
+            geocoded: 0,
+            failed: 0,
+            total: students.length,
+          },
+        });
+      }
+      
+      console.log(`[StudentController] Geocoding ${toGeocode.length} students...`);
+      
+      // Geocode với retry
+      const enriched = await StopSuggestionService.enrichStudentCoordinates(toGeocode, 2);
+      
+      // Update database
+      let successCount = 0;
+      let failCount = 0;
+      
+      for (const student of enriched) {
+        if (student.viDo && student.kinhDo && !student.missingCoords && 
+            !isNaN(student.viDo) && !isNaN(student.kinhDo)) {
+          try {
+            await HocSinhModel.update(student.maHocSinh, {
+              viDo: student.viDo,
+              kinhDo: student.kinhDo,
+            });
+            successCount++;
+          } catch (updateError) {
+            console.error(`[StudentController] Failed to update student ${student.maHocSinh}:`, updateError.message);
+            failCount++;
+          }
+        } else {
+          failCount++;
+        }
+      }
+      
+      return res.status(200).json({
+        success: true,
+        message: `Đã geocode ${successCount} học sinh thành công`,
+        data: {
+          geocoded: successCount,
+          failed: failCount,
+          total: toGeocode.length,
+        },
+      });
+    } catch (error) {
+      console.error("Error in StudentController.geocodeStudents:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Lỗi server khi geocode học sinh",
         error: error.message,
       });
     }

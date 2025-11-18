@@ -264,6 +264,14 @@ const HocSinhModel = {
       fields.push("anhDaiDien = ?");
       values.push(data.anhDaiDien);
     }
+    if (data.viDo !== undefined) {
+      fields.push("viDo = ?");
+      values.push(data.viDo);
+    }
+    if (data.kinhDo !== undefined) {
+      fields.push("kinhDo = ?");
+      values.push(data.kinhDo);
+    }
     if (data.trangThai !== undefined) {
       fields.push("trangThai = ?");
       values.push(data.trangThai);

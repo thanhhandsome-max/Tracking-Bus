@@ -87,4 +87,12 @@ router.delete(
   StudentController.delete
 );
 
+// POST /api/v1/students/geocode - Geocode lại học sinh (lấy tọa độ từ địa chỉ)
+router.post(
+  "/geocode",
+  AuthMiddleware.authenticate,
+  AuthMiddleware.authorize("quan_tri"),
+  StudentController.geocodeStudents
+);
+
 export default router;
