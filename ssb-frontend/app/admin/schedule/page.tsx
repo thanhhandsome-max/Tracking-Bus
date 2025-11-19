@@ -38,8 +38,13 @@ import {
   Route as RouteIcon,
   Filter,
   Download,
-  Copy
+  Copy,
+  Calendar as CalendarIcon2
 } from "lucide-react"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { format } from "date-fns"
+import { vi } from "date-fns/locale"
+import { cn } from "@/lib/utils"
 import { ScheduleForm } from "@/components/admin/schedule-form"
 import { apiClient } from "@/lib/api"
 import { useToast } from "@/hooks/use-toast"
@@ -76,10 +81,18 @@ export default function SchedulePage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [autoAssignLoading, setAutoAssignLoading] = useState(false)
+  const [autoAssignProgress, setAutoAssignProgress] = useState<{
+    current: number
+    total: number
+    currentDate?: string
+  } | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [filterTripType, setFilterTripType] = useState<string>("all")
   const [filterStatus, setFilterStatus] = useState<string>("all")
   const [isMobile, setIsMobile] = useState(false)
+  // 🔥 Auto-assign improvements: Thêm state cho loại phân công
+  const [autoAssignType, setAutoAssignType] = useState<'day' | 'week' | 'month'>('day')
+  const [autoAssignStartDate, setAutoAssignStartDate] = useState<Date | undefined>(new Date())
   const { toast } = useToast()
 
   useEffect(() => {
@@ -135,11 +148,55 @@ export default function SchedulePage() {
     fetchAllSchedules()
   }, [])
 
+  // 🔥 Tính toán danh sách ngày cần phân công dựa trên loại
+  function getDatesToAssign(type: 'day' | 'week' | 'month', startDate: Date): Date[] {
+    const dates: Date[] = []
+    const current = new Date(startDate)
+    current.setHours(0, 0, 0, 0)
+
+    if (type === 'day') {
+      // Chỉ phân công cho ngày được chọn
+      dates.push(new Date(current))
+    } else if (type === 'week') {
+      // Phân công từ ngày hiện tại đến hết tuần (thứ 7)
+      // Lưu ý: getDay() trả về 0 = Chủ nhật, 1 = Thứ 2, ..., 6 = Thứ 7
+      const dayOfWeek = current.getDay() // 0 = Chủ nhật, 6 = Thứ 7
+      let daysUntilSaturday: number
+      
+      if (dayOfWeek === 0) {
+        // Nếu là Chủ nhật, tính đến thứ 7 tuần sau (6 ngày)
+        daysUntilSaturday = 6
+      } else {
+        // Nếu không phải Chủ nhật, tính đến thứ 7 tuần này
+        daysUntilSaturday = 6 - dayOfWeek
+      }
+      
+      for (let i = 0; i <= daysUntilSaturday; i++) {
+        const date = new Date(current)
+        date.setDate(current.getDate() + i)
+        dates.push(date)
+      }
+    } else if (type === 'month') {
+      // Phân công từ ngày hiện tại đến hết tháng (ngày 31 hoặc ngày cuối tháng)
+      const year = current.getFullYear()
+      const month = current.getMonth()
+      const lastDayOfMonth = new Date(year, month + 1, 0).getDate() // Ngày cuối cùng của tháng
+      const currentDay = current.getDate()
+      
+      for (let day = currentDay; day <= lastDayOfMonth; day++) {
+        const date = new Date(year, month, day)
+        dates.push(date)
+      }
+    }
+
+    return dates
+  }
+
   async function handleAutoAssign() {
-    if (!date) {
+    if (!autoAssignStartDate) {
       toast({
         title: "Lỗi",
-        description: "Vui lòng chọn ngày",
+        description: "Vui lòng chọn ngày bắt đầu",
         variant: "destructive",
       })
       return
@@ -171,83 +228,313 @@ export default function SchedulePage() {
         return
       }
 
-      const selectedDateStr = formatDate(date)
+      // Tính toán danh sách ngày cần phân công
+      const datesToAssign = getDatesToAssign(autoAssignType, autoAssignStartDate)
       
-      // Get already assigned resources for the selected date
-      const todaySchedules = allSchedules.filter(s => {
-        const scheduleDate = s.date || s.raw?.ngayChay
-        return scheduleDate === selectedDateStr
-      })
-      const assignedBusIds = new Set(todaySchedules.map(s => s.raw?.maXe).filter(Boolean))
-      const assignedDriverIds = new Set(todaySchedules.map(s => s.raw?.maTaiXe).filter(Boolean))
-
-      // Find available resources
-      const availableBuses = activeBuses.filter((b: any) => !assignedBusIds.has(b.maXe))
-      const availableDrivers = activeDrivers.filter((d: any) => !assignedDriverIds.has(d.maTaiXe))
-
-      if (availableBuses.length === 0 || availableDrivers.length === 0) {
+      if (datesToAssign.length === 0) {
         toast({
-          title: "Không thể phân công",
-          description: "Tất cả xe hoặc tài xế đã được phân công trong ngày này",
+          title: "Lỗi",
+          description: "Không có ngày nào để phân công",
           variant: "destructive",
         })
         return
       }
 
-      // Auto-assign: create schedule for first available route, bus, driver
+      // Tính tổng số chuyến sẽ tạo (để hiển thị progress)
+      const totalSchedulesToCreate = datesToAssign.length * routes.length * 2 // mỗi ngày × mỗi route × 2 chuyến
+      setAutoAssignProgress({
+        current: 0,
+        total: totalSchedulesToCreate,
+      })
+
+      // Lấy tất cả schedules đã có để check conflict
+      const allSchedulesByDate = new Map<string, Set<number>>() // date -> Set<maXe>
+      const allSchedulesByDriverDate = new Map<string, Set<number>>() // date -> Set<maTaiXe>
+      
+      allSchedules.forEach(s => {
+        const scheduleDate = s.date || s.raw?.ngayChay
+        if (scheduleDate) {
+          if (!allSchedulesByDate.has(scheduleDate)) {
+            allSchedulesByDate.set(scheduleDate, new Set())
+            allSchedulesByDriverDate.set(scheduleDate, new Set())
+          }
+          if (s.raw?.maXe) allSchedulesByDate.get(scheduleDate)!.add(s.raw.maXe)
+          if (s.raw?.maTaiXe) allSchedulesByDriverDate.get(scheduleDate)!.add(s.raw.maTaiXe)
+        }
+      })
+
       const tripTypes = ['don_sang', 'tra_chieu']
       const defaultTimes = ['06:30', '16:30'] // Default departure times
       
-      let createdCount = 0
-      const maxAssignments = Math.min(availableBuses.length, availableDrivers.length, routes.length * 2)
+      let totalCreated = 0
+      let totalFailed = 0
+      const errors: string[] = []
 
-      for (let i = 0; i < maxAssignments && createdCount < 2; i++) {
-        const route = routes[i % routes.length]
-        const bus = availableBuses[createdCount % availableBuses.length]
-        const driver = availableDrivers[createdCount % availableDrivers.length]
-        const tripType = tripTypes[createdCount % tripTypes.length]
-        const startTime = defaultTimes[createdCount % defaultTimes.length]
+      // Phân công cho từng ngày
+      for (let dateIdx = 0; dateIdx < datesToAssign.length; dateIdx++) {
+        const assignDate = datesToAssign[dateIdx]
+        const dateStr = formatDate(assignDate)
+        
+        // Cập nhật progress
+        setAutoAssignProgress({
+          current: totalCreated,
+          total: totalSchedulesToCreate,
+          currentDate: dateStr,
+        })
+        
+        // Lấy resources đã được phân công trong ngày này (từ DB)
+        const assignedBusIds = new Set(allSchedulesByDate.get(dateStr) || [])
+        const assignedDriverIds = new Set(allSchedulesByDriverDate.get(dateStr) || [])
 
-        try {
-          const payload = {
-            maTuyen: route.maTuyen || route.id,
-            maXe: bus.maXe || bus.id,
-            maTaiXe: driver.maTaiXe || driver.maNguoiDung || driver.id,
-            loaiChuyen: tripType,
-            gioKhoiHanh: startTime,
-            ngayChay: selectedDateStr,
-            dangApDung: true,
+        // Tìm available resources cho ngày này (chưa được phân công)
+        let availableBuses = activeBuses.filter((b: any) => !assignedBusIds.has(b.maXe))
+        let availableDrivers = activeDrivers.filter((d: any) => !assignedDriverIds.has(d.maTaiXe))
+
+        if (availableBuses.length === 0 || availableDrivers.length === 0) {
+          console.log(`[AutoAssign] Skip date ${dateStr}: No available resources (buses: ${availableBuses.length}, drivers: ${availableDrivers.length})`)
+          continue
+        }
+
+        // Phân công tất cả routes với cả 2 loại chuyến (don_sang + tra_chieu)
+        // Logic: Mỗi route cần 2 chuyến (đón sáng + trả chiều) cho mỗi ngày
+        let routeIndex = 0
+        for (const route of routes) {
+          for (let tripTypeIdx = 0; tripTypeIdx < tripTypes.length; tripTypeIdx++) {
+            const tripType = tripTypes[tripTypeIdx]
+            const startTime = defaultTimes[tripTypeIdx]
+
+            // Kiểm tra nếu không còn available resources
+            if (availableBuses.length === 0 || availableDrivers.length === 0) {
+              console.log(`[AutoAssign] Skip route ${route.maTuyen || route.id}, tripType ${tripType}: No available resources`)
+              break
+            }
+
+            // Tìm bus và driver available (round-robin để phân bổ đều)
+            // Sử dụng routeIndex và tripTypeIdx để đảm bảo phân bổ đều
+            const resourceIndex = (routeIndex * 2 + tripTypeIdx) % Math.min(availableBuses.length, availableDrivers.length)
+            const bus = availableBuses[resourceIndex % availableBuses.length]
+            const driver = availableDrivers[resourceIndex % availableDrivers.length]
+
+            try {
+              const payload = {
+                maTuyen: route.maTuyen || route.id,
+                maXe: bus.maXe || bus.id,
+                maTaiXe: driver.maTaiXe || driver.maNguoiDung || driver.id,
+                loaiChuyen: tripType,
+                gioKhoiHanh: startTime,
+                ngayChay: dateStr,
+                dangApDung: true,
+              }
+
+              await apiClient.createSchedule(payload)
+              totalCreated++
+              
+              // Cập nhật progress
+              setAutoAssignProgress({
+                current: totalCreated,
+                total: totalSchedulesToCreate,
+                currentDate: dateStr,
+              })
+              
+              // Cập nhật assigned sets để tránh conflict trong cùng ngày
+              assignedBusIds.add(bus.maXe || bus.id)
+              assignedDriverIds.add(driver.maTaiXe || driver.maNguoiDung || driver.id)
+              
+              // 🔥 Throttle: Thêm delay giữa các requests để tránh rate limiting
+              // Delay tăng dần: 150ms mỗi request, 300ms mỗi 5 requests, 500ms mỗi 10 requests
+              if (totalCreated % 10 === 0) {
+                // Delay lâu hơn mỗi 10 requests
+                await new Promise(resolve => setTimeout(resolve, 500))
+              } else if (totalCreated % 5 === 0) {
+                // Delay vừa mỗi 5 requests
+                await new Promise(resolve => setTimeout(resolve, 300))
+              } else {
+                // Delay nhỏ mỗi request
+                await new Promise(resolve => setTimeout(resolve, 150))
+              }
+              
+            } catch (err: any) {
+              totalFailed++
+              
+              // 🔥 Cải thiện error handling: Extract error message từ nhiều nguồn
+              let errorMessage = 'Lỗi không xác định'
+              
+              // Thử extract từ nhiều nguồn khác nhau
+              if (err?.message) {
+                errorMessage = err.message
+              } else if (err?.response?.data?.message) {
+                errorMessage = err.response.data.message
+              } else if (err?.response?.data?.error?.message) {
+                errorMessage = err.response.data.error.message
+              } else if (err?.response?.data?.error) {
+                errorMessage = typeof err.response.data.error === 'string' 
+                  ? err.response.data.error 
+                  : JSON.stringify(err.response.data.error)
+              } else if (err?.response?.data?.errorCode) {
+                errorMessage = `Error code: ${err.response.data.errorCode}`
+              } else if (err?.code) {
+                errorMessage = `Error code: ${err.code}`
+              } else if (typeof err === 'string') {
+                errorMessage = err
+              } else if (err?.error) {
+                errorMessage = typeof err.error === 'string' ? err.error : JSON.stringify(err.error)
+              } else if (err?.status) {
+                errorMessage = `HTTP ${err.status}: ${err.statusText || 'Request failed'}`
+              }
+              
+              // Log toàn bộ error object để debug (chỉ log một lần để tránh spam)
+              if (totalFailed === 1) {
+                // Tạo một object để log (vì Error objects không stringify tốt)
+                const errorDetails: any = {
+                  message: err?.message,
+                  name: err?.name,
+                  stack: err?.stack,
+                  status: err?.status,
+                  code: err?.code,
+                  statusText: err?.statusText,
+                  response: err?.response ? {
+                    status: err.response.status,
+                    statusText: err.response.statusText,
+                    data: err.response.data,
+                  } : undefined,
+                  // Thử stringify với replacer function
+                  stringified: (() => {
+                    try {
+                      return JSON.stringify(err, (key, value) => {
+                        // Skip circular references và functions
+                        if (typeof value === 'function') return '[Function]'
+                        if (value instanceof Error) {
+                          return {
+                            name: value.name,
+                            message: value.message,
+                            stack: value.stack,
+                          }
+                        }
+                        return value
+                      }, 2)
+                    } catch (e) {
+                      return `[Cannot stringify: ${e}]`
+                    }
+                  })(),
+                }
+                console.error('[AutoAssign] First error details (full error object):', errorDetails)
+              }
+              
+              const errorMsg = `Ngày ${dateStr}, Tuyến ${route.tenTuyen || route.maTuyen}, ${tripType === 'don_sang' ? 'Đón sáng' : 'Trả chiều'}: ${errorMessage}`
+              errors.push(errorMsg)
+              
+              console.error(`[AutoAssign] Failed to create schedule (${totalFailed}/${totalCreated + totalFailed}):`, {
+                errorMessage,
+                status: err?.status,
+                code: err?.code,
+                dateStr,
+                route: route.tenTuyen || route.maTuyen,
+                tripType,
+                maTuyen: route.maTuyen || route.id,
+                maXe: bus.maXe || bus.id,
+                maTaiXe: driver.maTaiXe || driver.maNguoiDung || driver.id,
+                responseData: err?.response?.data,
+              })
+              
+              // Nếu lỗi do rate limiting, thêm delay lâu hơn trước khi tiếp tục
+              const isRateLimit = errorMessage.includes('Too many requests') || 
+                                  errorMessage.includes('rate limit') || 
+                                  err?.status === 429 ||
+                                  err?.code === 'RATE_LIMIT_EXCEEDED'
+              
+              if (isRateLimit) {
+                const waitTime = 3000 + (totalFailed * 1000) // Exponential backoff: 3s, 4s, 5s...
+                console.warn(`[AutoAssign] Rate limit detected, waiting ${waitTime}ms...`)
+                await new Promise(resolve => setTimeout(resolve, waitTime))
+              }
+            }
           }
-
-          await apiClient.createSchedule(payload)
-          createdCount++
-        } catch (err: any) {
-          console.error('Failed to create schedule:', err)
+          routeIndex++
         }
       }
 
-      if (createdCount > 0) {
+      // Hiển thị kết quả
+      if (totalCreated > 0) {
+        const typeLabel = autoAssignType === 'day' ? 'ngày' : autoAssignType === 'week' ? 'tuần' : 'tháng'
+        const description = totalFailed > 0 && errors.length > 0
+          ? `Đã tự động phân công ${totalCreated} lịch trình cho ${typeLabel} (${datesToAssign.length} ngày). ${totalFailed} lỗi xảy ra. Xem console để biết chi tiết.`
+          : `Đã tự động phân công ${totalCreated} lịch trình cho ${typeLabel} (${datesToAssign.length} ngày).`
+        
         toast({
-          title: "Thành công",
-          description: `Đã tự động phân công ${createdCount} lịch trình`,
+          title: totalFailed > 0 ? "Thành công một phần" : "Thành công",
+          description,
+          duration: totalFailed > 0 ? 7000 : 5000,
+          variant: totalFailed > 0 ? "default" : "default",
         })
+        
+        if (totalFailed > 0 && errors.length > 0) {
+          console.warn(`[AutoAssign] ${totalFailed} errors occurred:`, errors)
+          // Log từng error để dễ debug
+          errors.slice(0, 10).forEach((err, idx) => {
+            console.warn(`[AutoAssign] Error ${idx + 1}:`, err)
+          })
+          if (errors.length > 10) {
+            console.warn(`[AutoAssign] ... và ${errors.length - 10} lỗi khác`)
+          }
+        }
+        
         fetchAllSchedules()
       } else {
+        const description = totalFailed > 0 && errors.length > 0
+          ? `Không thể tạo lịch trình tự động. ${totalFailed} lỗi xảy ra. Lỗi đầu tiên: ${errors[0]}. Xem console để biết chi tiết.`
+          : `Không thể tạo lịch trình tự động. Có thể tất cả resources đã được phân công.`
+        
         toast({
           title: "Không thành công",
-          description: "Không thể tạo lịch trình tự động",
+          description,
           variant: "destructive",
+          duration: 7000,
         })
+        
+        if (errors.length > 0) {
+          console.error(`[AutoAssign] All ${errors.length} errors:`, errors)
+        }
       }
     } catch (err: any) {
-      console.error('Auto assign error:', err)
+      // Extract error message từ nhiều nguồn (giống như trong try-catch của từng request)
+      let errorMessage = 'Không thể phân công tự động'
+      
+      if (err?.message) {
+        errorMessage = err.message
+      } else if (err?.response?.data?.message) {
+        errorMessage = err.response.data.message
+      } else if (err?.response?.data?.error?.message) {
+        errorMessage = err.response.data.error.message
+      } else if (err?.response?.data?.error) {
+        errorMessage = typeof err.response.data.error === 'string' 
+          ? err.response.data.error 
+          : JSON.stringify(err.response.data.error)
+      } else if (typeof err === 'string') {
+        errorMessage = err
+      } else if (err?.error) {
+        errorMessage = typeof err.error === 'string' ? err.error : JSON.stringify(err.error)
+      } else if (err?.status) {
+        errorMessage = `HTTP ${err.status}: ${err.statusText || 'Request failed'}`
+      }
+      
+      console.error('[AutoAssign] Fatal error in handleAutoAssign:', {
+        error: err,
+        errorMessage,
+        status: err?.status,
+        code: err?.code,
+        responseData: err?.response?.data,
+        stack: err?.stack,
+      })
+      
       toast({
         title: "Lỗi",
-        description: err?.message || "Không thể phân công tự động",
+        description: errorMessage,
         variant: "destructive",
+        duration: 7000, // Hiển thị lâu hơn để user đọc được
       })
     } finally {
       setAutoAssignLoading(false)
+      setAutoAssignProgress(null)
     }
   }
 
@@ -870,14 +1157,75 @@ export default function SchedulePage() {
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <Zap className="w-5 h-5" />
-                      Phân công nhanh
+                      Phân công tự động
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
-                      <p className="text-sm text-muted-foreground">
-                        Tự động phân công xe và tài xế cho ngày {date?.toLocaleDateString("vi-VN")}
-                      </p>
+                      {/* 🔥 Cải tiến: Chọn loại phân công */}
+                      <div className="space-y-3">
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Loại phân công</label>
+                          <Select value={autoAssignType} onValueChange={(value: 'day' | 'week' | 'month') => setAutoAssignType(value)}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="day">Theo ngày</SelectItem>
+                              <SelectItem value="week">Theo tuần (đến thứ 7)</SelectItem>
+                              <SelectItem value="month">Theo tháng (đến cuối tháng)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Ngày bắt đầu</label>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="outline"
+                                className={cn(
+                                  "w-full justify-start text-left font-normal",
+                                  !autoAssignStartDate && "text-muted-foreground"
+                                )}
+                              >
+                                <CalendarIcon2 className="mr-2 h-4 w-4" />
+                                {autoAssignStartDate ? (
+                                  format(autoAssignStartDate, "PPP", { locale: vi })
+                                ) : (
+                                  <span>Chọn ngày</span>
+                                )}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0">
+                              <Calendar mode="single" selected={autoAssignStartDate} onSelect={setAutoAssignStartDate} initialFocus />
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+
+                        {/* Preview số ngày sẽ phân công */}
+                        {autoAssignStartDate && (
+                          <div className="p-3 bg-muted/50 rounded-md">
+                            <p className="text-xs text-muted-foreground">
+                              Sẽ phân công cho: <strong className="text-foreground">
+                                {(() => {
+                                  const dates = getDatesToAssign(autoAssignType, autoAssignStartDate)
+                                  if (dates.length === 1) {
+                                    return `1 ngày (${format(dates[0], "dd/MM/yyyy", { locale: vi })})`
+                                  } else if (dates.length > 1) {
+                                    return `${dates.length} ngày (${format(dates[0], "dd/MM/yyyy", { locale: vi })} - ${format(dates[dates.length - 1], "dd/MM/yyyy", { locale: vi })})`
+                                  }
+                                  return "0 ngày"
+                                })()}
+                              </strong>
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Mỗi ngày: Tất cả tuyến × 2 chuyến (đón sáng + trả chiều)
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
                       <div className="space-y-2">
                         <Button 
                           variant="outline" 
@@ -890,7 +1238,7 @@ export default function SchedulePage() {
                         <Button 
                           className="w-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70"
                           onClick={handleAutoAssign}
-                          disabled={autoAssignLoading}
+                          disabled={autoAssignLoading || !autoAssignStartDate}
                         >
                           {autoAssignLoading ? (
                             <>
@@ -904,6 +1252,33 @@ export default function SchedulePage() {
                             </>
                           )}
                         </Button>
+                        
+                        {/* 🔥 Progress indicator */}
+                        {autoAssignProgress && (
+                          <div className="mt-3 space-y-2">
+                            <div className="flex items-center justify-between text-xs text-muted-foreground">
+                              <span>
+                                {autoAssignProgress.currentDate && (
+                                  <>Đang xử lý: {format(new Date(autoAssignProgress.currentDate), "dd/MM/yyyy", { locale: vi })}</>
+                                )}
+                              </span>
+                              <span>
+                                {autoAssignProgress.current} / {autoAssignProgress.total}
+                              </span>
+                            </div>
+                            <div className="w-full bg-muted rounded-full h-2">
+                              <div 
+                                className="bg-primary h-2 rounded-full transition-all duration-300"
+                                style={{ 
+                                  width: `${Math.min(100, (autoAssignProgress.current / autoAssignProgress.total) * 100)}%` 
+                                }}
+                              />
+                            </div>
+                            <p className="text-xs text-muted-foreground text-center">
+                              {Math.round((autoAssignProgress.current / autoAssignProgress.total) * 100)}% hoàn thành
+                            </p>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </CardContent>

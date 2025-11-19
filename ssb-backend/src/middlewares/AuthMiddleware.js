@@ -220,12 +220,26 @@ class AuthMiddleware {
 
         console.log(`✅ [checkTripAccess] Trip ${tripId} found, schedule ID: ${trip.maLichTrinh}`);
         
+        // Trip có thể không có schedule (nếu được tạo thủ công)
+        if (!trip.maLichTrinh) {
+          console.log(`❌ [checkTripAccess] Trip ${tripId} has no schedule (maLichTrinh is null)`);
+          return res.status(400).json({
+            success: false,
+            message: "Chuyến đi không có lịch trình",
+            errorCode: "TRIP_MISSING_SCHEDULE",
+            tripId: tripId,
+          });
+        }
+        
         const schedule = await LichTrinhModel.getById(trip.maLichTrinh);
         if (!schedule) {
           console.log(`❌ [checkTripAccess] Schedule ${trip.maLichTrinh} not found`);
-          return res.status(404).json({
+          return res.status(400).json({
             success: false,
             message: "Không tìm thấy lịch trình",
+            errorCode: "SCHEDULE_NOT_FOUND",
+            scheduleId: trip.maLichTrinh,
+            tripId: tripId,
           });
         }
         

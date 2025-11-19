@@ -633,12 +633,21 @@ export default function TripDetailPage() {
           };
         });
 
-        // Set trip status
+        // 🔥 Set trip status và started state
         if (data?.trangThai) {
           setTripStatus(data.trangThai);
-          if (data.trangThai === "dang_chay") {
-            setStarted(true);
-          }
+          // Update started state dựa trên trangThai từ backend
+          // Đảm bảo UI sync với backend khi vào lại trang
+          setStarted(data.trangThai === "dang_chay");
+          
+          console.log("[Driver Trip] Trip status loaded from backend:", {
+            trangThai: data.trangThai,
+            started: data.trangThai === "dang_chay",
+            maChuyen: data?.maChuyen,
+          });
+        } else {
+          // Fallback: Nếu không có trangThai, giữ nguyên state hiện tại
+          console.warn("[Driver Trip] No trangThai in API response");
         }
 
         // Determine current stop index
@@ -1182,17 +1191,26 @@ export default function TripDetailPage() {
       if (locationSource === "real") {
         startGPS();
       }
-      setStarted(true);
-      setTripStatus("dang_chay");
-
-      // Reload trip data to get updated status
+      // 🔥 Reload trip data to get updated status (BẮT BUỘC)
+      // Đảm bảo UI sync với backend sau khi start trip
       try {
         const updatedRes = await api.getTripById(newId);
         const updatedData: any = (updatedRes as any).data || updatedRes;
 
+        console.log("[Driver Trip] Reloaded trip data after start:", {
+          trangThai: updatedData?.trangThai,
+          maChuyen: updatedData?.maChuyen,
+        });
+
         // Update trip status in state
         if (updatedData?.trangThai) {
           setTripStatus(updatedData.trangThai);
+          // 🔥 Update started state dựa trên trangThai từ backend
+          setStarted(updatedData.trangThai === "dang_chay");
+        } else {
+          // Fallback: Nếu không có trangThai từ backend, dùng state đã set
+          setTripStatus("dang_chay");
+          setStarted(true);
         }
 
         // Update route name if available
@@ -1202,17 +1220,25 @@ export default function TripDetailPage() {
           updatedData?.tenTuyen ||
           trip.route;
 
+        // 🔥 Update trip state với data mới từ backend
         setTrip((prev) => ({
           ...prev,
           route: routeName,
-          status: "in-progress",
+          status: updatedData?.trangThai === "dang_chay" ? "in-progress" : prev.status,
+          startTime: updatedData?.gioBatDauThucTe || updatedData?.schedule?.gioKhoiHanh || prev.startTime,
         }));
       } catch (reloadError) {
-        console.warn(
+        console.error(
           "[Driver Trip] Failed to reload trip data after start:",
           reloadError
         );
-        // Continue anyway - the trip was started successfully
+        // Fallback: Vẫn set state dựa trên assumption trip đã start thành công
+        setTripStatus("dang_chay");
+        setStarted(true);
+        setTrip((prev) => ({
+          ...prev,
+          status: "in-progress",
+        }));
       }
 
       toast({
@@ -1223,19 +1249,84 @@ export default function TripDetailPage() {
       // Only redirect if trip ID changed
       if (newId && newId !== tripIdNum) {
         router.push(`/driver/trip/${newId}`);
+      } else {
+        // 🔥 Nếu trip ID không đổi, trigger reload bằng cách refresh page hoặc reload data
+        // Option 1: Reload lại toàn bộ trip data (giống như useEffect ban đầu)
+        // Option 2: Chỉ cần đảm bảo state đã được update (đã làm ở trên)
+        // Hiện tại state đã được update, nhưng để chắc chắn, có thể force re-render
+        console.log("[Driver Trip] Trip started, state updated. No redirect needed.");
       }
     } catch (e: any) {
-      console.error("[Driver Trip] Failed to start trip:", e);
-      const errorMessage =
-        e?.response?.data?.message ||
-        e?.message ||
-        e?.error ||
-        "Vui lòng thử lại";
+      // 🔥 Cải thiện error handling: Extract error message từ nhiều nguồn
+      let errorMessage = "Vui lòng thử lại"
+      const isAlreadyStarted = 
+        e?.errorCode === "TRIP_ALREADY_STARTED_OR_INVALID_STATUS" ||
+        e?.errorData?.errorCode === "TRIP_ALREADY_STARTED_OR_INVALID_STATUS" ||
+        e?.message?.includes("đã bắt đầu") ||
+        e?.message?.includes("chưa khởi hành") ||
+        e?.errorData?.message?.includes("đã bắt đầu") ||
+        e?.errorData?.message?.includes("chưa khởi hành")
+      
+      if (e?.message) {
+        errorMessage = e.message
+      } else if (e?.errorData?.message) {
+        errorMessage = e.errorData.message
+      } else if (e?.errorData?.error?.message) {
+        errorMessage = e.errorData.error.message
+      } else if (e?.response?.data?.message) {
+        errorMessage = e.response.data.message
+      } else if (e?.response?.data?.error?.message) {
+        errorMessage = e.response.data.error.message
+      } else if (e?.response?.data?.error) {
+        errorMessage = typeof e.response.data.error === 'string' 
+          ? e.response.data.error 
+          : JSON.stringify(e.response.data.error)
+      } else if (e?.errorCode) {
+        errorMessage = `Error code: ${e.errorCode}`
+      } else if (e?.status) {
+        errorMessage = `HTTP ${e.status}: ${e.statusText || 'Request failed'}`
+      } else if (typeof e === 'string') {
+        errorMessage = e
+      } else if (e?.error) {
+        errorMessage = typeof e.error === 'string' ? e.error : JSON.stringify(e.error)
+      }
+      
+      console.error("[Driver Trip] Failed to start trip:", {
+        error: e,
+        errorMessage,
+        status: e?.status,
+        errorCode: e?.errorCode,
+        responseData: e?.response?.data,
+        errorData: e?.errorData,
+        url: e?.url,
+        stack: e?.stack,
+        isAlreadyStarted,
+      });
+
+      // 🔥 Nếu trip đã start rồi, reload lại trip data để sync UI
+      if (isAlreadyStarted || e?.status === 400) {
+        console.log("[Driver Trip] Trip already started, reloading trip data...");
+        try {
+          const reloadRes = await api.getTripById(tripIdNum);
+          const reloadData: any = (reloadRes as any).data || reloadRes;
+          
+          if (reloadData?.trangThai) {
+            setTripStatus(reloadData.trangThai);
+            setStarted(reloadData.trangThai === "dang_chay");
+            console.log("[Driver Trip] Reloaded trip status:", reloadData.trangThai);
+          }
+        } catch (reloadErr) {
+          console.error("[Driver Trip] Failed to reload trip data:", reloadErr);
+        }
+      }
 
       toast({
-        title: "Không thể bắt đầu chuyến",
-        description: errorMessage,
-        variant: "destructive",
+        title: isAlreadyStarted ? "Chuyến đi đã bắt đầu" : "Không thể bắt đầu chuyến",
+        description: isAlreadyStarted 
+          ? "Chuyến đi này đã được bắt đầu trước đó. Đang tải lại thông tin..."
+          : errorMessage,
+        variant: isAlreadyStarted ? "default" : "destructive",
+        duration: 7000,
       });
     } finally {
       setProcessing(false);
@@ -1324,8 +1415,9 @@ export default function TripDetailPage() {
 
   // Một nút duy nhất, thay đổi theo trạng thái
   const isLastStop = trip.currentStop === trip.stops.length - 1;
-  // Single CTA simplified to: if GPS not running → Start Trip; else follow stop flow
-  const showStart = !gpsRunning && !started;
+  // 🔥 Single CTA: Chỉ hiện nút "Bắt đầu" nếu trip chưa start
+  // Dựa trên cả tripStatus và started state để đảm bảo sync với backend
+  const showStart = !gpsRunning && !started && tripStatus !== "dang_chay" && tripStatus !== "hoan_thanh";
 
   // Auto-start GPS if trip is already running and REAL mode is selected
   useEffect(() => {

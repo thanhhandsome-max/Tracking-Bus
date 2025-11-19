@@ -78,20 +78,21 @@ app.use(corsHandler);
 // Security headers
 app.use(securityHeaders);
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: config.rateLimit.windowMs,
-  max: config.rateLimit.maxRequests,
-  handler: (_req, res) => {
-    res.status(429).json({
-      success: false,
-      code: "RATE_LIMIT_EXCEEDED",
-      message: "Too many requests from this IP, please try again later.",
-    });
-  },
-});
+// Rate limiting - DISABLED FOR DEVELOPMENT
+// 🔥 Tắt rate limiting để phục vụ phát triển đồ án
+// const limiter = rateLimit({
+//   windowMs: config.rateLimit.windowMs,
+//   max: config.rateLimit.maxRequests,
+//   handler: (_req, res) => {
+//     res.status(429).json({
+//       success: false,
+//       code: "RATE_LIMIT_EXCEEDED",
+//       message: "Too many requests from this IP, please try again later.",
+//     });
+//   },
+// });
 
-app.use(limiter);
+// app.use(limiter);
 app.use(rateLimitHeaders);
 
 // Compression middleware

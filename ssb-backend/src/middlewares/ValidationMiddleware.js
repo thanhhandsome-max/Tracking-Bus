@@ -271,6 +271,8 @@ class ValidationMiddleware {
       return res.status(400).json({
         success: false,
         message: "ID không hợp lệ",
+        errorCode: "INVALID_ID",
+        receivedId: id,
       });
     }
     req.params.id = parseInt(id);

@@ -5,24 +5,25 @@ import AuthMiddleware from "../../middlewares/AuthMiddleware.js";
 
 const router = express.Router();
 
-// Rate limit cho login endpoint (chống brute force)
-const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 phút
-  max: 5, // Tối đa 5 lần thử trong 15 phút
-  message: {
-    success: false,
-    code: "RATE_LIMIT_EXCEEDED",
-    message: "Quá nhiều lần thử đăng nhập, vui lòng thử lại sau 15 phút",
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
+// Rate limit cho login endpoint (chống brute force) - DISABLED FOR DEVELOPMENT
+// 🔥 Tắt rate limiting để phục vụ phát triển đồ án
+// const loginLimiter = rateLimit({
+//   windowMs: 15 * 60 * 1000, // 15 phút
+//   max: 5, // Tối đa 5 lần thử trong 15 phút
+//   message: {
+//     success: false,
+//     code: "RATE_LIMIT_EXCEEDED",
+//     message: "Quá nhiều lần thử đăng nhập, vui lòng thử lại sau 15 phút",
+//   },
+//   standardHeaders: true,
+//   legacyHeaders: false,
+// });
 
 // POST /api/auth/register - Đăng ký tài khoản mới
 router.post("/register", AuthController.register);
 
-// POST /api/auth/login - Đăng nhập (có rate limit)
-router.post("/login", loginLimiter, AuthController.login);
+// POST /api/auth/login - Đăng nhập (rate limit đã tắt cho development)
+router.post("/login", AuthController.login);
 
 // POST /api/auth/logout - Đăng xuất
 router.post("/logout", AuthMiddleware.authenticate, AuthController.logout);

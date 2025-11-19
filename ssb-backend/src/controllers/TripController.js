@@ -948,6 +948,9 @@ class TripController {
         return res.status(400).json({
           success: false,
           message: "Chỉ có thể bắt đầu chuyến đi chưa khởi hành",
+          errorCode: "TRIP_ALREADY_STARTED_OR_INVALID_STATUS",
+          currentStatus: existing.trangThai,
+          tripId: id,
         });
       }
 
@@ -1159,6 +1162,13 @@ class TripController {
       });
     } catch (error) {
       console.error("Error in TripController.startTrip:", error);
+      console.error("Error stack:", error.stack);
+      console.error("Error details:", {
+        message: error.message,
+        name: error.name,
+        tripId: req.params.id,
+        userId: req.user?.userId,
+      });
       return response.serverError(
         res,
         "Lỗi server khi bắt đầu chuyến đi",

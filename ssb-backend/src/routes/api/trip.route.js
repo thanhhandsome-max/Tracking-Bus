@@ -35,23 +35,24 @@ router.get(
   TripController.getAll
 );
 
-// M8: Rate limit for trip creation (burst protection)
-const tripCreateLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 10, // Max 10 trips per minute
-  message: {
-    success: false,
-    code: "RATE_LIMIT_EXCEEDED",
-    message: "Quá nhiều yêu cầu tạo chuyến đi, vui lòng thử lại sau",
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
+// M8: Rate limit for trip creation (burst protection) - DISABLED FOR DEVELOPMENT
+// 🔥 Tắt rate limiting để phục vụ phát triển đồ án
+// const tripCreateLimiter = rateLimit({
+//   windowMs: 60 * 1000, // 1 minute
+//   max: 10, // Max 10 trips per minute
+//   message: {
+//     success: false,
+//     code: "RATE_LIMIT_EXCEEDED",
+//     message: "Quá nhiều yêu cầu tạo chuyến đi, vui lòng thử lại sau",
+//   },
+//   standardHeaders: true,
+//   legacyHeaders: false,
+// });
 
 // POST /api/v1/trips - Tạo chuyến đi mới (Admin only)
+// Rate limit đã tắt cho development
 router.post(
   "/",
-  tripCreateLimiter,
   AuthMiddleware.authenticate,
   AuthMiddleware.authorize("quan_tri"),
   ValidationMiddleware.validateTrip,
