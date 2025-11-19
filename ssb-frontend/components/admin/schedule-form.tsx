@@ -237,7 +237,7 @@ export function ScheduleForm({ onClose, onSaved, mode = "create", initialSchedul
     return matchCount > 0 ? 1 / matchCount : Infinity
   }
 
-  // Tự động gán học sinh vào điểm dừng gần nhất
+  // Tự động gán học sinh vào điểm dừng gần nhất (chỉ trong vòng 3km)
   const handleAutoAssign = () => {
     if (!route || routeStops.length === 0 || availableStudents.length === 0) {
       toast({
@@ -248,6 +248,7 @@ export function ScheduleForm({ onClose, onSaved, mode = "create", initialSchedul
       return
     }
 
+    const MAX_DISTANCE_KM = 3 // 🔥 Giới hạn khoảng cách tối đa (giống backend)
     const newAssignments: Record<number, { maHocSinh: number; thuTuDiem: number; maDiem: number; source: 'suggestion' | 'manual' }> = {}
     
     // Lọc học sinh chưa được gán
@@ -255,12 +256,21 @@ export function ScheduleForm({ onClose, onSaved, mode = "create", initialSchedul
       (s: any) => !selectedStudents[s.maHocSinh || s.id]
     )
 
+    let assignedCount = 0
+    let skippedCount = 0
+
     unassignedStudents.forEach((student: any) => {
       const studentAddress = student.diaChi || ""
       const studentLat = student.viDo || student.lat
       const studentLng = student.kinhDo || student.lng
       
-      // Tìm điểm dừng gần nhất
+      // 🔥 Bỏ qua học sinh không có tọa độ (không thể tính khoảng cách chính xác)
+      if (!studentLat || !studentLng || isNaN(studentLat) || isNaN(studentLng)) {
+        skippedCount++
+        return
+      }
+      
+      // Tìm điểm dừng gần nhất trong vòng MAX_DISTANCE_KM
       let nearestStop: any = null
       let minDistance = Infinity
 
@@ -268,34 +278,25 @@ export function ScheduleForm({ onClose, onSaved, mode = "create", initialSchedul
         const stopLat = stop.viDo || stop.lat
         const stopLng = stop.kinhDo || stop.lng
         
-        // Nếu có tọa độ cả học sinh và điểm dừng, tính khoảng cách
-        if (studentLat && studentLng && stopLat && stopLng && 
-            !isNaN(studentLat) && !isNaN(studentLng) && 
-            !isNaN(stopLat) && !isNaN(stopLng)) {
+        // 🔥 CHỈ tính khoảng cách nếu có tọa độ cả học sinh và điểm dừng
+        if (stopLat && stopLng && !isNaN(stopLat) && !isNaN(stopLng)) {
           const distance = calculateDistance(
             studentLat,
             studentLng,
             stopLat,
             stopLng
           )
-          if (distance < minDistance) {
-            minDistance = distance
-            nearestStop = stop
-          }
-        } else {
-          // Fallback: Matching theo địa chỉ
-          const stopName = stop.tenDiem || stop.name || ""
-          const stopAddress = stop.address || stop.diaChi || ""
           
-          const matchScore = calculateAddressMatch(studentAddress, stopName, stopAddress)
-          if (matchScore < minDistance) {
-            minDistance = matchScore
+          // 🔥 CHỈ gán nếu khoảng cách <= MAX_DISTANCE_KM và là điểm dừng gần nhất
+          if (distance <= MAX_DISTANCE_KM && distance < minDistance) {
+            minDistance = distance
             nearestStop = stop
           }
         }
       })
 
-      if (nearestStop) {
+      // 🔥 CHỈ gán nếu tìm thấy điểm dừng trong vòng MAX_DISTANCE_KM
+      if (nearestStop && minDistance <= MAX_DISTANCE_KM) {
         const studentId = student.maHocSinh || student.id
         newAssignments[studentId] = {
           maHocSinh: studentId,
@@ -303,6 +304,9 @@ export function ScheduleForm({ onClose, onSaved, mode = "create", initialSchedul
           maDiem: nearestStop.maDiem || nearestStop.id,
           source: 'manual', // Auto-assign từ FE cũng coi là manual
         }
+        assignedCount++
+      } else {
+        skippedCount++
       }
     })
 
@@ -314,7 +318,7 @@ export function ScheduleForm({ onClose, onSaved, mode = "create", initialSchedul
 
     toast({
       title: "Thành công",
-      description: `Đã tự động gán ${Object.keys(newAssignments).length} học sinh vào điểm dừng`,
+      description: `Đã tự động gán ${assignedCount} học sinh vào điểm dừng (trong vòng ${MAX_DISTANCE_KM}km). ${skippedCount > 0 ? `${skippedCount} học sinh bị bỏ qua (quá xa hoặc không có tọa độ).` : ''}`,
     })
   }
 
@@ -325,11 +329,28 @@ export function ScheduleForm({ onClose, onSaved, mode = "create", initialSchedul
         const [year, month, day] = initialSchedule.raw.ngayChay.split('-')
         setDate(new Date(parseInt(year), parseInt(month) - 1, parseInt(day)))
       }
-      setRoute(String(initialSchedule.routeId || initialSchedule.raw?.maTuyen || initialSchedule.maTuyen || ''))
+      const routeId = String(initialSchedule.routeId || initialSchedule.raw?.maTuyen || initialSchedule.maTuyen || '')
+      setRoute(routeId)
       setBus(String(initialSchedule.busId || initialSchedule.raw?.maXe || ''))
       setDriver(String(initialSchedule.driverId || initialSchedule.raw?.maTaiXe || ''))
       setTripType(initialSchedule.tripType || initialSchedule.raw?.loaiChuyen || '')
       setStartTime(initialSchedule.startTime || initialSchedule.raw?.gioKhoiHanh || '')
+      
+      // Ensure route stops are loaded when editing (route might already be set)
+      if (routeId) {
+        setLoadingStops(true)
+        apiClient.getRouteStops(parseInt(routeId))
+          .then((res: any) => {
+            const stops = (res as any).data || []
+            const sortedStops = stops.sort((a: any, b: any) => (a.sequence || 0) - (b.sequence || 0))
+            setRouteStops(sortedStops)
+          })
+          .catch((err: any) => {
+            console.error("Failed to load route stops when editing:", err)
+            setRouteStops([])
+          })
+          .finally(() => setLoadingStops(false))
+      }
     } else if (mode === "create" && initialSchedule?.routeId) {
       // Pre-fill routeId in wizard mode
       setRoute(String(initialSchedule.routeId || initialSchedule.maTuyen || ''))

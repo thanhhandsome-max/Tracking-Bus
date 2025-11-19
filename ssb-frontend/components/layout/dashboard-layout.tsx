@@ -14,7 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Bell, Search, LogOut, Settings, User, Menu } from "lucide-react"
+import { Bell, Search, LogOut, Settings, User, Menu, Users } from "lucide-react"
 import { Input } from "@/components/ui/input"
 
 interface DashboardLayoutProps {
@@ -125,6 +125,13 @@ export function DashboardLayout({ children, sidebar }: DashboardLayoutProps) {
                   <User className="w-4 h-4 mr-2" />
                   Hồ sơ cá nhân
                 </DropdownMenuItem>
+
+                {user?.role?.toLowerCase() === "parent" && (
+                  <DropdownMenuItem onClick={() => router.push("/parent/select-student")}>
+                    <Users className="w-4 h-4 mr-2" />
+                    Chuyển học sinh
+                  </DropdownMenuItem>
+                )}
 
                 <DropdownMenuItem onClick={() => router.push(`/${user?.role}/settings`)}>
                   <Settings className="w-4 h-4 mr-2" />

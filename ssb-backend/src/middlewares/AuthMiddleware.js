@@ -302,6 +302,108 @@ class AuthMiddleware {
     }
   }
 
+  // Middleware kiểm tra quyền truy cập tuyến đường
+  static async checkRouteAccess(req, res, next) {
+    try {
+      if (!req.user) {
+        return res.status(401).json({
+          success: false,
+          message: "Chưa xác thực",
+        });
+      }
+
+      // Quản trị viên và tài xế có thể truy cập mọi tuyến đường
+      if (["quan_tri", "tai_xe"].includes(req.user.vaiTro)) {
+        return next();
+      }
+
+      // Phụ huynh có thể truy cập tuyến đường nếu con của họ được phân công vào tuyến đó
+      if (req.user.vaiTro === "phu_huynh") {
+        const routeId = req.params.id;
+        if (!routeId) {
+          return next(); // Let validation handle this
+        }
+
+        const HocSinhModel = (await import("../models/HocSinhModel.js")).default;
+        const LichTrinhModel = (await import("../models/LichTrinhModel.js")).default;
+
+        // Lấy danh sách học sinh của phụ huynh
+        const children = await HocSinhModel.getByParent(req.user.userId);
+        if (children.length === 0) {
+          return res.status(403).json({
+            success: false,
+            message: "Không có quyền truy cập tuyến đường này",
+          });
+        }
+
+        // Kiểm tra xem có học sinh nào được phân công vào tuyến này không
+        // Thông qua schedule hoặc trip
+        const studentIds = children.map((child) => child.maHocSinh);
+        
+        // Kiểm tra qua schedule (hôm nay hoặc gần đây)
+        const schedules = await LichTrinhModel.getByRouteId(routeId);
+        const today = new Date().toISOString().slice(0, 10);
+        
+        // Tìm schedule có học sinh được phân công
+        let hasAccess = false;
+        for (const schedule of schedules) {
+          // Kiểm tra nếu schedule có students được phân công
+          // Hoặc kiểm tra qua trip nếu có
+          if (schedule.ngayChay >= today) {
+            // Nếu có schedule cho route này và ngày chạy >= hôm nay, cho phép truy cập
+            // (Vì phụ huynh cần xem route của con họ)
+            hasAccess = true;
+            break;
+          }
+        }
+
+        // Nếu không tìm thấy qua schedule, kiểm tra qua trip
+        if (!hasAccess) {
+          const TrangThaiHocSinhModel = (
+            await import("../models/TrangThaiHocSinhModel.js")
+          ).default;
+          const ChuyenDiModel = (await import("../models/ChuyenDiModel.js")).default;
+
+          // Lấy các trip gần đây của route này
+          const recentTrips = await ChuyenDiModel.getAll({
+            limit: 10,
+          });
+
+          for (const trip of recentTrips) {
+            const schedule = await LichTrinhModel.getById(trip.maLichTrinh);
+            if (schedule && schedule.maTuyen === parseInt(routeId)) {
+              // Kiểm tra xem có học sinh nào trong trip này không
+              const hasStudent = await TrangThaiHocSinhModel.hasStudentInTrip(
+                trip.maChuyen,
+                studentIds
+              );
+              if (hasStudent) {
+                hasAccess = true;
+                break;
+              }
+            }
+          }
+        }
+
+        if (!hasAccess) {
+          return res.status(403).json({
+            success: false,
+            message: "Không có quyền truy cập tuyến đường này",
+          });
+        }
+      }
+
+      next();
+    } catch (error) {
+      console.error("Error in AuthMiddleware.checkRouteAccess:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Lỗi server khi kiểm tra quyền truy cập tuyến đường",
+        error: error.message,
+      });
+    }
+  }
+
   // Middleware kiểm tra quyền truy cập xe buýt
   static async checkBusAccess(req, res, next) {
     try {

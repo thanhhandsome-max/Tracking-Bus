@@ -127,6 +127,7 @@ export default function SchedulePage() {
     }
   }
 
+  // Reload schedule list without resetting filters
   async function fetchAllSchedules() {
     setLoading(true)
     setError(null)
@@ -136,6 +137,7 @@ export default function SchedulePage() {
       const items = Array.isArray(data) ? data : data?.data || []
       const mappedSchedules = items.map(mapSchedule)
       setAllSchedules(mappedSchedules)
+      // Note: Filters (searchQuery, filterTripType, filterStatus) are preserved
     } catch (e: any) {
       setError(e?.message || 'Không lấy được lịch trình')
       console.error(e)
@@ -311,9 +313,94 @@ export default function SchedulePage() {
 
             // Tìm bus và driver available (round-robin để phân bổ đều)
             // Sử dụng routeIndex và tripTypeIdx để đảm bảo phân bổ đều
-            const resourceIndex = (routeIndex * 2 + tripTypeIdx) % Math.min(availableBuses.length, availableDrivers.length)
-            const bus = availableBuses[resourceIndex % availableBuses.length]
-            const driver = availableDrivers[resourceIndex % availableDrivers.length]
+            let resourceIndex = (routeIndex * 2 + tripTypeIdx) % Math.min(availableBuses.length, availableDrivers.length)
+            let bus = availableBuses[resourceIndex % availableBuses.length]
+            let driver = availableDrivers[resourceIndex % availableDrivers.length]
+
+            // 🔥 Check conflict trước khi tạo schedule
+            // Kiểm tra xem bus hoặc driver đã có schedule trong cùng ngày và giờ chưa
+            const existingScheduleForBus = allSchedules.find((s: Schedule) => {
+              const sDate = s.date || s.raw?.ngayChay
+              const sBusId = s.raw?.maXe || s.busId
+              const sTime = s.raw?.gioKhoiHanh || s.startTime
+              return sDate === dateStr && 
+                     sBusId === (bus.maXe || bus.id) &&
+                     sTime === startTime
+            })
+            
+            const existingScheduleForDriver = allSchedules.find((s: Schedule) => {
+              const sDate = s.date || s.raw?.ngayChay
+              const sDriverId = s.raw?.maTaiXe || s.driverId
+              const sTime = s.raw?.gioKhoiHanh || s.startTime
+              return sDate === dateStr && 
+                     sDriverId === (driver.maTaiXe || driver.maNguoiDung || driver.id) &&
+                     sTime === startTime
+            })
+
+            if (existingScheduleForBus || existingScheduleForDriver) {
+              const conflictType = existingScheduleForBus && existingScheduleForDriver 
+                ? 'xe và tài xế' 
+                : existingScheduleForBus 
+                ? 'xe' 
+                : 'tài xế'
+              
+              const errorMsg = `Xung đột lịch trình với ${conflictType}`
+              totalFailed++
+              errors.push(`Ngày ${dateStr}, Tuyến ${route.tenTuyen || route.maTuyen}, ${tripType === 'don_sang' ? 'Đón sáng' : 'Trả chiều'}: ${errorMsg}`)
+              
+              console.warn(`[AutoAssign] Skip schedule due to conflict:`, {
+                dateStr,
+                route: route.tenTuyen || route.maTuyen,
+                tripType,
+                busId: bus.maXe || bus.id,
+                driverId: driver.maTaiXe || driver.maNguoiDung || driver.id,
+                conflictType,
+              })
+              
+              // Tìm bus/driver khác available (thử tối đa số lượng available)
+              let foundAlternative = false
+              const maxAttempts = Math.min(availableBuses.length, availableDrivers.length)
+              
+              for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+                const nextIndex = (resourceIndex + attempt) % Math.min(availableBuses.length, availableDrivers.length)
+                const nextBus = availableBuses[nextIndex % availableBuses.length]
+                const nextDriver = availableDrivers[nextIndex % availableDrivers.length]
+                
+                // Check conflict với bus/driver mới
+                const nextBusConflict = allSchedules.find((s: Schedule) => {
+                  const sDate = s.date || s.raw?.ngayChay
+                  const sBusId = s.raw?.maXe || s.busId
+                  const sTime = s.raw?.gioKhoiHanh || s.startTime
+                  return sDate === dateStr && 
+                         sBusId === (nextBus.maXe || nextBus.id) &&
+                         sTime === startTime
+                })
+                
+                const nextDriverConflict = allSchedules.find((s: Schedule) => {
+                  const sDate = s.date || s.raw?.ngayChay
+                  const sDriverId = s.raw?.maTaiXe || s.driverId
+                  const sTime = s.raw?.gioKhoiHanh || s.startTime
+                  return sDate === dateStr && 
+                         sDriverId === (nextDriver.maTaiXe || nextDriver.maNguoiDung || nextDriver.id) &&
+                         sTime === startTime
+                })
+                
+                if (!nextBusConflict && !nextDriverConflict) {
+                  // Tìm thấy bus/driver không conflict
+                  bus = nextBus
+                  driver = nextDriver
+                  resourceIndex = nextIndex
+                  foundAlternative = true
+                  break
+                }
+              }
+              
+              if (!foundAlternative) {
+                // Không tìm thấy resource available, skip route này
+                console.warn(`[AutoAssign] No available resources for route ${route.tenTuyen || route.maTuyen}, tripType ${tripType} on ${dateStr}`)
+                continue
+              }
+            }
 
             try {
               const payload = {
@@ -326,8 +413,25 @@ export default function SchedulePage() {
                 dangApDung: true,
               }
 
-              await apiClient.createSchedule(payload)
+              const createdSchedule = await apiClient.createSchedule(payload)
               totalCreated++
+              
+              // 🔥 Cập nhật allSchedules ngay lập tức để tránh conflict trong cùng batch
+              const newSchedule: Schedule = {
+                id: String((createdSchedule as any)?.data?.maLichTrinh || (createdSchedule as any)?.maLichTrinh || totalCreated),
+                date: dateStr,
+                route: route.tenTuyen || route.maTuyen,
+                bus: bus.bienSoXe || bus.plateNumber || String(bus.maXe || bus.id),
+                driver: driver.tenTaiXe || driver.hoTen || String(driver.maTaiXe || driver.maNguoiDung || driver.id),
+                startTime: startTime,
+                tripType: tripType,
+                status: 'active',
+                routeId: route.maTuyen || route.id,
+                busId: bus.maXe || bus.id,
+                driverId: driver.maTaiXe || driver.maNguoiDung || driver.id,
+                raw: (createdSchedule as any)?.data || createdSchedule,
+              }
+              allSchedules.push(newSchedule)
               
               // Cập nhật progress
               setAutoAssignProgress({
@@ -753,6 +857,22 @@ export default function SchedulePage() {
                     <SelectItem value="inactive">Không áp dụng</SelectItem>
                   </SelectContent>
                 </Select>
+
+                {(filterTripType !== 'all' || filterStatus !== 'all' || searchQuery) && (
+                  <Button 
+                    variant="outline" 
+                    onClick={() => {
+                      setFilterTripType('all')
+                      setFilterStatus('all')
+                      setSearchQuery('')
+                    }}
+                    className="w-full sm:w-auto"
+                    title="Xóa tất cả bộ lọc"
+                  >
+                    <Filter className="w-4 h-4 mr-2" />
+                    Xóa bộ lọc
+                  </Button>
+                )}
 
                 <Button variant="outline" onClick={fetchAllSchedules} className="w-full sm:w-auto">
                   Tải lại

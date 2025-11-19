@@ -164,9 +164,21 @@ class ValidationMiddleware {
         Joi.string().valid("true", "false", "1", "0"),
         Joi.number().valid(1, 0)
       ).optional(),
+      routeType: Joi.string().valid('di', 've').optional(),
+      createReturnRoute: Joi.boolean().optional(),
+      stops: Joi.array().items(
+        Joi.object({
+          stop_id: Joi.number().integer().positive().allow(null).optional(),
+          tenDiem: Joi.string().min(2).max(255).optional(),
+          address: Joi.string().max(255).optional().allow(null, ""),
+          viDo: Joi.number().min(-90).max(90).optional(),
+          kinhDo: Joi.number().min(-180).max(180).optional(),
+          sequence: Joi.number().integer().min(1).optional(),
+        })
+      ).optional(),
     });
 
-    const { error, value } = schema.validate(req.body, { abortEarly: false });
+    const { error, value } = schema.validate(req.body, { abortEarly: false, allowUnknown: false });
     if (error) {
       return res.status(400).json({
         success: false,
@@ -222,9 +234,16 @@ class ValidationMiddleware {
           "any.required": "Ngày chạy là bắt buộc",
         }),
       dangApDung: Joi.boolean().optional(),
+      students: Joi.array().items(
+        Joi.object({
+          maHocSinh: Joi.number().integer().positive().required(),
+          thuTuDiem: Joi.number().integer().min(1).required(),
+          maDiem: Joi.number().integer().positive().required(),
+        })
+      ).optional(),
     });
 
-    const { error } = schema.validate(req.body);
+    const { error } = schema.validate(req.body, { abortEarly: false });
     if (error) {
       return res.status(400).json({
         success: false,

@@ -66,7 +66,11 @@ export default function SelectStudentPage() {
         return
       }
 
-      setStudents(data)
+      // Remove duplicates based on maHocSinh to prevent duplicate keys
+      const uniqueStudents = Array.from(
+        new Map(data.map((s: Student) => [s.maHocSinh, s])).values()
+      )
+      setStudents(uniqueStudents)
     } catch (error: any) {
       console.error("Error fetching students:", error)
       toast({
@@ -125,9 +129,9 @@ export default function SelectStudentPage() {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {students.map((student) => (
+            {students.map((student, index) => (
               <Card
-                key={student.maHocSinh}
+                key={`${student.maHocSinh}-${index}`}
                 className={`cursor-pointer transition-all hover:shadow-md ${
                   selectedStudentId === student.maHocSinh
                     ? "border-primary bg-primary/5"

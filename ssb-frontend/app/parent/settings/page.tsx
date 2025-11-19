@@ -23,7 +23,11 @@ export default function ParentSettings() {
   const [darkMode, setDarkMode] = useState(false)
   const [language, setLanguage] = useState("vi")
   const [notifyDelay, setNotifyDelay] = useState(true)
-  const [notifyIncident, setNotifyIncident] = useState(false)
+  const [notifyIncident, setNotifyIncident] = useState(true)
+  const [notifyPickup, setNotifyPickup] = useState(true)
+  const [notifyDropoff, setNotifyDropoff] = useState(true)
+  const [notifyApproach, setNotifyApproach] = useState(true)
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     async function checkStudents() {
@@ -38,12 +42,58 @@ export default function ParentSettings() {
     checkStudents()
   }, [])
 
-  const handleSave = (section: string) => {
-    toast({
-      title: "Lưu thành công",
-      description: `Cài đặt ${section} đã được cập nhật.`,
-    })
+  const handleSave = async (section: string) => {
+    try {
+      setSaving(true)
+      // TODO: Save settings to backend when API is available
+      // For now, save to localStorage
+      if (typeof window !== "undefined") {
+        localStorage.setItem("parent_settings", JSON.stringify({
+          notifyDelay,
+          notifyIncident,
+          notifyPickup,
+          notifyDropoff,
+          notifyApproach,
+          language,
+          darkMode,
+        }))
+      }
+      
+      toast({
+        title: "Lưu thành công",
+        description: `Cài đặt ${section} đã được cập nhật.`,
+      })
+    } catch (error: any) {
+      toast({
+        title: "Lỗi",
+        description: error?.message || "Không thể lưu cài đặt",
+        variant: "destructive",
+      })
+    } finally {
+      setSaving(false)
+    }
   }
+
+  // Load settings from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("parent_settings")
+      if (saved) {
+        try {
+          const settings = JSON.parse(saved)
+          setNotifyDelay(settings.notifyDelay ?? true)
+          setNotifyIncident(settings.notifyIncident ?? true)
+          setNotifyPickup(settings.notifyPickup ?? true)
+          setNotifyDropoff(settings.notifyDropoff ?? true)
+          setNotifyApproach(settings.notifyApproach ?? true)
+          setLanguage(settings.language ?? "vi")
+          setDarkMode(settings.darkMode ?? false)
+        } catch (e) {
+          console.error("Error loading settings:", e)
+        }
+      }
+    }
+  }, [])
 
   const handleSwitchStudent = () => {
     router.push("/parent/select-student")
@@ -122,19 +172,51 @@ export default function ParentSettings() {
             <Card>
               <CardHeader>
                 <CardTitle>Cài đặt thông báo</CardTitle>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Chọn loại thông báo bạn muốn nhận
+                </p>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <p>Thông báo khi xe trễ</p>
+                <div className="flex items-center justify-between p-3 rounded-lg border border-border/50">
+                  <div className="flex-1">
+                    <p className="font-medium">Thông báo khi xe trễ</p>
+                    <p className="text-sm text-muted-foreground">Nhận cảnh báo khi xe buýt đến muộn</p>
+                  </div>
                   <Switch checked={notifyDelay} onCheckedChange={setNotifyDelay} />
                 </div>
-                <div className="flex items-center justify-between">
-                  <p>Thông báo khi có sự cố</p>
+                <div className="flex items-center justify-between p-3 rounded-lg border border-border/50">
+                  <div className="flex-1">
+                    <p className="font-medium">Thông báo khi có sự cố</p>
+                    <p className="text-sm text-muted-foreground">Nhận cảnh báo khẩn cấp về sự cố</p>
+                  </div>
                   <Switch checked={notifyIncident} onCheckedChange={setNotifyIncident} />
+                </div>
+                <div className="flex items-center justify-between p-3 rounded-lg border border-border/50">
+                  <div className="flex-1">
+                    <p className="font-medium">Thông báo khi đón học sinh</p>
+                    <p className="text-sm text-muted-foreground">Nhận thông báo khi học sinh đã lên xe</p>
+                  </div>
+                  <Switch checked={notifyPickup} onCheckedChange={setNotifyPickup} />
+                </div>
+                <div className="flex items-center justify-between p-3 rounded-lg border border-border/50">
+                  <div className="flex-1">
+                    <p className="font-medium">Thông báo khi trả học sinh</p>
+                    <p className="text-sm text-muted-foreground">Nhận thông báo khi học sinh đã đến nơi</p>
+                  </div>
+                  <Switch checked={notifyDropoff} onCheckedChange={setNotifyDropoff} />
+                </div>
+                <div className="flex items-center justify-between p-3 rounded-lg border border-border/50">
+                  <div className="flex-1">
+                    <p className="font-medium">Thông báo khi xe sắp đến</p>
+                    <p className="text-sm text-muted-foreground">Nhận thông báo khi xe sắp đến điểm dừng</p>
+                  </div>
+                  <Switch checked={notifyApproach} onCheckedChange={setNotifyApproach} />
                 </div>
               </CardContent>
               <CardFooter>
-                <Button onClick={() => handleSave("thông báo")}>Lưu thay đổi</Button>
+                <Button onClick={() => handleSave("thông báo")} disabled={saving}>
+                  {saving ? "Đang lưu..." : "Lưu thay đổi"}
+                </Button>
               </CardFooter>
             </Card>
           </TabsContent>

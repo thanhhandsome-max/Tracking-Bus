@@ -289,6 +289,59 @@ export function RouteBuilder({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapMode, isMapReady]);
 
+  // Load initial route data when in edit mode and initialRoute changes
+  useEffect(() => {
+    if (mode === 'edit' && initialRoute) {
+      // Update route name
+      if (initialRoute.name && !routeName) {
+        setRouteName(initialRoute.name);
+      }
+      
+      // Update origin and destination if not already set
+      if (initialRoute.stops && initialRoute.stops.length > 0) {
+        const firstStop = initialRoute.stops[0];
+        if (firstStop && (firstStop.viDo || firstStop.latitude) && !originStop) {
+          setOriginStop({
+            id: 'origin',
+            name: initialRoute.diemBatDau || firstStop.tenDiem || firstStop.name || 'Điểm bắt đầu',
+            address: firstStop.diaChi || firstStop.address || '',
+            lat: firstStop.viDo || firstStop.latitude,
+            lng: firstStop.kinhDo || firstStop.longitude,
+            estimatedTime: '',
+            sequence: 1,
+          });
+        }
+        
+        const lastStop = initialRoute.stops[initialRoute.stops.length - 1];
+        if (lastStop && (lastStop.viDo || lastStop.latitude) && !destinationStop) {
+          setDestinationStop({
+            id: 'destination',
+            name: initialRoute.diemKetThuc || lastStop.tenDiem || lastStop.name || 'Điểm kết thúc',
+            address: lastStop.diaChi || lastStop.address || '',
+            lat: lastStop.viDo || lastStop.latitude,
+            lng: lastStop.kinhDo || lastStop.longitude,
+            estimatedTime: '',
+            sequence: 999,
+          });
+        }
+        
+        // Update intermediate stops if not already set
+        if (initialRoute.stops.length > 2 && stops.length === 0) {
+          const intermediateStops = initialRoute.stops.slice(1, -1).map((s: any, idx: number) => ({
+            id: String(s.maDiem || s.id || idx + 2),
+            name: s.tenDiem || s.name || '',
+            address: s.diaChi || s.address || '',
+            lat: s.viDo || s.latitude,
+            lng: s.kinhDo || s.longitude,
+            estimatedTime: s.thoiGianDung || s.estimatedTime || '',
+            sequence: s.thuTu || s.sequence || idx + 2,
+          }));
+          setStops(intermediateStops);
+        }
+      }
+    }
+  }, [mode, initialRoute, routeName, originStop, destinationStop, stops.length]);
+
   // Update markers when stops, origin, or destination change
   useEffect(() => {
     if (!isMapReady || !mapInstanceRef.current) return;
@@ -1116,32 +1169,43 @@ export function RouteBuilder({
     setStops(newStops);
   };
 
-  // Đề xuất điểm dừng dựa trên học sinh
+  // Đề xuất điểm dừng dựa trên học sinh - CHỈ dùng điểm bắt đầu và điểm kết thúc
   const handleSuggestStops = async () => {
     try {
+      // 🔥 Validation: Phải có origin và destination
+      if (!originStop?.lat || !originStop?.lng) {
+        toast({
+          title: "Thiếu thông tin",
+          description: "Vui lòng chọn điểm bắt đầu trước khi đề xuất điểm dừng",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (!destinationStop?.lat || !destinationStop?.lng) {
+        toast({
+          title: "Thiếu thông tin",
+          description: "Vui lòng chọn điểm kết thúc trước khi đề xuất điểm dừng",
+          variant: "destructive",
+        });
+        return;
+      }
+
       setLoadingSuggestions(true);
       setShowSuggestions(true);
 
-      // Extract area từ route name hoặc để null để lấy tất cả
-      const areaMatch = routeName.match(/Quận\s+(\d+)|Huyện\s+(\w+)/i);
-      const area = areaMatch ? areaMatch[0] : null;
-
-      // Lấy origin và destination từ originStop và destinationStop
-      const originParam = originStop?.lat && originStop?.lng 
-        ? `${originStop.lat},${originStop.lng}` 
-        : undefined;
-      const destinationParam = destinationStop?.lat && destinationStop?.lng
-        ? `${destinationStop.lat},${destinationStop.lng}`
-        : undefined;
+      // 🔥 CHỈ dùng origin và destination, không dùng area hay các tham số khác
+      const originParam = `${originStop.lat},${originStop.lng}`;
+      const destinationParam = `${destinationStop.lat},${destinationStop.lng}`;
 
       const response = await apiClient.suggestStops({
-        area: area || undefined,
+        // Không dùng area - chỉ dựa vào origin và destination
         maxDistanceKm: 2.0,
         minStudentsPerStop: 1, // Giảm xuống 1 để có thể đề xuất ngay cả khi chỉ có 1 học sinh
         maxStops: 20,
-        origin: originParam,
-        destination: destinationParam,
-        optimizeRoute: true, // Tối ưu lộ trình
+        origin: originParam, // 🔥 Bắt buộc: điểm bắt đầu
+        destination: destinationParam, // 🔥 Bắt buộc: điểm kết thúc
+        optimizeRoute: true, // Tối ưu lộ trình dựa trên origin và destination
       });
 
       const data = (response as any).data || {};

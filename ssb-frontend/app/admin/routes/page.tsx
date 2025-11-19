@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Edit, Trash2, Eye, MapPin, Clock, Search, Filter, AlertCircle, Route, Grid3x3, List, Navigation, ArrowRight, MoreVertical, Sparkles } from "lucide-react"
+import { Plus, Edit, Trash2, Eye, MapPin, Clock, Search, Filter, AlertCircle, Route, Navigation, ArrowRight, MoreVertical, Sparkles } from "lucide-react"
 import { RouteBuilder } from "@/components/admin/route-builder"
 import { RouteSuggestionDialog } from "@/components/admin/route-suggestion-dialog"
 import { StatsCard } from "@/components/admin/stats-card"
@@ -34,8 +34,6 @@ type Route = {
   raw?: any 
 }
 
-type ViewMode = "grid" | "list"
-
 export default function RoutesPage() {
   const router = useRouter()
   const { toast } = useToast()
@@ -43,7 +41,6 @@ export default function RoutesPage() {
   const debouncedSearch = useDebounce(searchQuery, 300)
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [routeTypeFilter, setRouteTypeFilter] = useState<string>("all") // 'all', 'di', 've'
-  const [viewMode, setViewMode] = useState<ViewMode>("grid")
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isSuggestionDialogOpen, setIsSuggestionDialogOpen] = useState(false)
@@ -360,7 +357,7 @@ export default function RoutesPage() {
         <Card className="border-border/50">
           <CardContent className="pt-6">
             <div className="space-y-4">
-              {/* Top Row: Search and View Mode */}
+              {/* Top Row: Search */}
               <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
                 <div className="relative w-full sm:w-80">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -370,26 +367,6 @@ export default function RoutesPage() {
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="pl-10"
                   />
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-1 border rounded-md p-1 bg-muted/30">
-                    <Button
-                      variant={viewMode === "grid" ? "default" : "ghost"}
-                      size="sm"
-                      onClick={() => setViewMode("grid")}
-                      className="h-8 px-3"
-                    >
-                      <Grid3x3 className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      variant={viewMode === "list" ? "default" : "ghost"}
-                      size="sm"
-                      onClick={() => setViewMode("list")}
-                      className="h-8 px-3"
-                    >
-                      <List className="w-4 h-4" />
-                    </Button>
-                  </div>
                 </div>
               </div>
 
@@ -570,188 +547,6 @@ export default function RoutesPage() {
               </div>
             </CardContent>
           </Card>
-         ) : viewMode === "grid" ? (
-           <div className="space-y-4">
-             {filteredRoutes.map((routeGroup, groupIndex) => {
-               // Nếu group có nhiều hơn 1 route, hiển thị như paired route
-               const isPaired = routeGroup.length > 1;
-               
-               return (
-                 <div key={groupIndex} className={isPaired ? "space-y-2" : ""}>
-                   {isPaired && (
-                     <div className="flex items-center gap-2 px-2 py-1 bg-muted/30 rounded-md">
-                       <Badge variant="outline" className="text-xs">
-                         Cặp tuyến đi/về
-                       </Badge>
-                       <span className="text-xs text-muted-foreground">
-                         {routeGroup.length} tuyến
-                       </span>
-                     </div>
-                   )}
-                   <div className={`grid grid-cols-1 ${isPaired ? 'lg:grid-cols-2' : 'lg:grid-cols-2 xl:grid-cols-3'} gap-4`}>
-                     {routeGroup.map((route) => {
-              const endpoints = getRouteEndpoints(route)
-              const isActive = route.status === true || route.status === "active" || route.status === "hoat_dong"
-              
-              return (
-                <Card key={route.id} className="border-border/50 hover:border-primary/50 transition-all hover:shadow-lg flex flex-col group">
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="space-y-1 flex-1 min-w-0">
-                         <CardTitle className="text-lg line-clamp-2 group-hover:text-primary transition-colors">
-                           {route.name}
-                         </CardTitle>
-                         <div className="flex items-center gap-1 flex-wrap">
-                           <Badge
-                             variant="outline"
-                             className={
-                               isActive
-                                 ? "border-success text-success bg-success/10 shrink-0 mt-1"
-                                 : "border-muted-foreground text-muted-foreground bg-muted/10 shrink-0 mt-1"
-                             }
-                           >
-                             {isActive ? "Hoạt động" : "Tạm ngừng"}
-                           </Badge>
-                           {(route.raw?.routeType === 'di' || route.raw?.routeType === 've') && (
-                             <Badge
-                               variant="outline"
-                               className={`shrink-0 mt-1 ${
-                                 route.raw?.routeType === 'di'
-                                   ? "border-blue-500 text-blue-600 bg-blue-50 dark:bg-blue-950/20"
-                                   : "border-purple-500 text-purple-600 bg-purple-50 dark:bg-purple-950/20"
-                               }`}
-                             >
-                               {route.raw?.routeType === 'di' ? 'Đi' : 'Về'}
-                             </Badge>
-                           )}
-                           {route.stopsCount < 2 && (
-                             <Badge
-                               variant="outline"
-                               className="border-amber-500 text-amber-600 bg-amber-50 dark:bg-amber-950/20 shrink-0 mt-1"
-                             >
-                               ⚠️ Thiếu điểm dừng
-                             </Badge>
-                           )}
-                         </div>
-                      </div>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0 shrink-0">
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => router.push(`/admin/routes/${route.id}`)}>
-                            <Eye className="mr-2 h-4 w-4" />
-                            Xem chi tiết
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => { setEditingRoute(route); setIsEditDialogOpen(true) }}>
-                            <Edit className="mr-2 h-4 w-4" />
-                            Chỉnh sửa
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem 
-                            variant="destructive"
-                            onClick={() => {
-                              if (!confirm(`Bạn có chắc chắn muốn xóa tuyến "${route.name}"?`)) return
-                              deleteRoute(route.id, {
-                                onSuccess: () => {
-                                  toast({ title: "Thành công", description: "Đã xóa tuyến đường." })
-                                },
-                                onError: (err: Error) => {
-                                  toast({ title: "Lỗi", description: err.message || 'Xóa thất bại', variant: "destructive" })
-                                },
-                              })
-                            }}
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Xóa
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-3 flex-1 flex flex-col">
-                    {/* Route Endpoints */}
-                    {(endpoints.origin || endpoints.destination) && (
-                      <div className="space-y-2 p-3 bg-muted/30 rounded-lg">
-                        {endpoints.origin && (
-                          <div className="flex items-start gap-2 text-sm">
-                            <Navigation className="w-4 h-4 text-primary mt-0.5 shrink-0" />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-xs text-muted-foreground mb-0.5">Điểm bắt đầu</p>
-                              <p className="font-medium line-clamp-1">{endpoints.origin}</p>
-                            </div>
-                          </div>
-                        )}
-                        {endpoints.destination && (
-                          <div className="flex items-start gap-2 text-sm">
-                            <MapPin className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-xs text-muted-foreground mb-0.5">Điểm kết thúc</p>
-                              <p className="font-medium line-clamp-1">{endpoints.destination}</p>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Route Stats */}
-                    <div className="grid grid-cols-2 gap-3 text-sm">
-                      <div className="flex items-center gap-2 p-2 bg-muted/20 rounded">
-                        <MapPin className="w-4 h-4 text-muted-foreground" />
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs text-muted-foreground">Điểm dừng</p>
-                          <p className="font-semibold">{route.stopsCount ?? 0}</p>
-                        </div>
-                      </div>
-                      {route.duration ? (
-                        <div className="flex items-center gap-2 p-2 bg-muted/20 rounded">
-                          <Clock className="w-4 h-4 text-muted-foreground" />
-                          <div className="min-w-0 flex-1">
-                            <p className="text-xs text-muted-foreground">Thời gian</p>
-                            <p className="font-semibold">{typeof route.duration === 'number' ? `${route.duration} phút` : route.duration}</p>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2 p-2 bg-muted/20 rounded">
-                          <Clock className="w-4 h-4 text-muted-foreground" />
-                          <div className="min-w-0 flex-1">
-                            <p className="text-xs text-muted-foreground">Thời gian</p>
-                            <p className="font-semibold text-muted-foreground">-</p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex items-center gap-2 pt-2 mt-auto border-t">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="flex-1"
-                        onClick={() => router.push(`/admin/routes/${route.id}`)}
-                      >
-                        <Eye className="w-4 h-4 mr-1.5" />
-                        Chi tiết
-                      </Button>
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={() => { setEditingRoute(route); setIsEditDialogOpen(true) }}
-                      >
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                 </Card>
-                     );
-                   })}
-                   </div>
-                 </div>
-               );
-             })}
-           </div>
          ) : (
            <div className="space-y-3">
              {filteredRoutes.map((routeGroup, groupIndex) => {

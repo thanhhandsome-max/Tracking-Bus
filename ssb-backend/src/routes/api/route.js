@@ -48,7 +48,7 @@ router.get(
 router.get(
   "/:id",
   AuthMiddleware.authenticate,
-  AuthMiddleware.authorize("quan_tri", "tai_xe"),
+  AuthMiddleware.checkRouteAccess,
   ValidationMiddleware.validateId,
   RouteController.getRouteById
 );

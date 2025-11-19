@@ -9,12 +9,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { CheckCircle2, AlertCircle, Info, MapPin, Clock, Bell, BellOff, Trash2 } from "lucide-react"
-import apiClient from "@/lib/api"
+import { apiClient } from "@/lib/api"
+import { useToast } from "@/hooks/use-toast"
 // socket events are bridged via window CustomEvent 'notificationNew' in lib/socket
 
 export default function ParentNotifications() {
   const { user } = useAuth()
   const router = useRouter()
+  const { toast } = useToast()
   const [filter, setFilter] = useState("all")
   const [notifications, setNotifications] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -85,18 +87,66 @@ export default function ParentNotifications() {
   const unreadCount = notifications.filter((n) => !n.read).length
 
   const markAllRead = async () => {
-    await apiClient.markAllNotificationsRead()
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
+    try {
+      await apiClient.markAllNotificationsRead()
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
+      toast({
+        title: "Thành công",
+        description: "Đã đánh dấu tất cả thông báo là đã đọc",
+      })
+    } catch (error: any) {
+      console.error("Error marking all as read:", error)
+      toast({
+        title: "Lỗi",
+        description: error?.message || "Không thể đánh dấu đã đọc",
+        variant: "destructive",
+      })
+    }
   }
 
   const deleteAllRead = async () => {
-    await apiClient.deleteAllReadNotifications()
-    setNotifications((prev) => prev.filter((n) => !n.read))
+    try {
+      await apiClient.deleteAllReadNotifications()
+      setNotifications((prev) => prev.filter((n) => !n.read))
+      toast({
+        title: "Thành công",
+        description: "Đã xóa tất cả thông báo đã đọc",
+      })
+    } catch (error: any) {
+      console.error("Error deleting read notifications:", error)
+      toast({
+        title: "Lỗi",
+        description: error?.message || "Không thể xóa thông báo",
+        variant: "destructive",
+      })
+    }
   }
 
   const deleteOne = async (id: number) => {
-    await apiClient.deleteNotification(id)
-    setNotifications((prev) => prev.filter((n) => n.id !== id))
+    try {
+      await apiClient.deleteNotification(id)
+      setNotifications((prev) => prev.filter((n) => n.id !== id))
+      toast({
+        title: "Thành công",
+        description: "Đã xóa thông báo",
+      })
+    } catch (error: any) {
+      console.error("Error deleting notification:", error)
+      toast({
+        title: "Lỗi",
+        description: error?.message || "Không thể xóa thông báo",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const markAsRead = async (id: number) => {
+    try {
+      await apiClient.markNotificationRead(id)
+      setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, read: true } : n))
+    } catch (error: any) {
+      console.error("Error marking notification as read:", error)
+    }
   }
 
   return (
@@ -185,6 +235,11 @@ export default function ParentNotifications() {
                     className={`p-4 rounded-lg border transition-colors cursor-pointer ${
                       notification.read ? "border-border/50 bg-muted/20" : "border-primary/50 bg-primary/5"
                     }`}
+                    onClick={() => {
+                      if (!notification.read) {
+                        markAsRead(notification.id)
+                      }
+                    }}
                   >
                     <div className="flex items-start gap-4">
                       <div
@@ -212,14 +267,37 @@ export default function ParentNotifications() {
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-1">
                               <h4 className="font-semibold text-foreground">{notification.title}</h4>
-                              {!notification.read && <div className="w-2 h-2 rounded-full bg-primary" />}
+                              {!notification.read && <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />}
                             </div>
                             <p className="text-sm text-muted-foreground">{notification.message}</p>
                             <p className="text-xs text-muted-foreground mt-2">{notification.time}</p>
                           </div>
-                          <Button onClick={() => deleteOne(notification.id)} variant="ghost" size="sm">
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
+                          <div className="flex items-center gap-1">
+                            {!notification.read && (
+                              <Button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  markAsRead(notification.id)
+                                }}
+                                variant="ghost"
+                                size="sm"
+                                title="Đánh dấu đã đọc"
+                              >
+                                <CheckCircle2 className="w-4 h-4" />
+                              </Button>
+                            )}
+                            <Button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                deleteOne(notification.id)
+                              }}
+                              variant="ghost"
+                              size="sm"
+                              title="Xóa"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     </div>

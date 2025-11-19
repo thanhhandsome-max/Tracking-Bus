@@ -64,6 +64,26 @@ export default function PlacePicker({ onPlaceSelected, placeholder = 'Tìm kiế
 
           autocompleteRef.current = autocomplete;
 
+          // Fix z-index for autocomplete dropdown to ensure it's clickable
+          // Google Places Autocomplete creates a dropdown that might be behind other elements
+          const fixZIndex = () => {
+            const pacContainer = document.querySelector('.pac-container');
+            if (pacContainer) {
+              (pacContainer as HTMLElement).style.zIndex = '9999';
+              (pacContainer as HTMLElement).style.position = 'absolute';
+              // Ensure items are clickable
+              const pacItems = pacContainer.querySelectorAll('.pac-item');
+              pacItems.forEach((item) => {
+                (item as HTMLElement).style.cursor = 'pointer';
+              });
+            }
+          };
+          
+          // Fix immediately and also on input focus
+          setTimeout(fixZIndex, 100);
+          inputRef.current?.addEventListener('focus', fixZIndex);
+          inputRef.current?.addEventListener('input', fixZIndex);
+
           // Listen for place selection
           autocomplete.addListener('place_changed', () => {
             const place = autocomplete.getPlace();
@@ -113,12 +133,13 @@ export default function PlacePicker({ onPlaceSelected, placeholder = 'Tìm kiế
 
   return (
     <div className={`relative ${className}`}>
-      <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+      <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none z-10" />
       <Input
         ref={inputRef}
         type="text"
         placeholder={placeholder}
         className="pl-10"
+        autoComplete="off"
       />
     </div>
   );

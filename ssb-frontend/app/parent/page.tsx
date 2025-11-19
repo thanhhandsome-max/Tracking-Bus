@@ -711,6 +711,25 @@ export default function ParentDashboard() {
             });
           }
 
+          // Load trip details if trip ID is available
+          let dropoffTime = "16:30"; // Default fallback
+          if (tripInfo.maChuyen) {
+            try {
+              const tripDetailRes = await apiClient.getTripById(tripInfo.maChuyen);
+              const tripDetail: any = (tripDetailRes as any)?.data || tripDetailRes;
+              // Try to get dropoff time from schedule or trip
+              if (tripDetail?.schedule?.gioKhoiHanh) {
+                const pickupTime = tripDetail.schedule.gioKhoiHanh;
+                // Estimate dropoff time (add 1-2 hours for return trip)
+                const [hours, minutes] = pickupTime.split(':').map(Number);
+                const dropoffHours = (hours + (tripDetail.schedule.loaiChuyen === 'don_sang' ? 2 : 1)) % 24;
+                dropoffTime = `${String(dropoffHours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+              }
+            } catch (e) {
+              console.warn("[Parent] Failed to load trip details:", e);
+            }
+          }
+
           setChildInfo({
             name: firstChild.hoTen || "Chưa có tên",
             grade: firstChild.lop || "Chưa có lớp",
@@ -719,7 +738,7 @@ export default function ParentDashboard() {
             driverName: tripInfo.tenTaiXe || "Chưa phân công",
             driverPhone: tripInfo.sdtTaiXe || "—",
             pickupTime: schedule.slice(0, 5) || "07:15",
-            dropoffTime: "16:30", // TODO: Load từ schedule
+            dropoffTime: dropoffTime,
             currentStop: "Điểm đón",
             estimatedArrival: delayAlert?.delayMinutes
               ? `Trễ ${delayAlert.delayMinutes} phút`

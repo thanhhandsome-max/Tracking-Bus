@@ -41,9 +41,35 @@ type ParentInfo = {
   soDienThoai?: string
 }
 
+// Format ngày sinh cho input type="date" (YYYY-MM-DD)
+function formatDateForInput(dateValue: any): string {
+  if (!dateValue) return ""
+  if (typeof dateValue === "string") {
+    // Nếu đã là format YYYY-MM-DD, trả về luôn
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+      return dateValue
+    }
+    // Thử parse từ các format khác
+    const date = new Date(dateValue)
+    if (!isNaN(date.getTime())) {
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const day = String(date.getDate()).padStart(2, '0')
+      return `${year}-${month}-${day}`
+    }
+    // Nếu không parse được, thử lấy phần đầu (YYYY-MM-DD) từ string
+    const dateStr = dateValue.split('T')[0].split(' ')[0]
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      return dateStr
+    }
+  }
+  return ""
+}
+
 export function StudentForm({ onClose, onCreated, onUpdated, mode = "create", initial }: StudentFormProps) {
+
   const [studentName, setStudentName] = useState(String((initial as any)?.hoTen || (initial as any)?.name || ""))
-  const [birthDate, setBirthDate] = useState(String((initial as any)?.ngaySinh || ""))
+  const [birthDate, setBirthDate] = useState(formatDateForInput((initial as any)?.ngaySinh || (initial as any)?.birthDate))
   const [grade, setGrade] = useState(String((initial as any)?.lop || (initial as any)?.grade || ""))
   const [address, setAddress] = useState(String((initial as any)?.diaChi || (initial as any)?.address || ""))
   
@@ -93,6 +119,12 @@ export function StudentForm({ onClose, onCreated, onUpdated, mode = "create", in
       }
       if (initialPhone) {
         checkPhoneNumber(initialPhone)
+      }
+      
+      // Cập nhật lại ngày sinh khi initial thay đổi (để đảm bảo format đúng)
+      const formattedDate = formatDateForInput((initial as any)?.ngaySinh || (initial as any)?.birthDate)
+      if (formattedDate) {
+        setBirthDate(formattedDate)
       }
     }
   }, [mode, initial])

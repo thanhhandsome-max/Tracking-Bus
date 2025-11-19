@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { Clock, MapPin, Users, Play } from "lucide-react"
 import { apiClient } from "@/lib/api"
 import MapView from '@/components/tracking/MapView'
-import { startTripStrict as startTrip } from '@/lib/services/trip.service'
+// Removed: startTrip import - không start trip ở trang driver nữa, để trang trip/[id] xử lý
 import { useToast } from '@/hooks/use-toast'
 
 
@@ -22,6 +22,8 @@ export default function DriverDashboard() {
   const router = useRouter()
   const [trips, setTrips] = useState<any[]>([])
   const [stops, setStops] = useState<{ id: string; lat: number; lng: number; label?: string }[]>([])
+  const [routePolyline, setRoutePolyline] = useState<string | null>(null)
+  const [routeId, setRouteId] = useState<number | null>(null)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -156,14 +158,46 @@ export default function DriverDashboard() {
             const detailRes = await apiClient.getTripById(active.maChuyen)
             const detail = detailRes && detailRes.data ? detailRes.data : detailRes
             const detailAny: any = detail
+            
+            // Lấy route stops
             const routeStops = detailAny?.routeInfo?.diemDung || []
             const mappedStops = (routeStops || []).map((s: any) => ({ id: s.maDiem || s.id || s.maDiemDung || `${s.lat}_${s.lng}`, lat: Number(s.viDo || s.lat || s.latitude), lng: Number(s.kinhDo || s.lng || s.longitude), label: s.tenDiem || s.ten || s.label }))
             setStops(mappedStops.filter((s: any) => Number.isFinite(s.lat) && Number.isFinite(s.lng)))
+            
+            // Lấy polyline từ route
+            const routePolylineData = detailAny?.routeInfo?.polyline || null
+            const routeIdData = detailAny?.routeInfo?.maTuyen || detailAny?.schedule?.maTuyen || null
+            
+            if (routePolylineData) {
+              setRoutePolyline(routePolylineData)
+              console.log('[Driver] Loaded route polyline:', routePolylineData.substring(0, 50) + '...')
+            } else if (routeIdData) {
+              // Nếu không có polyline trong trip detail, lấy từ route
+              try {
+                const routeRes = await apiClient.getRouteById(routeIdData)
+                const routeData: any = (routeRes as any)?.data || routeRes
+                const polyline = routeData?.polyline || null
+                if (polyline) {
+                  setRoutePolyline(polyline)
+                  console.log('[Driver] Loaded polyline from route:', polyline.substring(0, 50) + '...')
+                }
+              } catch (routeErr) {
+                console.warn('[Driver] Failed to load route polyline:', routeErr)
+              }
+            }
+            
+            if (routeIdData) {
+              setRouteId(Number(routeIdData))
+            }
           } catch {
             setStops([])
+            setRoutePolyline(null)
+            setRouteId(null)
           }
         } else {
           setStops([])
+          setRoutePolyline(null)
+          setRouteId(null)
         }
       } catch (err) {
         console.error('Failed to load trips for driver', err)
@@ -290,16 +324,10 @@ export default function DriverDashboard() {
                     {isNotStarted ? (
                       <Button
                         className="w-full bg-primary hover:bg-primary/90 cursor-pointer"
-                        onClick={async () => {
-                          try {
-                            const res = await startTrip(tripId)
-                            const newId = (res as any)?.data?.maChuyen || (res as any)?.trip?.maChuyen || tripId
-                            toast({ title: 'Đã bắt đầu chuyến đi', description: `Trip ${newId} đang chạy` })
-                            router.push(`/driver/trip/${newId}`)
-                          } catch (e) {
-                            toast({ title: 'Không thể bắt đầu qua API', description: 'Đi tiếp vào trang chuyến đi', variant: 'destructive' })
-                            router.push(`/driver/trip/${tripId}`)
-                          }
+                        onClick={() => {
+                          // 🔥 FIX: Chỉ navigate, không start trip ở đây
+                          // Để trang trip/[id] xử lý start trip để tránh trùng lặp
+                          router.push(`/driver/trip/${tripId}`)
                         }}
                       >
                         <Play className="w-4 h-4 mr-2" />
@@ -323,7 +351,17 @@ export default function DriverDashboard() {
 
           {stops.length > 0 && (
             <div className="lg:col-span-2">
-              <MapView buses={[]} stops={stops} height="640px" />
+              <MapView 
+                buses={[]} 
+                stops={stops} 
+                routes={routePolyline && routeId ? [{
+                  routeId: routeId,
+                  routeName: trips.find((t: any) => t.trangThai === 'dang_chay')?.tenTuyen || 'Tuyến đường',
+                  polyline: routePolyline,
+                  color: '#3b82f6', // Blue color for route
+                }] : []}
+                height="640px" 
+              />
             </div>
           )}
         </div>

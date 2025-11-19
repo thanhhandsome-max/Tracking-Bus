@@ -1084,12 +1084,44 @@ class RouteController {
       // Lấy suggestions
       const StudentStopSuggestionModel = (await import("../models/StudentStopSuggestionModel.js")).default;
       const allSuggestions = await StudentStopSuggestionModel.getByRouteId(id);
+      console.log(`[RouteController.getStopSuggestions] Loaded ${allSuggestions.length} total suggestions from DB for route ${id}`);
 
-      // Group suggestions theo stop
+      // Helper function: Tính khoảng cách giữa 2 điểm (Haversine formula) - trả về km
+      const calculateDistance = (lat1, lng1, lat2, lng2) => {
+        const R = 6371; // Radius of Earth in km
+        const dLat = ((lat2 - lat1) * Math.PI) / 180;
+        const dLng = ((lng2 - lng1) * Math.PI) / 180;
+        const a =
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos((lat1 * Math.PI) / 180) *
+            Math.cos((lat2 * Math.PI) / 180) *
+            Math.sin(dLng / 2) *
+            Math.sin(dLng / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
+      };
+
+      // Maximum distance from stop to student (3km - corridor radius)
+      const MAX_DISTANCE_KM = 3;
+
+      // Group suggestions theo stop và filter theo khoảng cách
       const stopsWithSuggestions = routeStops.map((stop) => {
-        const stopSuggestions = allSuggestions.filter(
-          (s) => s.maDiemDung === stop.maDiem
-        );
+        // Filter suggestions cho stop này và kiểm tra khoảng cách
+        const stopSuggestions = allSuggestions
+          .filter((s) => s.maDiemDung === stop.maDiem)
+          .filter((s) => {
+            // Kiểm tra khoảng cách từ học sinh đến điểm dừng
+            if (!s.studentLat || !s.studentLng || !stop.viDo || !stop.kinhDo) {
+              return false; // Bỏ qua nếu thiếu tọa độ
+            }
+            const distance = calculateDistance(
+              s.studentLat,
+              s.studentLng,
+              stop.viDo,
+              stop.kinhDo
+            );
+            return distance <= MAX_DISTANCE_KM;
+          });
 
         return {
           sequence: stop.sequence,
@@ -1109,6 +1141,14 @@ class RouteController {
         };
       });
 
+      // Tính tổng số học sinh sau khi filter
+      const totalFilteredStudents = stopsWithSuggestions.reduce(
+        (sum, stop) => sum + stop.studentCount,
+        0
+      );
+      
+      console.log(`[RouteController.getStopSuggestions] Filtered to ${totalFilteredStudents} students within ${MAX_DISTANCE_KM}km (from ${allSuggestions.length} total suggestions)`);
+
       return response.ok(res, {
         route: {
           maTuyen: route.maTuyen,
@@ -1117,8 +1157,9 @@ class RouteController {
           diemKetThuc: route.diemKetThuc,
         },
         stops: stopsWithSuggestions,
-        totalStudents: allSuggestions.length,
+        totalStudents: totalFilteredStudents, // Chỉ đếm học sinh gần tuyến (≤3km)
         totalStops: stopsWithSuggestions.length,
+        note: `Chỉ hiển thị học sinh trong vòng ${MAX_DISTANCE_KM}km từ các điểm dừng`,
       });
     } catch (error) {
       console.error("Error in RouteController.getStopSuggestions:", error);

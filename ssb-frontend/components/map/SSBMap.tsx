@@ -694,12 +694,14 @@ function SSBMap({
     }
 
     // Fallback: Tạo polyline đơn giản từ stops nếu không có polyline và không đang fetch
-    // Chỉ tạo fallback khi Google Maps đã được load
-    if (stops && stops.length >= 2 && !isFetchingDirections && geometryReady) {
+    // CHỈ tạo fallback khi KHÔNG có routes với polylines (để tránh vẽ đường chim bay khi đã có đường đi thực tế)
+    const hasRoutePolylines = routes && routes.length > 0 && routes.some((r) => r.polyline && r.polyline.trim());
+    
+    if (stops && stops.length >= 2 && !isFetchingDirections && geometryReady && !hasRoutePolylines) {
       const simplePath = createSimplePolylineFromStops(stops);
       if (simplePath) {
         console.log(
-          "[SSBMap] Using simple polyline from stops (no backend polyline available)"
+          "[SSBMap] Using simple polyline from stops (no backend polyline available, no routes with polylines)"
         );
         return simplePath;
       }
@@ -714,6 +716,7 @@ function SSBMap({
     geometryReady,
     isFetchingDirections,
     createSimplePolylineFromStops,
+    routes, // Add routes to dependencies to prevent fallback when routes have polylines
   ]);
 
   // Initialize map
@@ -1396,11 +1399,15 @@ function SSBMap({
 
   // Draw polyline - IMPROVED VERSION
   useEffect(() => {
+    // Check if we have routes with polylines - if so, don't render single polyline (routes will be rendered separately)
+    const hasRoutePolylines = routes && routes.length > 0 && routes.some((r) => r.polyline && r.polyline.trim());
+    
     console.log("[SSBMap] Polyline effect triggered:", {
       hasMap: !!mapInstanceRef.current,
       hasPolylinePath: !!polylinePath,
       polylinePathLength: Array.isArray(polylinePath) ? polylinePath.length : 0,
       geometryReady,
+      hasRoutePolylines,
     });
 
     if (!mapInstanceRef.current) {
@@ -1422,6 +1429,12 @@ function SSBMap({
     if (directionsRendererRef.current) {
       directionsRendererRef.current.setMap(null);
       directionsRendererRef.current = null;
+    }
+
+    // If we have routes with polylines, don't render single polyline (routes will be rendered separately)
+    if (hasRoutePolylines) {
+      console.log("[SSBMap] Routes with polylines detected, skipping single polyline render");
+      return;
     }
 
     // If no polyline path, return early
@@ -1522,7 +1535,7 @@ function SSBMap({
     } catch (error) {
       console.error("[SSBMap] Error rendering polyline:", error);
     }
-  }, [polylinePath]);
+  }, [polylinePath, routes]); // Add routes to dependencies
 
   // Render multiple route polylines
   useEffect(() => {

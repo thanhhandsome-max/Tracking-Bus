@@ -228,7 +228,21 @@ export default function StudentsPage() {
                   id: editingStudent?.id,
                   hoTen: editingStudent?.name,
                   lop: editingStudent?.grade,
-                  ngaySinh: editingStudent?.birthDate,
+                  ngaySinh: editingStudent?.birthDate 
+                    ? (() => {
+                        // Format ngày sinh cho input type="date" (YYYY-MM-DD)
+                        const date = new Date(editingStudent.birthDate)
+                        if (isNaN(date.getTime())) {
+                          // Nếu không parse được, thử format khác
+                          const dateStr = String(editingStudent.birthDate).split('T')[0].split(' ')[0]
+                          return dateStr
+                        }
+                        const year = date.getFullYear()
+                        const month = String(date.getMonth() + 1).padStart(2, '0')
+                        const day = String(date.getDate()).padStart(2, '0')
+                        return `${year}-${month}-${day}`
+                      })()
+                    : undefined,
                   diaChi: editingStudent?.address,
                   tenPhuHuynh: editingStudent?.parentName,
                   sdtPhuHuynh: editingStudent?.parentPhone,

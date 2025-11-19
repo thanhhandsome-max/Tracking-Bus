@@ -774,6 +774,34 @@ class ApiClient {
   async getStudentsByParent() {
     return this.request("/students/by-parent");
   }
+
+  // Profile endpoints
+  async getProfile() {
+    return this.request("/auth/profile");
+  }
+
+  async updateProfile(profileData: {
+    hoTen?: string;
+    soDienThoai?: string;
+    diaChi?: string;
+    anhDaiDien?: string;
+  }) {
+    return this.request("/auth/profile", {
+      method: "PUT",
+      body: JSON.stringify(profileData),
+    });
+  }
+
+  async changePassword(passwordData: {
+    matKhauCu: string;
+    matKhauMoi: string;
+    xacNhanMatKhauMoi: string;
+  }) {
+    return this.request("/auth/change-password", {
+      method: "PUT",
+      body: JSON.stringify(passwordData),
+    });
+  }
 }
 
 // Create singleton instance

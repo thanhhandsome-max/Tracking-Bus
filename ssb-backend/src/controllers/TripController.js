@@ -416,7 +416,8 @@ class TripController {
         } : null,
         driverInfo: driverInfo ? {
           maTaiXe: driverInfo.maTaiXe,
-          tenTaiXe: driverInfo.tenTaiXe,
+          hoTen: driverInfo.hoTen, // Field từ NguoiDung, không phải tenTaiXe
+          soDienThoai: driverInfo.soDienThoai,
         } : null,
         stops: stopsWithStudents, // 🔥 Format chuẩn: stops[] với studentCount và students[]
         summary: {
@@ -1088,7 +1089,7 @@ class TripController {
             } con bạn về ${
               route?.tenTuyen ? `(${route.tenTuyen})` : ""
             }. Thời gian: ${startTimeFormatted}${
-              driver ? `. Tài xế: ${driver.tenTaiXe}` : ""
+              driver?.hoTen ? `. Tài xế: ${driver.hoTen}` : ""
             }.`;
 
             // Tạo bulk notifications
