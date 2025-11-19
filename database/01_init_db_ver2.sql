@@ -351,8 +351,9 @@ CREATE TABLE IF NOT EXISTS student_stop_suggestions (
     ngayTao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     ngayCapNhat TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     
-    -- Mỗi học sinh chỉ có 1 điểm dừng gợi ý trong 1 route
-    UNIQUE KEY uniq_route_student (maTuyen, maHocSinh),
+    -- Cho phép 1 học sinh có nhiều điểm dừng gợi ý trong 1 route (để admin chọn)
+    -- Chỉ prevent duplicate exact (maTuyen, maHocSinh, maDiemDung)
+    UNIQUE KEY uniq_route_student_stop (maTuyen, maHocSinh, maDiemDung),
     
     -- Foreign keys
     CONSTRAINT fk_student_stop_suggestions_route

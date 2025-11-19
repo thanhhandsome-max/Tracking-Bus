@@ -50,6 +50,26 @@ class RouteAutoCreateService {
       clusterRadiusKm = 0.4,
     } = options;
 
+    // 🔥 TASK 5: Validate options
+    const MAX_RADIUS_KM = 50; // Ngưỡng tối đa hợp lý
+    const validationErrors = [];
+    
+    if (typeof startRadiusKm !== 'number' || startRadiusKm <= 0 || startRadiusKm > MAX_RADIUS_KM) {
+      validationErrors.push(`startRadiusKm must be a number between 0 and ${MAX_RADIUS_KM}, got: ${startRadiusKm}`);
+    }
+    if (typeof corridorRadiusKm !== 'number' || corridorRadiusKm <= 0 || corridorRadiusKm > MAX_RADIUS_KM) {
+      validationErrors.push(`corridorRadiusKm must be a number between 0 and ${MAX_RADIUS_KM}, got: ${corridorRadiusKm}`);
+    }
+    if (typeof clusterRadiusKm !== 'number' || clusterRadiusKm <= 0 || clusterRadiusKm > MAX_RADIUS_KM) {
+      validationErrors.push(`clusterRadiusKm must be a number between 0 and ${MAX_RADIUS_KM}, got: ${clusterRadiusKm}`);
+    }
+    
+    if (validationErrors.length > 0) {
+      const error = new Error("INVALID_ROUTE_AUTO_CREATE_OPTIONS");
+      error.validationErrors = validationErrors;
+      throw error;
+    }
+
     console.log(`[RouteAutoCreate] Creating route: ${tenTuyen}`);
     console.log(`[RouteAutoCreate] Start: ${startPoint.name} (${startPoint.lat}, ${startPoint.lng})`);
     console.log(`[RouteAutoCreate] End: ${endPoint.name} (${endPoint.lat}, ${endPoint.lng})`);

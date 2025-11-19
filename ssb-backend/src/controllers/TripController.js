@@ -304,9 +304,11 @@ class TripController {
       // Lấy danh sách học sinh trong chuyến đi
       let students = await TrangThaiHocSinhModel.getByTripId(id);
 
-      // 🔥 FIX: Nếu trip không có students nhưng có schedule, tự động copy từ schedule
+      // 🔥 TASK 4: Fallback đơn giản - chỉ copy từ schedule, không auto-assign từ route
+      // Flow chuẩn: Schedule → Trip → Driver
+      // Nếu trip không có students, thử copy từ schedule_student_stops một lần
       if (students.length === 0 && schedule && schedule.maLichTrinh) {
-        console.log(`[TripController.getById] Trip ${id} has no students, checking schedule ${schedule.maLichTrinh}...`);
+        console.log(`[TripController.getById] Trip ${id} has no students, trying to copy from schedule ${schedule.maLichTrinh}...`);
         try {
           const ScheduleStudentStopModel = (await import("../models/ScheduleStudentStopModel.js")).default;
           
@@ -325,70 +327,18 @@ class TripController {
               console.warn(`[TripController.getById] ⚠️ Failed to copy students (copiedCount = 0)`);
             }
           } else {
-            // Schedule không có students, thử auto-assign từ route
-            console.log(`[TripController.getById] Schedule ${schedule.maLichTrinh} has no students, trying to auto-assign from route ${schedule.maTuyen}...`);
-            try {
-              const RouteService = (await import("../services/RouteService.js")).default;
-              const routeStops = await RouteService.getStops(schedule.maTuyen);
-              
-              if (routeStops.length > 0) {
-                const HocSinhModel = (await import("../models/HocSinhModel.js")).default;
-                let allStudents = await HocSinhModel.getAll();
-                allStudents = allStudents.filter(s => s.viDo && s.kinhDo && !isNaN(s.viDo) && !isNaN(s.kinhDo) && s.trangThai);
-                
-                const StopSuggestionService = (await import("../services/StopSuggestionService.js")).default;
-                const autoAssignedStudents = [];
-                
-                for (const student of allStudents) {
-                  let nearestStop = null;
-                  let minDistance = Infinity;
-                  
-                  for (const stop of routeStops) {
-                    const distance = StopSuggestionService.calculateDistance(
-                      student.viDo,
-                      student.kinhDo,
-                      stop.viDo,
-                      stop.kinhDo
-                    );
-                    
-                    if (distance < minDistance && distance <= 5.0) { // Tăng lên 5km để tìm được nhiều học sinh hơn
-                      minDistance = distance;
-                      nearestStop = stop;
-                    }
-                  }
-                  
-                  if (nearestStop) {
-                    autoAssignedStudents.push({
-                      maHocSinh: student.maHocSinh,
-                      thuTuDiem: nearestStop.sequence,
-                      maDiem: nearestStop.maDiem,
-                    });
-                  }
-                }
-                
-                if (autoAssignedStudents.length > 0) {
-                  // Lưu vào schedule_student_stops
-                  await ScheduleStudentStopModel.bulkCreate(schedule.maLichTrinh, autoAssignedStudents);
-                  console.log(`[TripController.getById] ✅ Auto-assigned ${autoAssignedStudents.length} students to schedule ${schedule.maLichTrinh}`);
-                  
-                  // Copy sang trip
-                  const copiedCount = await ScheduleStudentStopModel.copyToTrip(schedule.maLichTrinh, id);
-                  if (copiedCount > 0) {
-                    console.log(`[TripController.getById] ✅ Copied ${copiedCount} students to trip ${id}`);
-                    students = await TrangThaiHocSinhModel.getByTripId(id);
-                  }
-                } else {
-                  console.warn(`[TripController.getById] ⚠️ No students found near route stops (within 5km)`);
-                }
-              }
-            } catch (autoAssignError) {
-              console.error(`[TripController.getById] ⚠️ Failed to auto-assign students:`, autoAssignError);
-            }
+            console.warn(`[TripController.getById] ⚠️ Schedule ${schedule.maLichTrinh} has no students assigned. Trip will be returned with empty students list.`);
+            // Không auto-assign nữa - việc đó là của ScheduleService khi tạo schedule
           }
         } catch (copyError) {
           console.error(`[TripController.getById] ⚠️ Failed to copy students from schedule:`, copyError);
-          // Continue anyway - trip vẫn có thể được xem
+          // Continue anyway - trip vẫn có thể được xem (nhưng không có students)
         }
+      }
+      
+      // Nếu sau fallback vẫn không có students, log warning nhưng vẫn trả về trip
+      if (students.length === 0) {
+        console.warn(`[TripController.getById] ⚠️ Trip ${id} has no students after fallback. This may indicate a missing schedule assignment.`);
       }
 
       // 🔥 CHUẨN HÓA: Group học sinh theo điểm dừng với format rõ ràng

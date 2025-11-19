@@ -40,7 +40,7 @@ export function ScheduleForm({ onClose, onSaved, mode = "create", initialSchedul
   const [submitting, setSubmitting] = useState(false)
   const [routeStops, setRouteStops] = useState<any[]>([])
   const [availableStudents, setAvailableStudents] = useState<any[]>([])
-  const [selectedStudents, setSelectedStudents] = useState<Record<number, { maHocSinh: number; thuTuDiem: number; maDiem: number }>>({})
+  const [selectedStudents, setSelectedStudents] = useState<Record<number, { maHocSinh: number; thuTuDiem: number; maDiem: number; source: 'suggestion' | 'manual' }>>({})
   const [loadingStops, setLoadingStops] = useState(false)
   const [loadingStudents, setLoadingStudents] = useState(false)
   const [conflictError, setConflictError] = useState<{
@@ -114,7 +114,7 @@ export function ScheduleForm({ onClose, onSaved, mode = "create", initialSchedul
           // Sử dụng functional update để tránh dependency issue
           setSelectedStudents((current) => {
             if (stopsWithSuggestions.length > 0 && Object.keys(current).length === 0) {
-            const suggestions: Record<number, { maHocSinh: number; thuTuDiem: number; maDiem: number }> = {}
+            const suggestions: Record<number, { maHocSinh: number; thuTuDiem: number; maDiem: number; source: 'suggestion' | 'manual' }> = {}
             
             stopsWithSuggestions.forEach((stop: any) => {
               if (stop.students && Array.isArray(stop.students) && stop.students.length > 0) {
@@ -123,6 +123,7 @@ export function ScheduleForm({ onClose, onSaved, mode = "create", initialSchedul
                     maHocSinh: student.maHocSinh,
                     thuTuDiem: stop.sequence,
                     maDiem: stop.maDiem,
+                    source: 'suggestion', // Đánh dấu là từ suggestion
                   }
                 })
               }
@@ -183,13 +184,14 @@ export function ScheduleForm({ onClose, onSaved, mode = "create", initialSchedul
         .then((res: any) => {
           const data = (res as any).data || {}
           const studentsByStop = data.studentsByStop || []
-          const existing: Record<number, { maHocSinh: number; thuTuDiem: number; maDiem: number }> = {}
+          const existing: Record<number, { maHocSinh: number; thuTuDiem: number; maDiem: number; source: 'suggestion' | 'manual' }> = {}
           studentsByStop.forEach((stop: any) => {
             stop.students.forEach((student: any) => {
               existing[student.maHocSinh] = {
                 maHocSinh: student.maHocSinh,
                 thuTuDiem: stop.thuTuDiem,
                 maDiem: stop.maDiem,
+                source: 'manual', // Khi edit, coi như manual (không biết được source gốc)
               }
             })
           })
@@ -246,7 +248,7 @@ export function ScheduleForm({ onClose, onSaved, mode = "create", initialSchedul
       return
     }
 
-    const newAssignments: Record<number, { maHocSinh: number; thuTuDiem: number; maDiem: number }> = {}
+    const newAssignments: Record<number, { maHocSinh: number; thuTuDiem: number; maDiem: number; source: 'suggestion' | 'manual' }> = {}
     
     // Lọc học sinh chưa được gán
     const unassignedStudents = availableStudents.filter(
@@ -299,6 +301,7 @@ export function ScheduleForm({ onClose, onSaved, mode = "create", initialSchedul
           maHocSinh: studentId,
           thuTuDiem: nearestStop.sequence,
           maDiem: nearestStop.maDiem || nearestStop.id,
+          source: 'manual', // Auto-assign từ FE cũng coi là manual
         }
       }
     })
@@ -355,15 +358,22 @@ export function ScheduleForm({ onClose, onSaved, mode = "create", initialSchedul
       const dd = `${date.getDate()}`.padStart(2, '0')
       const ngayChay = `${yyyy}-${mm}-${dd}`
       
-      // Build students array from selectedStudents
-      const studentsArray = Object.values(selectedStudents)
+      // Build students array from selectedStudents (loại bỏ source, chỉ gửi maHocSinh, thuTuDiem, maDiem)
+      const studentsArray = Object.values(selectedStudents).map(s => ({
+        maHocSinh: s.maHocSinh,
+        thuTuDiem: s.thuTuDiem,
+        maDiem: s.maDiem,
+      }))
       
       console.log("[ScheduleForm] Submitting schedule with students:", {
         studentsCount: studentsArray.length,
         students: studentsArray.slice(0, 3),
         selectedStudentsKeys: Object.keys(selectedStudents).length,
+        suggestionsCount: Object.values(selectedStudents).filter(s => s.source === 'suggestion').length,
+        manualCount: Object.values(selectedStudents).filter(s => s.source === 'manual').length,
       })
       
+      // 🔥 TASK 3: Luôn gửi students[] (kể cả rỗng) để backend không phải auto-assign
       const payload = {
         maTuyen: parseInt(route),
         maXe: parseInt(bus),
@@ -372,7 +382,7 @@ export function ScheduleForm({ onClose, onSaved, mode = "create", initialSchedul
         gioKhoiHanh: startTime,
         ngayChay: ngayChay,
         dangApDung: true,
-        ...(studentsArray.length > 0 && { students: studentsArray }),
+        students: studentsArray, // Luôn gửi, kể cả rỗng
       }
       
       console.log("[ScheduleForm] Payload:", {
@@ -636,8 +646,19 @@ export function ScheduleForm({ onClose, onSaved, mode = "create", initialSchedul
                                 className="flex items-center gap-1"
                               >
                                 {student.hoTen || student.name}
+                                {/* 🔥 TASK 3: Hiển thị badge phân biệt suggestion vs manual */}
+                                {selected.source === 'suggestion' && (
+                                  <Badge variant="outline" className="ml-1 text-xs px-1 py-0 bg-blue-50 text-blue-700 border-blue-200">
+                                    Gợi ý
+                                  </Badge>
+                                )}
+                                {selected.source === 'manual' && (
+                                  <Badge variant="outline" className="ml-1 text-xs px-1 py-0 bg-green-50 text-green-700 border-green-200">
+                                    Thêm tay
+                                  </Badge>
+                                )}
                                 <X
-                                  className="w-3 h-3 cursor-pointer"
+                                  className="w-3 h-3 cursor-pointer ml-1"
                                   onClick={() => {
                                     const newSelected = { ...selectedStudents }
                                     delete newSelected[selected.maHocSinh]
@@ -668,6 +689,7 @@ export function ScheduleForm({ onClose, onSaved, mode = "create", initialSchedul
                                   maHocSinh: studentId,
                                   thuTuDiem: stop.sequence,
                                   maDiem: stop.maDiem,
+                                  source: 'manual', // Đánh dấu là thêm tay
                                 },
                               })
                             }

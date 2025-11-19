@@ -184,7 +184,8 @@ class ScheduleService {
       console.log(`[ScheduleService] ✅ Validated ${students.length} students successfully`);
     }
     
-    // 🔥 FIX: Nếu không có students được gửi lên, tự động gán học sinh từ route stops
+    // 🔥 TASK 2: Nếu không có students được gửi lên, tự động gán học sinh
+    // Ưu tiên dùng student_stop_suggestions, fallback distance-based
     if ((!students || students.length === 0)) {
       try {
         console.log(`[ScheduleService] No students provided, auto-assigning students from route ${maTuyen}...`);
@@ -194,82 +195,160 @@ class ScheduleService {
         const routeStops = await RouteService.getStops(maTuyen);
         console.log(`[ScheduleService] Found ${routeStops.length} route stops for route ${maTuyen}`);
         
-        if (routeStops.length > 0) {
-          // Log thông tin stops
-          console.log(`[ScheduleService] Route stops sample:`, routeStops.slice(0, 2).map(s => ({
-            maDiem: s.maDiem,
-            sequence: s.sequence,
-            tenDiem: s.tenDiem,
-            hasCoords: !!(s.viDo && s.kinhDo),
-            viDo: s.viDo,
-            kinhDo: s.kinhDo,
-          })));
+        if (routeStops.length === 0) {
+          console.warn(`[ScheduleService] ⚠️ Route ${maTuyen} has no stops`);
+        } else {
+          // Tạo map: sequence -> { maDiem, ... } để lookup nhanh
+          const stopMap = new Map();
+          routeStops.forEach(stop => {
+            stopMap.set(stop.sequence, {
+              maDiem: stop.maDiem || stop.stop_id,
+              sequence: stop.sequence,
+              tenDiem: stop.tenDiem || stop.name,
+              viDo: stop.viDo || stop.lat,
+              kinhDo: stop.kinhDo || stop.lng,
+            });
+          });
           
-          // Lấy tất cả học sinh có tọa độ
-          const HocSinhModel = (await import("../models/HocSinhModel.js")).default;
-          let allStudents = await HocSinhModel.getAll();
-          console.log(`[ScheduleService] Total students in DB: ${allStudents.length}`);
+          // BƯỚC 1: Thử load suggestions từ student_stop_suggestions
+          const StudentStopSuggestionModel = (await import("../models/StudentStopSuggestionModel.js")).default;
+          const suggestions = await StudentStopSuggestionModel.getByRouteId(maTuyen);
+          console.log(`[ScheduleService] Loaded ${suggestions.length} suggestions from student_stop_suggestions`);
           
-          allStudents = allStudents.filter(s => s.viDo && s.kinhDo && !isNaN(s.viDo) && !isNaN(s.kinhDo) && s.trangThai);
-          console.log(`[ScheduleService] Students with valid coordinates: ${allStudents.length}`);
+          const autoAssignedStudents = [];
+          const studentsFromSuggestions = new Set(); // Track học sinh đã được gán từ suggestions
           
-          if (allStudents.length === 0) {
-            console.warn(`[ScheduleService] ⚠️ No students with valid coordinates found`);
+          if (suggestions.length > 0) {
+            // Group suggestions theo maHocSinh (một học sinh có thể có nhiều suggestions)
+            const suggestionsByStudent = new Map();
+            suggestions.forEach(s => {
+              if (!suggestionsByStudent.has(s.maHocSinh)) {
+                suggestionsByStudent.set(s.maHocSinh, []);
+              }
+              suggestionsByStudent.get(s.maHocSinh).push(s);
+            });
+            
+            // Với mỗi học sinh có suggestions:
+            // - Nếu chỉ có 1 suggestion → dùng luôn
+            // - Nếu có nhiều suggestions → chọn stop gần nhất đến nhà học sinh
+            for (const [maHocSinh, studentSuggestions] of suggestionsByStudent.entries()) {
+              let selectedSuggestion = null;
+              
+              if (studentSuggestions.length === 1) {
+                selectedSuggestion = studentSuggestions[0];
+              } else {
+                // Nhiều suggestions: chọn stop gần nhất
+                const student = studentSuggestions[0]; // Lấy thông tin học sinh từ suggestion đầu
+                const studentLat = student.studentLat || student.viDo;
+                const studentLng = student.studentLng || student.kinhDo;
+                
+                if (studentLat && studentLng && !isNaN(studentLat) && !isNaN(studentLng)) {
+                  const StopSuggestionService = (await import("./StopSuggestionService.js")).default;
+                  let minDistance = Infinity;
+                  
+                  for (const suggestion of studentSuggestions) {
+                    // Tìm stop trong routeStops có maDiem khớp với suggestion.maDiemDung
+                    const matchingStop = routeStops.find(s => s.maDiem === suggestion.maDiemDung);
+                    
+                    if (matchingStop && matchingStop.viDo && matchingStop.kinhDo) {
+                      const distance = StopSuggestionService.calculateDistance(
+                        studentLat,
+                        studentLng,
+                        matchingStop.viDo,
+                        matchingStop.kinhDo
+                      );
+                      
+                      if (distance < minDistance) {
+                        minDistance = distance;
+                        selectedSuggestion = suggestion;
+                      }
+                    }
+                  }
+                  
+                  // Fallback: nếu không tính được khoảng cách, chọn suggestion đầu tiên
+                  if (!selectedSuggestion) {
+                    selectedSuggestion = studentSuggestions[0];
+                  }
+                } else {
+                  // Học sinh không có tọa độ, chọn suggestion đầu tiên
+                  selectedSuggestion = studentSuggestions[0];
+                }
+              }
+              
+              // Lấy sequence từ route_stops
+              const stopInfo = routeStops.find(s => s.maDiem === selectedSuggestion.maDiemDung);
+              if (stopInfo && stopInfo.sequence) {
+                autoAssignedStudents.push({
+                  maHocSinh: maHocSinh,
+                  thuTuDiem: stopInfo.sequence,
+                  maDiem: selectedSuggestion.maDiemDung,
+                });
+                studentsFromSuggestions.add(maHocSinh);
+                console.log(`[ScheduleService] ✅ Assigned student ${maHocSinh} from suggestion to stop ${selectedSuggestion.maDiemDung} (sequence ${stopInfo.sequence})`);
+              }
+            }
+            
+            console.log(`[ScheduleService] ✅ Auto-assigned ${autoAssignedStudents.length} students from suggestions`);
           }
           
-          // Tính khoảng cách và gán học sinh vào stop gần nhất
-          const StopSuggestionService = (await import("./StopSuggestionService.js")).default;
-          const autoAssignedStudents = [];
+          // BƯỚC 2: Fallback distance-based cho học sinh không có suggestions
+          const HocSinhModel = (await import("../models/HocSinhModel.js")).default;
+          let allStudents = await HocSinhModel.getAll();
+          allStudents = allStudents.filter(s => 
+            s.viDo && s.kinhDo && 
+            !isNaN(s.viDo) && !isNaN(s.kinhDo) && 
+            s.trangThai &&
+            !studentsFromSuggestions.has(s.maHocSinh) // Chỉ xử lý học sinh chưa có suggestion
+          );
           
-          for (const student of allStudents) {
-            let nearestStop = null;
-            let minDistance = Infinity;
+          console.log(`[ScheduleService] Found ${allStudents.length} students without suggestions, using distance-based fallback`);
+          
+          if (allStudents.length > 0) {
+            const StopSuggestionService = (await import("./StopSuggestionService.js")).default;
+            let fallbackCount = 0;
             
-            for (const stop of routeStops) {
-              // Kiểm tra stop có tọa độ không
-              if (!stop.viDo || !stop.kinhDo || isNaN(stop.viDo) || isNaN(stop.kinhDo)) {
-                console.warn(`[ScheduleService] Stop ${stop.maDiem} (${stop.tenDiem}) has invalid coordinates`);
-                continue;
+            for (const student of allStudents) {
+              let nearestStop = null;
+              let minDistance = Infinity;
+              
+              for (const stop of routeStops) {
+                if (!stop.viDo || !stop.kinhDo || isNaN(stop.viDo) || isNaN(stop.kinhDo)) {
+                  continue;
+                }
+                
+                const distance = StopSuggestionService.calculateDistance(
+                  student.viDo,
+                  student.kinhDo,
+                  stop.viDo,
+                  stop.kinhDo
+                );
+                
+                if (distance < minDistance && distance <= 2.0) {
+                  minDistance = distance;
+                  nearestStop = stop;
+                }
               }
               
-              const distance = StopSuggestionService.calculateDistance(
-                student.viDo,
-                student.kinhDo,
-                stop.viDo,
-                stop.kinhDo
-              );
-              
-              if (distance < minDistance && distance <= 2.0) { // Chỉ gán nếu < 2km
-                minDistance = distance;
-                nearestStop = stop;
+              if (nearestStop) {
+                autoAssignedStudents.push({
+                  maHocSinh: student.maHocSinh,
+                  thuTuDiem: nearestStop.sequence,
+                  maDiem: nearestStop.maDiem,
+                });
+                fallbackCount++;
+                console.log(`[ScheduleService] ✅ Fallback: Assigned student ${student.maHocSinh} (${student.hoTen}) to stop ${nearestStop.maDiem} (sequence ${nearestStop.sequence}), distance: ${minDistance.toFixed(2)}km`);
               }
             }
             
-            if (nearestStop) {
-              autoAssignedStudents.push({
-                maHocSinh: student.maHocSinh,
-                thuTuDiem: nearestStop.sequence,
-                maDiem: nearestStop.maDiem,
-              });
-              console.log(`[ScheduleService] Assigned student ${student.maHocSinh} (${student.hoTen}) to stop ${nearestStop.maDiem} (sequence ${nearestStop.sequence}), distance: ${minDistance.toFixed(2)}km`);
-            } else {
-              console.log(`[ScheduleService] Student ${student.maHocSinh} (${student.hoTen}) - no stop within 2km`);
-            }
+            console.log(`[ScheduleService] ✅ Fallback distance-based: Assigned ${fallbackCount} additional students`);
           }
           
           if (autoAssignedStudents.length > 0) {
             finalStudents = autoAssignedStudents;
-            console.log(`[ScheduleService] ✅ Auto-assigned ${autoAssignedStudents.length} students to schedule ${id}`);
+            console.log(`[ScheduleService] ✅ Total auto-assigned ${autoAssignedStudents.length} students to schedule ${id} (${studentsFromSuggestions.size} from suggestions, ${autoAssignedStudents.length - studentsFromSuggestions.size} from fallback)`);
           } else {
-            console.warn(`[ScheduleService] ⚠️ No students found near route stops for schedule ${id}`);
-            console.warn(`[ScheduleService] Debug info:`, {
-              routeStopsCount: routeStops.length,
-              studentsWithCoords: allStudents.length,
-              routeStopsWithCoords: routeStops.filter(s => s.viDo && s.kinhDo).length,
-            });
+            console.warn(`[ScheduleService] ⚠️ No students found for schedule ${id} (suggestions: ${suggestions.length}, fallback candidates: ${allStudents.length})`);
           }
-        } else {
-          console.warn(`[ScheduleService] ⚠️ Route ${maTuyen} has no stops`);
         }
       } catch (autoAssignError) {
         console.error(`[ScheduleService] ⚠️ Failed to auto-assign students:`, autoAssignError);
