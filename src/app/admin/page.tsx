@@ -6,10 +6,11 @@ import AdminParentManagement from '@/components/AdminParentManagement';
 import AdminRouteManagement from '@/components/AdminRouteManagement';
 import AdminStopManagement from '@/components/AdminStopManagement';
 import AdminBusManagement from '@/components/AdminBusManagement';
+import AdminDriverStatistics from '@/components/AdminDriverStatistics';
 import styles from './page.module.css';
 
 const AdminDashboard: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'users' | 'drivers' | 'parents' | 'routes' | 'stops' | 'buses'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'drivers' | 'parents' | 'routes' | 'stops' | 'buses' | 'driver-stats'>('users');
 
   return (
     <div className={styles.dashboard}>
@@ -54,6 +55,12 @@ const AdminDashboard: React.FC = () => {
           >
             🚍 Quản lý Xe
           </button>
+          <button
+            className={`${styles.navItem} ${activeTab === 'driver-stats' ? styles.active : ''}`}
+            onClick={() => setActiveTab('driver-stats')}
+          >
+            📊 Thống kê Tài xế
+          </button>
         </nav>
       </div>
 
@@ -64,6 +71,7 @@ const AdminDashboard: React.FC = () => {
         {activeTab === 'routes' && <AdminRouteManagement />}
         {activeTab === 'stops' && <AdminStopManagement />}
         {activeTab === 'buses' && <AdminBusManagement />}
+        {activeTab === 'driver-stats' && <AdminDriverStatistics />}
       </div>
     </div>
   );
