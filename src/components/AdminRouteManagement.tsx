@@ -87,7 +87,14 @@ const AdminRouteManagement: React.FC = () => {
     setLoading(true);
     try {
       const response = await fetch('/api/admin/routes');
-      const data = await response.json();
+      const contentType = response.headers.get('content-type') || '';
+      let data: any;
+      if (contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        throw new Error(`Unexpected non-JSON response: ${text.slice(0, 200)}`);
+      }
       if (response.ok) {
         setRoutes(data.routes);
         setError('');
@@ -105,7 +112,14 @@ const AdminRouteManagement: React.FC = () => {
   const fetchBuses = async () => {
     try {
       const response = await fetch('/api/admin/buses'); 
-      const data = await response.json();
+      const contentType = response.headers.get('content-type') || '';
+      let data: any;
+      if (contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        throw new Error(`Unexpected non-JSON response from buses endpoint: ${text.slice(0,200)}`);
+      }
       if (response.ok) {
         setBuses(data.buses || []);
       } else {
@@ -120,7 +134,14 @@ const AdminRouteManagement: React.FC = () => {
   const fetchStops = async () => {
     try {
       const response = await fetch('/api/admin/stops');
-      const data = await response.json();
+      const contentType = response.headers.get('content-type') || '';
+      let data: any;
+      if (contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        throw new Error(`Unexpected non-JSON response from stops endpoint: ${text.slice(0,200)}`);
+      }
       if (response.ok) {
         setAllStops(data.stops || []);
       } else {
@@ -253,8 +274,18 @@ const AdminRouteManagement: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-
-      const data = await response.json();
+      const contentType = response.headers.get('content-type') || '';
+      let data: any;
+      if (contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        // Log full HTML for debugging
+        console.error('Non-JSON response from update route:', text);
+        setError('Server trả về HTML/không phải JSON khi cập nhật tuyến. Xem console server để biết chi tiết.');
+        setLoading(false);
+        return;
+      }
       if (response.ok) {
         setError('');
         setShowUpdateModal(false);
@@ -279,12 +310,19 @@ const AdminRouteManagement: React.FC = () => {
         method: 'DELETE'
       });
 
-      if (response.ok) {
-        setError('');
-        await fetchRoutes();
-      } else {
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
         const data = await response.json();
-        setError(data.message);
+        if (response.ok) {
+          setError('');
+          await fetchRoutes();
+        } else {
+          setError(data.message);
+        }
+      } else {
+        const text = await response.text();
+        console.error('Non-JSON response from delete route:', text);
+        setError('Server trả về HTML/không phải JSON khi xóa tuyến. Kiểm tra server logs.');
       }
     } catch (err) {
       console.error(err);

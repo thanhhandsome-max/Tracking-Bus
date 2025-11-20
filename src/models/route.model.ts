@@ -37,7 +37,7 @@ const routeSchema: Schema<IRoute> = new Schema({
     {
       stopId: { type: Schema.Types.ObjectId, ref: 'Stop', required: true },
       order: { type: Number, required: true },
-      estimatedArrivalTime: { type: String, required: true },
+      estimatedArrivalTime: { type: String, required: false },
     }
   ],
 }, { timestamps: true });

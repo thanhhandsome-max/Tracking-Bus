@@ -17,7 +17,7 @@ const driverSchema: Schema<IDriver> = new Schema({
   name: { type: String, required: true },
   phone: { type: String, required: true },
   licenseNumber: { type: String, required: true, unique: true },
-  yearsOfExperience: { type: Number, required: true, min: 0 },
+  yearsOfExperience: { type: Number, required: false, min: 0 },
   userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
   busId: { type: Schema.Types.ObjectId, ref: 'Bus' },
 }, { timestamps: true });

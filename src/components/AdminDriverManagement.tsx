@@ -18,6 +18,12 @@ const AdminDriverManagement: React.FC = () => {
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [driverStats, setDriverStats] = useState<{
+    totalTrips: number;
+    totalDrivers: number;
+    statistics: Array<{ driverId: string; driverName: string; tripCount: number }>;
+  } | null>(null);
   const [selectedDriver, setSelectedDriver] = useState<Driver | null>(null);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -52,6 +58,7 @@ const AdminDriverManagement: React.FC = () => {
   useEffect(() => {
     fetchDrivers();
     fetchBuses();
+    fetchDriverStatistics();
   }, []);
 
   const fetchDrivers = async () => {
@@ -70,6 +77,33 @@ const AdminDriverManagement: React.FC = () => {
       setError('Lỗi khi tải danh sách tài xế');
     }
     setLoading(false);
+  };
+
+  const fetchDriverStatistics = async (month?: number, year?: number) => {
+    setStatsLoading(true);
+    try {
+      const now = new Date();
+      const m = month ?? now.getMonth() + 1;
+      const y = year ?? now.getFullYear();
+      const res = await fetch(`/api/admin/driver-statistics?month=${m}&year=${y}`);
+      const data = await res.json();
+      if (res.ok) {
+        setDriverStats({
+          totalTrips: data.totalTrips || 0,
+          totalDrivers: data.totalDrivers || 0,
+          statistics: (data.statistics || []).map((s: any) => ({
+            driverId: s.driverId,
+            driverName: s.driverName,
+            tripCount: s.tripCount
+          }))
+        });
+      } else {
+        console.warn('Failed to load driver statistics', data.message);
+      }
+    } catch (err) {
+      console.error('Error fetching driver statistics', err);
+    }
+    setStatsLoading(false);
   };
 
   const fetchBuses = async () => {
@@ -116,7 +150,7 @@ const AdminDriverManagement: React.FC = () => {
       // send null if no bus selected
       if (payload.busId === '') payload.busId = null;
 
-      const response = await fetch('/api/admin/drivers/create', {
+      const response = await fetch('/api/admin/drivers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -217,6 +251,42 @@ const AdminDriverManagement: React.FC = () => {
         </button>
         <div className={styles.stats}>
           Tổng: <span>{drivers.length}</span> tài xế
+        </div>
+
+        <div className={styles.statsExtra}>
+          {statsLoading ? (
+            <div className={styles.smallLoading}>Đang tải thống kê...</div>
+          ) : driverStats ? (
+            <>
+              <div className={styles.statCard}>
+                <div className={styles.statLabel}>Tổng chuyến</div>
+                <div className={styles.statValue}>{driverStats.totalTrips}</div>
+              </div>
+
+              <div className={styles.statCard}>
+                <div className={styles.statLabel}>Trung bình/tài xế</div>
+                <div className={styles.statValue}>
+                  {driverStats.totalDrivers > 0 ? (driverStats.totalTrips / driverStats.totalDrivers).toFixed(2) : '0'}
+                </div>
+              </div>
+
+              <div className={styles.topList}>
+                {driverStats.statistics.slice(0, 3).map((d, i) => (
+                  <div key={d.driverId} className={styles.topItem}>
+                    <span className={styles.topRank}>{i + 1}.</span>
+                    <span className={styles.topName}>{d.driverName}</span>
+                    <span className={styles.topCount}>{d.tripCount} chuyến</span>
+                  </div>
+                ))}
+              </div>
+
+              <button className={styles.refreshBtn} onClick={() => fetchDriverStatistics()}>
+                Làm mới thống kê
+              </button>
+            </>
+          ) : (
+            <div className={styles.smallLoading}>Chưa có dữ liệu</div>
+          )}
         </div>
       </div>
 

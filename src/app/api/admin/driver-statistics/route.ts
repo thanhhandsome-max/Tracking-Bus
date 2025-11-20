@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Trip from '@/models/trip.model';
-import Driver from '@/models/driver.model';
-import User from '@/models/user.model';
+import mongoose from 'mongoose';
 
 export async function GET(request: NextRequest) {
   try {
@@ -19,74 +18,93 @@ export async function GET(request: NextRequest) {
     const monthNum = parseInt(month);
     const yearNum = parseInt(year);
 
-    // Xác định ngày bắt đầu và kết thúc của tháng
     const startDate = new Date(yearNum, monthNum - 1, 1);
     const endDate = new Date(yearNum, monthNum, 1);
 
-    // Lấy các chuyến trong tháng đó
-    const trips = await Trip.find({
-      tripDate: {
-        $gte: startDate,
-        $lt: endDate
+    // --- BẮT ĐẦU AGGREGATION PIPELINE ---
+    const stats = await Trip.aggregate([
+      // 1. Lọc các chuyến trong tháng
+      {
+        $match: {
+          tripDate: {
+            $gte: startDate,
+            $lt: endDate
+          },
+          status: { $in: ['completed', 'in_progress'] }
+        }
       },
-      status: { $in: ['completed', 'in_progress'] } // Chỉ tính các chuyến hoàn thành hoặc đang thực hiện
-    })
-      .populate('driverId', 'name phone')
-      .populate('busId', 'plateNumber')
-      .lean();
-
-    // Nhóm theo tài xế và đếm số chuyến
-    const driverStats: {
-      [key: string]: {
-        driverId: string;
-        driverName: string;
-        phone: string;
-        tripCount: number;
-        buses: Set<string>;
-      }
-    } = {};
-
-    trips.forEach((trip: any) => {
-      const driverId = trip.driverId?._id?.toString();
-      const driverName = trip.driverId?.name || 'Không rõ';
-      const phone = trip.driverId?.phone || '';
-      const busPlate = trip.busId?.plateNumber || '';
-
-      if (driverId) {
-        if (!driverStats[driverId]) {
-          driverStats[driverId] = {
-            driverId,
-            driverName,
-            phone,
-            tripCount: 0,
-            buses: new Set()
-          };
+      // 2. Nhóm theo driverId
+      {
+        $group: {
+          _id: '$driverId', 
+          tripCount: { $sum: 1 }, 
+          busIds: { $addToSet: '$busId' }
         }
-        driverStats[driverId].tripCount += 1;
-        if (busPlate) {
-          driverStats[driverId].buses.add(busPlate);
+      },
+      // 3. Tìm thông tin tài xế từ bảng 'users' (hoặc 'drivers' tùy schema của bạn)
+      // Lưu ý: Seed data bạn dùng User ID làm driverId, nên ta lookup bảng 'users'
+      {
+        $lookup: {
+          from: 'users', 
+          localField: '_id',
+          foreignField: '_id',
+          as: 'driverInfo'
         }
+      },
+      // 4. Tìm thông tin xe
+      {
+        $lookup: {
+          from: 'buses',
+          localField: 'busIds',
+          foreignField: '_id',
+          as: 'busInfo'
+        }
+      },
+      // 5. Unwind để lấy object từ mảng (giữ lại kể cả khi không tìm thấy user)
+      {
+        $unwind: {
+          path: '$driverInfo',
+          preserveNullAndEmptyArrays: true 
+        }
+      },
+      // 6. Format dữ liệu đầu ra
+      {
+        $project: {
+          _id: 0,
+          driverId: '$_id',
+          // Nếu không tìm thấy tên, hiển thị ID hoặc "Tài xế ẩn" để debug
+          driverName: { $ifNull: ['$driverInfo.name', 'Tài xế ẩn/Đã xóa'] },
+          phone: { $ifNull: ['$driverInfo.phone', '---'] },
+          tripCount: 1,
+          buses: {
+            $map: {
+              input: '$busInfo',
+              as: 'bus',
+              in: '$$bus.plateNumber'
+            }
+          }
+        }
+      },
+      {
+        $sort: { tripCount: -1 }
       }
-    });
+    ]);
 
-    // Chuyển đổi sang array và sắp xếp theo số chuyến giảm dần
-    const statistics = Object.values(driverStats)
-      .map(stat => ({
-        driverId: stat.driverId,
-        driverName: stat.driverName,
-        phone: stat.phone,
-        tripCount: stat.tripCount,
-        buses: Array.from(stat.buses).join(', ')
-      }))
-      .sort((a, b) => b.tripCount - a.tripCount);
+    // Xử lý mảng buses thành chuỗi
+    const formattedStats = stats.map(item => ({
+      ...item,
+      buses: Array.isArray(item.buses) ? item.buses.join(', ') : ''
+    }));
 
     return NextResponse.json({
       month: monthNum,
       year: yearNum,
-      totalTrips: trips.length,
-      totalDrivers: statistics.length,
-      statistics
+      // Tính tổng dựa trên kết quả đã nhóm (đảm bảo khớp số liệu)
+      totalTrips: formattedStats.reduce((acc, curr) => acc + curr.tripCount, 0),
+      totalDrivers: formattedStats.length,
+      statistics: formattedStats
     });
+
   } catch (error) {
     console.error('Error fetching driver statistics:', error);
     return NextResponse.json(
