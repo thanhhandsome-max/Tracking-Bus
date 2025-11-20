@@ -106,7 +106,7 @@ const AdminDriverStatistics: React.FC = () => {
   return (
     <div className={styles.container}>
       <div className={styles.header}>
-        <h1>Tài xế Chạy Nhiều Chuyến Nhất</h1>
+        <h1>Thống kê</h1>
       </div>
 
       {/* Date Selector */}
