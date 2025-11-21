@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Stop from '@/models/stop.model';
+import mongoose from 'mongoose';
 
-export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+// GET: Lấy chi tiết 1 trạm
+export async function GET(_request: NextRequest, { params }: { params: { id: string } }) {
   try {
     await connectDB();
+    const { id } = params;
 
-    const { id } = await params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return NextResponse.json({ message: 'ID trạm không hợp lệ' }, { status: 400 });
+    }
+
     const stop = await Stop.findById(id);
     if (!stop) {
       return NextResponse.json({ message: 'Không tìm thấy trạm' }, { status: 404 });
@@ -19,14 +25,19 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   }
 }
 
-export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+// PUT: Cập nhật trạm
+export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     await connectDB();
+    const { id } = params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return NextResponse.json({ message: 'ID trạm không hợp lệ' }, { status: 400 });
+    }
 
     const body = await request.json();
     const { name, address, lat, lng } = body;
 
-    const { id } = await params;
     const stop = await Stop.findById(id);
     if (!stop) {
       return NextResponse.json({ message: 'Không tìm thấy trạm' }, { status: 404 });
@@ -34,6 +45,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     if (name) stop.name = name;
     if (address) stop.address = address;
+
+    // Xử lý tọa độ nếu hợp lệ
     if (typeof lat === 'number' && typeof lng === 'number') {
       stop.location = { type: 'Point', coordinates: [lng, lat] } as any;
     }
@@ -47,11 +60,16 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   }
 }
 
-export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+// DELETE: Xóa trạm
+export async function DELETE(_request: NextRequest, { params }: { params: { id: string } }) {
   try {
     await connectDB();
+    const { id } = params;
 
-    const { id } = await params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return NextResponse.json({ message: 'ID trạm không hợp lệ' }, { status: 400 });
+    }
+
     const stop = await Stop.findByIdAndDelete(id);
     if (!stop) {
       return NextResponse.json({ message: 'Không tìm thấy trạm' }, { status: 404 });

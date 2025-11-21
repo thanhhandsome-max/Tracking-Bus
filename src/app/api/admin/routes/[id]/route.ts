@@ -3,17 +3,14 @@ import connectDB from '@/lib/mongodb';
 import Route from '@/models/route.model';
 import mongoose from 'mongoose';
 
-// 1. GET: Lấy chi tiết 1 tuyến đường
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+// GET: Lấy chi tiết 1 tuyến đường
+export async function GET(_request: NextRequest, { params }: { params: { id: string } }) {
   try {
     await connectDB();
-    const { id } = await params;
+    const { id } = params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return NextResponse.json({ message: 'ID không hợp lệ' }, { status: 400 });
+      return NextResponse.json({ message: 'ID tuyến đường không hợp lệ' }, { status: 400 });
     }
 
     const route = await Route.findById(id)
@@ -26,32 +23,37 @@ export async function GET(
 
     return NextResponse.json({ route }, { status: 200 });
   } catch (error) {
+    console.error('Error fetching route:', error);
     return NextResponse.json({ message: 'Lỗi server' }, { status: 500 });
   }
 }
 
-// 2. PUT: Cập nhật tuyến đường
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+// PUT: Cập nhật tuyến đường
+export async function PUT(_request: NextRequest, { params }: { params: { id: string } }) {
   try {
     await connectDB();
-    const { id } = await params;
+    const { id } = params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return NextResponse.json({ message: 'ID không hợp lệ' }, { status: 400 });
+      return NextResponse.json({ message: 'ID tuyến đường không hợp lệ' }, { status: 400 });
     }
 
-    const body = await request.json();
-    const { 
-      name, department, arrival, time, 
-      busId, status, distance, estimatedDuration, stopIds 
+    const body = await _request.json();
+    const {
+      name,
+      department,
+      arrival,
+      time,
+      busId,
+      status,
+      distance,
+      estimatedDuration,
+      stopIds
     } = body;
 
     // Xử lý busId
-    let busRef = null;
-    if (busId && busId !== '') {
+    let busRef: string | null = null;
+    if (busId) {
       if (!mongoose.Types.ObjectId.isValid(busId)) {
         return NextResponse.json({ message: 'Mã xe không hợp lệ' }, { status: 400 });
       }
@@ -59,8 +61,17 @@ export async function PUT(
     }
 
     // Xử lý distance
-    const cleanDistance = (distance !== '' && distance !== null && distance !== undefined) 
-      ? Number(distance) 
+    const cleanDistance = distance !== undefined && distance !== null && distance !== ''
+      ? Number(distance)
+      : undefined;
+
+    // Xử lý stops
+    const stops = Array.isArray(stopIds)
+      ? stopIds.map((stopId: string, index: number) => ({
+          stopId,
+          order: index + 1,
+          estimatedArrivalTime: time || '00:00'
+        }))
       : undefined;
 
     const route = await Route.findByIdAndUpdate(
@@ -74,49 +85,37 @@ export async function PUT(
         distance: cleanDistance,
         estimatedDuration,
         status,
-        // --- ĐOẠN ĐÃ SỬA LỖI ---
-        stops: stopIds && Array.isArray(stopIds)
-          ? stopIds.map((id: string, idx: number) => ({
-              stopId: id,
-              order: idx + 1,
-              // Fix lỗi Validation: Dùng giờ khởi hành làm mặc định thay vì chuỗi rỗng
-              estimatedArrivalTime: time || '00:00' 
-            }))
-          : undefined 
-        // -----------------------
+        stops
       },
       { new: true, runValidators: true }
     )
-    .populate('busId', 'plateNumber capacity')
-    .populate('stops.stopId', 'name address');
+      .populate('busId', 'plateNumber capacity')
+      .populate('stops.stopId', 'name address');
 
     if (!route) {
       return NextResponse.json({ message: 'Không tìm thấy tuyến đường để cập nhật' }, { status: 404 });
     }
 
     return NextResponse.json({ message: 'Cập nhật thành công', route }, { status: 200 });
-
   } catch (error: any) {
     console.error('Error updating route:', error);
+
     if (error.name === 'CastError') {
-       return NextResponse.json({ message: `Dữ liệu không hợp lệ: ${error.path}` }, { status: 400 });
+      return NextResponse.json({ message: `Dữ liệu không hợp lệ: ${error.path}` }, { status: 400 });
     }
-    // Trả về lỗi chi tiết để dễ debug
+
     return NextResponse.json({ message: error.message || 'Lỗi server' }, { status: 500 });
   }
 }
 
-// 3. DELETE: Xóa tuyến đường
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+// DELETE: Xóa tuyến đường
+export async function DELETE(_request: NextRequest, { params }: { params: { id: string } }) {
   try {
     await connectDB();
-    const { id } = await params;
+    const { id } = params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return NextResponse.json({ message: 'ID không hợp lệ' }, { status: 400 });
+      return NextResponse.json({ message: 'ID tuyến đường không hợp lệ' }, { status: 400 });
     }
 
     const route = await Route.findByIdAndDelete(id);
