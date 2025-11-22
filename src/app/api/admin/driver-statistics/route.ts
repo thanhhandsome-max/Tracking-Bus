@@ -80,7 +80,7 @@ export async function GET(request: NextRequest) {
             $map: {
               input: '$busInfo',
               as: 'bus',
-              in: '$$bus.plateNumber'
+              in: '$$bus.plateNumber' //$$ dùng để tham chiếu tới biến tạm (bus)
             }
           }
         }
