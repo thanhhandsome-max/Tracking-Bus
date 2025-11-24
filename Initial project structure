@@ -1,0 +1,20 @@
+Message: Initial commit: Create repository structure
+
+Nội dung commit:
+
+Tạo repository “Tracking-Bus”
+
+Khởi tạo file README.md
+
+Tạo các thư mục cơ bản như:
+
+/src
+
+/data
+
+/docs
+
+Thiết lập các file cấu hình nếu có (.gitignore, package.json…)
+
+Ý nghĩa:
+Đánh dấu bước khởi đầu của dự án, tạo cấu trúc để thuận tiện cho việc phát triển sau này.
