@@ -1,0 +1,18 @@
+Message: Add requirement models, architecture diagrams and system design documents
+
+Nội dung commit:
+
+Upload các tài liệu:
+
+Use case diagrams
+
+Activity diagrams
+
+Sơ đồ kiến trúc 3 lớp
+
+Dataflow diagram (DFD) nếu có
+
+Lưu trong thư mục /docs
+
+Ý nghĩa:
+Đảm bảo toàn bộ tài liệu phân tích & thiết kế được lưu trữ và quản lý trên repository.
