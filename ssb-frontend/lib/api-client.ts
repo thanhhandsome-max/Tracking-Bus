@@ -344,6 +344,48 @@ class ApiClient {
     });
   }
 
+  async findStudentsNearby(params: {
+    lat: number;
+    lng: number;
+    radiusMeters?: number; // Default 500m
+  }) {
+    return this.request({
+      method: 'get',
+      url: '/routes/students/nearby',
+      params: {
+        lat: params.lat,
+        lng: params.lng,
+        ...(params.radiusMeters && { radiusMeters: params.radiusMeters }),
+      }
+    });
+  }
+
+  async addStudentToStop(routeId: string | number, stopId: string | number, studentId: number) {
+    return this.request({
+      method: 'post',
+      url: `/routes/${routeId}/stops/${stopId}/students`,
+      data: { student_id: studentId }
+    });
+  }
+
+  async removeStudentFromStop(routeId: string | number, stopId: string | number, studentId: number) {
+    return this.request({
+      method: 'delete',
+      url: `/routes/${routeId}/stops/${stopId}/students/${studentId}`
+    });
+  }
+
+  async bulkAddStudentsToStop(routeId: string | number, stopId: string | number, studentIds: number[]) {
+    return this.request({
+      method: 'post',
+      url: `/routes/${routeId}/stops/students/bulk`,
+      data: {
+        stop_id: stopId,
+        student_ids: studentIds
+      }
+    });
+  }
+
   async suggestRoutes(params?: {
     area?: string;
     maxStudentsPerRoute?: number;
@@ -448,6 +490,56 @@ class ApiClient {
 
   async snapToRoads(data: { path: Array<{ lat: number; lng: number }>; interpolate?: boolean }) {
     return this.request({ method: 'post', url: '/maps/roads/snap', data });
+  }
+
+  // Bus Stop Optimization APIs
+  async optimizeBusStops(data: {
+    r_walk?: number;
+    s_max?: number;
+    max_stops?: number | null;
+    use_roads_api?: boolean;
+    use_places_api?: boolean;
+  }) {
+    return this.request({ method: 'post', url: '/bus-stops/optimize', data });
+  }
+
+  async optimizeVRP(data: {
+    depot?: { lat: number; lng: number };
+    capacity?: number;
+    split_virtual_nodes?: boolean;
+  }) {
+    return this.request({ method: 'post', url: '/routes/optimize-vrp', data });
+  }
+
+  async optimizeFull(data: {
+    school_location?: { lat: number; lng: number };
+    r_walk?: number;
+    s_max?: number;
+    c_bus?: number;
+    max_stops?: number | null;
+    use_roads_api?: boolean;
+    use_places_api?: boolean;
+    split_virtual_nodes?: boolean;
+  }) {
+    return this.request({ method: 'post', url: '/bus-stops/optimize-full', data });
+  }
+
+  async getBusStopAssignments() {
+    return this.request({ method: 'get', url: '/bus-stops/assignments' });
+  }
+
+  async getBusStopStats() {
+    return this.request({ method: 'get', url: '/bus-stops/stats' });
+  }
+
+  async createRoutesFromOptimization(data: {
+    depot?: { lat: number; lng: number; name?: string };
+    capacity?: number;
+    route_name_prefix?: string;
+    create_return_routes?: boolean;
+    vrp_result?: any;
+  }) {
+    return this.request({ method: 'post', url: '/bus-stops/create-routes', data });
   }
 }
 

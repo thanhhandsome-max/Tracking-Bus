@@ -12,6 +12,7 @@ CREATE DATABASE IF NOT EXISTS school_bus_system;
 USE school_bus_system;
 
 -- Drop existing tables if they exist (for clean initialization)
+DROP TABLE IF EXISTS HocSinh_DiemDung;
 DROP TABLE IF EXISTS student_stop_suggestions;
 DROP TABLE IF EXISTS trip_stop_status;
 DROP TABLE IF EXISTS schedule_student_stops;
@@ -375,6 +376,32 @@ CREATE TABLE IF NOT EXISTS student_stop_suggestions (
 
 -- Add comment
 ALTER TABLE student_stop_suggestions COMMENT = 'Lưu mapping gợi ý học sinh - điểm dừng cho route (tự động tạo khi tạo route auto)';
+
+-- ===========================================================================
+-- Bảng lưu mapping học sinh → điểm dừng độc lập (HocSinh_DiemDung)
+-- Phục vụ cho hệ thống tối ưu hóa điểm dừng hai tầng
+-- ===========================================================================
+CREATE TABLE IF NOT EXISTS HocSinh_DiemDung (
+    maHocSinh INT NOT NULL,
+    maDiemDung INT NOT NULL,
+    khoangCachMet INT COMMENT 'Khoảng cách đi bộ từ nhà đến điểm dừng (mét)',
+    ngayTao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    PRIMARY KEY (maHocSinh, maDiemDung),
+    
+    FOREIGN KEY (maHocSinh) REFERENCES HocSinh(maHocSinh) 
+        ON DELETE CASCADE,
+    FOREIGN KEY (maDiemDung) REFERENCES DiemDung(maDiem) 
+        ON DELETE CASCADE,
+    
+    -- Indexes
+    INDEX idx_maHocSinh (maHocSinh),
+    INDEX idx_maDiemDung (maDiemDung),
+    INDEX idx_khoangCach (khoangCachMet)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Add comment
+ALTER TABLE HocSinh_DiemDung COMMENT = 'Mapping học sinh → điểm dừng độc lập (tạo từ Greedy Maximum Coverage algorithm)';
 
 -- Display completion message
 SELECT 'Database initialization completed successfully!' as message;

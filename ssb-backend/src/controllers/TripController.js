@@ -8,11 +8,43 @@ import RouteStopModel from "../models/RouteStopModel.js";
 import HocSinhModel from "../models/HocSinhModel.js";
 import ThongBaoModel from "../models/ThongBaoModel.js"; // M5: Send notifications to parents
 import TripStopStatusModel from "../models/TripStopStatusModel.js"; // Store stop arrival/departure times
+import ScheduleStudentStopModel from "../models/ScheduleStudentStopModel.js"; // Schedule student stop mapping
 import tripService from "../services/tripService.js"; // kết nối tới service xử lý logic trip
 import TelemetryService from "../services/telemetryService.js"; // clear cache khi trip ends
 import * as response from "../utils/response.js"; // M4-M6: Response envelope
 
 class TripController {
+  // Helper: Kiểm tra xem stop có phải điểm cuối không
+  static async isLastStop(tripId, stopSequence) {
+    try {
+      const trip = await ChuyenDiModel.getById(tripId);
+      if (!trip) return false;
+
+      const schedule = await LichTrinhModel.getById(trip.maLichTrinh);
+      if (!schedule) return false;
+
+      const maxSequence = await RouteStopModel.getMaxSequence(schedule.maTuyen);
+      return parseInt(stopSequence) === maxSequence;
+    } catch (error) {
+      console.error("[TripController] Error in isLastStop:", error);
+      return false;
+    }
+  }
+
+  // Helper: Lấy loại chuyến đi (don_sang/tra_chieu)
+  static async getTripType(tripId) {
+    try {
+      const trip = await ChuyenDiModel.getById(tripId);
+      if (!trip) return null;
+
+      const schedule = await LichTrinhModel.getById(trip.maLichTrinh);
+      return schedule?.loaiChuyen || null;
+    } catch (error) {
+      console.error("[TripController] Error in getTripType:", error);
+      return null;
+    }
+  }
+
   // Lịch sử chuyến đi cho phụ huynh (các chuyến có con tham gia)
   static async getHistory(req, res) {
     try {
@@ -973,6 +1005,78 @@ class TripController {
       }
 
       const trip = await ChuyenDiModel.getById(id);
+      const schedule = await LichTrinhModel.getById(trip.maLichTrinh);
+
+      /**
+       * 🔥 BƯỚC 2.5: XỬ LÝ CHUYẾN VỀ (tra_chieu) - Load học sinh từ chuyến đi sáng
+       * Chỉ thực hiện khi chưa có học sinh trong chuyến về (tránh duplicate)
+       */
+      if (schedule?.loaiChuyen === "tra_chieu") {
+        try {
+          // Kiểm tra xem đã có học sinh trong chuyến về chưa
+          const existingStudents = await TrangThaiHocSinhModel.getByTripId(id);
+          if (existingStudents.length > 0) {
+            console.log(`[TripController] Afternoon trip ${id} already has ${existingStudents.length} students, skipping load from morning trip`);
+          } else {
+            console.log(`[TripController] Processing afternoon trip ${id}, loading students from morning trip...`);
+            
+            // Tìm chuyến đi sáng cùng ngày, cùng route
+            const pool = (await import("../config/db.js")).default;
+          const [morningTrips] = await pool.query(
+            `SELECT cd.maChuyen 
+             FROM ChuyenDi cd
+             JOIN LichTrinh lt ON cd.maLichTrinh = lt.maLichTrinh
+             WHERE lt.maTuyen = ? 
+               AND lt.loaiChuyen = 'don_sang'
+               AND DATE(cd.ngayChay) = DATE(?)
+               AND cd.trangThai IN ('dang_chay', 'hoan_thanh')
+             ORDER BY cd.gioBatDauThucTe DESC
+             LIMIT 1`,
+            [schedule.maTuyen, trip.ngayChay]
+          );
+
+          if (morningTrips.length > 0) {
+            const morningTripId = morningTrips[0].maChuyen;
+            console.log(`[TripController] Found morning trip ${morningTripId} for afternoon trip ${id}`);
+
+            // Lấy học sinh đã được đón từ chuyến đi sáng (status = 'da_don')
+            const morningStudents = await TrangThaiHocSinhModel.getByTripId(morningTripId);
+            const pickedStudents = morningStudents.filter(s => s.trangThai === 'da_don');
+            
+            console.log(`[TripController] Found ${pickedStudents.length} students picked up in morning trip`);
+
+            if (pickedStudents.length > 0) {
+              // Lấy schedule_student_stops để biết điểm đã đón
+              const scheduleStudents = await ScheduleStudentStopModel.getByScheduleId(schedule.maLichTrinh);
+              
+              // Tạo TrangThaiHocSinh cho chuyến về với status = 'da_don' (đã có trên xe)
+              for (const student of pickedStudents) {
+                // Tìm điểm đã đón từ schedule_student_stops của chuyến về
+                // Điểm trả = điểm đã đón (từ schedule_student_stops của chuyến về)
+                const scheduleStudent = scheduleStudents.find(ss => ss.maHocSinh === student.maHocSinh);
+                const thuTuDiemTra = scheduleStudent?.thuTuDiem || student.thuTuDiemDon;
+
+                await TrangThaiHocSinhModel.create({
+                  maChuyen: parseInt(id),
+                  maHocSinh: student.maHocSinh,
+                  thuTuDiemDon: thuTuDiemTra, // Điểm sẽ trả học sinh
+                  trangThai: 'da_don', // Đã có trên xe từ đầu
+                  thoiGianThucTe: null,
+                  ghiChu: 'Đã lên xe từ chuyến đi sáng'
+                });
+              }
+
+              console.log(`[TripController] ✅ Created ${pickedStudents.length} student statuses for afternoon trip`);
+            }
+          } else {
+            console.warn(`[TripController] ⚠️ No morning trip found for route ${schedule.maTuyen} on ${trip.ngayChay}`);
+          }
+          }
+        } catch (error) {
+          console.error(`[TripController] ❌ Error loading students from morning trip:`, error);
+          // Continue anyway - trip can still start without students
+        }
+      }
 
       /**
        * 📡 BƯỚC 3: EMIT SOCKET.IO EVENT (CHỜ DAY 3)
@@ -1344,6 +1448,61 @@ class TripController {
                   `✅ [M5 End Trip] Created notifications for ${parentIds.length} parents for trip ${id}`
                 );
               }
+
+              // 🔥 Thông báo admin khi kết thúc chuyến đi
+              try {
+                const poolAdmin = (await import("../config/db.js")).default;
+                const [admins] = await poolAdmin.query(
+                  `SELECT maNguoiDung FROM NguoiDung WHERE vaiTro = 'quan_tri'`
+                );
+                const adminIds = admins.map((a) => a.maNguoiDung);
+                
+                if (adminIds.length > 0) {
+                  const route = await TuyenDuongModel.getById(schedule.maTuyen);
+                  const bus = await XeBuytModel.getById(busId);
+                  
+                  const endTimeFormatted = new Date(
+                    updatedTrip.gioKetThucThucTe
+                  ).toLocaleTimeString("vi-VN", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  });
+
+                  const tieuDe = "✅ Chuyến đi đã hoàn thành";
+                  const noiDung = `Chuyến đi ${route?.tenTuyen || ""} (${bus?.bienSoXe || ""}) đã hoàn thành lúc ${endTimeFormatted}.`;
+
+                  await ThongBaoModel.createMultiple({
+                    danhSachNguoiNhan: adminIds,
+                    tieuDe,
+                    noiDung,
+                    loaiThongBao: "chuyen_di",
+                  });
+
+                  // Emit notification:new to admin rooms
+                  if (io) {
+                    adminIds.forEach((adminId) => {
+                      io.to(`user-${adminId}`).emit("notification:new", {
+                        maNguoiNhan: adminId,
+                        tieuDe,
+                        noiDung,
+                        loaiThongBao: "chuyen_di",
+                        tripId: id,
+                        thoiGianGui: new Date(),
+                        daDoc: false,
+                      });
+                    });
+                  }
+
+                  console.log(
+                    `✅ [M5 End Trip] Sent completion notifications to ${adminIds.length} admins for trip ${id}`
+                  );
+                }
+              } catch (adminNotifError) {
+                console.error(
+                  "❌ [M5 End Trip] Failed to send admin notifications:",
+                  adminNotifError
+                );
+              }
             }
           } catch (notifError) {
             console.error(
@@ -1431,6 +1590,10 @@ class TripController {
       // Use sequence number (thuTuDiemDon maps to sequence, not maDiem)
       const sequence = stop.sequence;
 
+      // 🔥 Kiểm tra xem có phải điểm cuối không
+      const isLastStop = await TripController.isLastStop(id, sequence);
+      const tripType = await TripController.getTripType(id);
+
       // 💾 Save arrival time to database
       try {
         await TripStopStatusModel.upsertArrival(id, sequence);
@@ -1443,6 +1606,177 @@ class TripController {
         // Continue anyway - notification is more important
       }
 
+      // 🔥 XỬ LÝ ĐIỂM CUỐI
+      if (isLastStop) {
+        if (tripType === "don_sang") {
+          // Chuyến đi: Điểm cuối là trường học, không đón học sinh
+          console.log(`[TripController] Arrived at final stop (school) for morning trip ${id}`);
+          
+          // Thông báo phụ huynh và admin: Xe đã đến trường
+          const students = await TrangThaiHocSinhModel.getByTripId(id);
+          const studentIds = students.map((s) => s.maHocSinh);
+          
+          if (studentIds.length > 0) {
+            const pool = (await import("../config/db.js")).default;
+            const [parents] = await pool.query(
+              `SELECT DISTINCT h.maPhuHuynh, h.hoTen as tenHocSinh, n.hoTen as tenPhuHuynh
+               FROM HocSinh h
+               JOIN NguoiDung n ON h.maPhuHuynh = n.maNguoiDung
+               WHERE h.maHocSinh IN (?) AND h.maPhuHuynh IS NOT NULL`,
+              [studentIds]
+            );
+
+            if (parents.length > 0) {
+              const parentIds = parents.map((s) => s.maPhuHuynh);
+              const route = await TuyenDuongModel.getById(schedule.maTuyen);
+              const bus = await XeBuytModel.getById(schedule.maXe);
+
+              const tieuDe = "🏫 Xe đã đến trường";
+              const noiDung = `Xe buýt ${bus?.bienSoXe || ""} đã đến trường an toàn${route?.tenTuyen ? ` (${route.tenTuyen})` : ""}.`;
+
+              await ThongBaoModel.createMultiple({
+                danhSachNguoiNhan: parentIds,
+                tieuDe,
+                noiDung,
+                loaiThongBao: "chuyen_di",
+              });
+
+              // Thông báo admin
+              const pool2 = (await import("../config/db.js")).default;
+              const [admins] = await pool2.query(
+                `SELECT maNguoiDung FROM NguoiDung WHERE vaiTro = 'quan_tri'`
+              );
+              const adminIds = admins.map((a) => a.maNguoiDung);
+              
+              if (adminIds.length > 0) {
+                await ThongBaoModel.createMultiple({
+                  danhSachNguoiNhan: adminIds,
+                  tieuDe: "🏫 Xe đã đến trường",
+                  noiDung: `Xe buýt ${bus?.bienSoXe || ""} đã đến trường${route?.tenTuyen ? ` (${route.tenTuyen})` : ""}.`,
+                  loaiThongBao: "chuyen_di",
+                });
+              }
+
+              // Emit WebSocket events
+              const io = req.app.get("io");
+              if (io) {
+                parentIds.forEach((parentId) => {
+                  io.to(`user-${parentId}`).emit("notification:new", {
+                    maNguoiNhan: parentId,
+                    tieuDe,
+                    noiDung,
+                    loaiThongBao: "chuyen_di",
+                    tripId: id,
+                    stopId: sequence,
+                    thoiGianGui: new Date(),
+                    daDoc: false,
+                  });
+                });
+                
+                io.to("role-quan_tri").emit("arrived_at_final_stop", {
+                  tripId: parseInt(id),
+                  stopId: sequence,
+                  stopName: stop.tenDiem,
+                  tripType: "don_sang",
+                  timestamp: new Date().toISOString(),
+                });
+              }
+
+              return response.success(
+                res,
+                {
+                  arrivedAt: stop.tenDiem,
+                  isFinalStop: true,
+                  message: "Đã đến trường - Không có học sinh để đón",
+                },
+                "Đã đến điểm cuối (trường học)"
+              );
+            }
+          }
+
+          return response.success(
+            res,
+            {
+              arrivedAt: stop.tenDiem,
+              isFinalStop: true,
+              studentsCount: 0,
+            },
+            "Đã đến điểm cuối (trường học)"
+          );
+        } else if (tripType === "tra_chieu") {
+          // Chuyến về: Điểm cuối - trả học sinh còn lại trên xe
+          console.log(`[TripController] Arrived at final stop for afternoon trip ${id}`);
+          
+          const students = await TrangThaiHocSinhModel.getByTripId(id);
+          const studentsOnBus = students.filter(s => s.trangThai === 'da_don');
+          
+          // Trả tất cả học sinh còn lại
+          for (const student of studentsOnBus) {
+            await TrangThaiHocSinhModel.update(id, student.maHocSinh, {
+              trangThai: "da_tra",
+              thoiGianThucTe: new Date(),
+              ghiChu: "Đã trả tại điểm cuối",
+            });
+          }
+
+          // Thông báo phụ huynh và admin
+          if (studentsOnBus.length > 0) {
+            const studentIds = studentsOnBus.map((s) => s.maHocSinh);
+            const pool = (await import("../config/db.js")).default;
+            const [parents] = await pool.query(
+              `SELECT DISTINCT h.maPhuHuynh, h.hoTen as tenHocSinh, n.hoTen as tenPhuHuynh
+               FROM HocSinh h
+               JOIN NguoiDung n ON h.maPhuHuynh = n.maNguoiDung
+               WHERE h.maHocSinh IN (?) AND h.maPhuHuynh IS NOT NULL`,
+              [studentIds]
+            );
+
+            if (parents.length > 0) {
+              const parentIds = parents.map((s) => s.maPhuHuynh);
+              const route = await TuyenDuongModel.getById(schedule.maTuyen);
+              const bus = await XeBuytModel.getById(schedule.maXe);
+
+              const tieuDe = "✅ Con đã xuống xe";
+              const noiDung = `Con bạn đã được trả tại điểm cuối an toàn${route?.tenTuyen ? ` (${route.tenTuyen})` : ""}.`;
+
+              await ThongBaoModel.createMultiple({
+                danhSachNguoiNhan: parentIds,
+                tieuDe,
+                noiDung,
+                loaiThongBao: "student_checkout",
+              });
+
+              // Emit WebSocket events
+              const io = req.app.get("io");
+              if (io) {
+                parentIds.forEach((parentId) => {
+                  io.to(`user-${parentId}`).emit("notification:new", {
+                    maNguoiNhan: parentId,
+                    tieuDe,
+                    noiDung,
+                    loaiThongBao: "student_checkout",
+                    tripId: id,
+                    thoiGianGui: new Date(),
+                    daDoc: false,
+                  });
+                });
+              }
+            }
+          }
+
+          return response.success(
+            res,
+            {
+              arrivedAt: stop.tenDiem,
+              isFinalStop: true,
+              studentsDropped: studentsOnBus.length,
+            },
+            `Đã đến điểm cuối - Đã trả ${studentsOnBus.length} học sinh`
+          );
+        }
+      }
+
+      // Xử lý điểm dừng thông thường (không phải điểm cuối)
       // Get students at this stop - thuTuDiemDon maps to sequence number
       const students = await TrangThaiHocSinhModel.getByTripId(id);
       const studentsAtThisStop = students.filter(
@@ -1545,6 +1879,111 @@ class TripController {
   }
 
   /**
+   * 🔥 API: GET /api/v1/trips/:id/students-from-morning
+   * Lấy danh sách học sinh từ chuyến đi sáng cùng ngày (cho chuyến về)
+   * @param {Express.Request} req
+   * @param {Express.Response} res
+   * @param {string} req.params.id - Trip ID (afternoon trip)
+   */
+  static async getStudentsFromMorningTrip(req, res) {
+    try {
+      const { id } = req.params;
+
+      if (!id) {
+        return response.validationError(res, "Trip ID là bắt buộc", [
+          { field: "id", message: "Trip ID không được để trống" },
+        ]);
+      }
+
+      // Get trip
+      const trip = await ChuyenDiModel.getById(id);
+      if (!trip) {
+        return response.notFound(res, "Không tìm thấy chuyến đi");
+      }
+
+      // Get schedule info
+      const schedule = await LichTrinhModel.getById(trip.maLichTrinh);
+      if (!schedule) {
+        return response.notFound(res, "Không tìm thấy lịch trình");
+      }
+
+      // Chỉ hoạt động với chuyến về
+      if (schedule.loaiChuyen !== "tra_chieu") {
+        return response.error(
+          res,
+          "INVALID_TRIP_TYPE",
+          "API này chỉ dành cho chuyến về (tra_chieu)",
+          400
+        );
+      }
+
+      // Tìm chuyến đi sáng cùng ngày, cùng route
+      const pool = (await import("../config/db.js")).default;
+      const [morningTrips] = await pool.query(
+        `SELECT cd.maChuyen 
+         FROM ChuyenDi cd
+         JOIN LichTrinh lt ON cd.maLichTrinh = lt.maLichTrinh
+         WHERE lt.maTuyen = ? 
+           AND lt.loaiChuyen = 'don_sang'
+           AND DATE(cd.ngayChay) = DATE(?)
+           AND cd.trangThai IN ('dang_chay', 'hoan_thanh')
+         ORDER BY cd.gioBatDauThucTe DESC
+         LIMIT 1`,
+        [schedule.maTuyen, trip.ngayChay]
+      );
+
+      if (morningTrips.length === 0) {
+        return response.success(
+          res,
+          { students: [], morningTripId: null },
+          "Không tìm thấy chuyến đi sáng cùng ngày"
+        );
+      }
+
+      const morningTripId = morningTrips[0].maChuyen;
+
+      // Lấy học sinh đã được đón từ chuyến đi sáng (status = 'da_don')
+      const morningStudents = await TrangThaiHocSinhModel.getByTripId(morningTripId);
+      const pickedStudents = morningStudents.filter(s => s.trangThai === 'da_don');
+
+      // Lấy schedule_student_stops của chuyến về để biết điểm sẽ trả
+      const scheduleStudents = await ScheduleStudentStopModel.getByScheduleId(schedule.maLichTrinh);
+
+      // Map học sinh với điểm sẽ trả
+      const studentsWithDropOff = pickedStudents.map(student => {
+        const scheduleStudent = scheduleStudents.find(ss => ss.maHocSinh === student.maHocSinh);
+        return {
+          maHocSinh: student.maHocSinh,
+          hoTen: student.hoTen,
+          lop: student.lop,
+          anhDaiDien: student.anhDaiDien,
+          thuTuDiemDon: scheduleStudent?.thuTuDiem || student.thuTuDiemDon, // Điểm sẽ trả
+          trangThai: 'da_don', // Đã có trên xe
+        };
+      });
+
+      return response.success(
+        res,
+        {
+          students: studentsWithDropOff,
+          morningTripId: morningTripId,
+          studentsCount: studentsWithDropOff.length,
+        },
+        "Danh sách học sinh từ chuyến đi sáng"
+      );
+    } catch (error) {
+      console.error("❌ [TripController] getStudentsFromMorningTrip error:", error);
+      return response.error(
+        res,
+        "GET_STUDENTS_FROM_MORNING_ERROR",
+        "Lỗi khi lấy danh sách học sinh từ chuyến đi sáng",
+        500,
+        error
+      );
+    }
+  }
+
+  /**
    * Lấy danh sách học sinh tại điểm dừng cụ thể
    * @param {Express.Request} req
    * @param {Express.Response} res
@@ -1585,40 +2024,83 @@ class TripController {
       }
 
       // Get students at this stop - thuTuDiemDon maps to sequence number
-      const students = await TrangThaiHocSinhModel.getByTripId(id);
-      const studentsAtThisStop = students
-        .filter(
-          (s) => s.thuTuDiemDon && parseInt(s.thuTuDiemDon) === parseInt(sequence)
-        )
-        .map((s) => ({
+      // 🔥 Join trực tiếp với HocSinh để lấy thông tin đầy đủ
+      const pool = (await import("../config/db.js")).default;
+      
+      try {
+        const tripIdInt = parseInt(id);
+        const sequenceInt = parseInt(sequence);
+        
+        console.log(`[TripController] getStudentsAtStop: tripId=${tripIdInt}, sequence=${sequenceInt}`);
+        
+        // Query trực tiếp với điều kiện filter ngay trong SQL
+        // Sử dụng CAST để đảm bảo so sánh đúng kiểu dữ liệu
+        const [studentInfo] = await pool.query(
+          `SELECT 
+            hs.maHocSinh,
+            hs.hoTen,
+            hs.lop,
+            hs.anhDaiDien,
+            tth.trangThai,
+            tth.thuTuDiemDon,
+            tth.thoiGianThucTe,
+            tth.ghiChu
+           FROM TrangThaiHocSinh tth
+           LEFT JOIN HocSinh hs ON tth.maHocSinh = hs.maHocSinh
+           WHERE tth.maChuyen = ? 
+             AND CAST(tth.thuTuDiemDon AS UNSIGNED) = ?`,
+          [tripIdInt, sequenceInt]
+        );
+        
+        console.log(`[TripController] Found ${studentInfo.length} students at stop ${sequenceInt}`);
+        
+        const studentsAtThisStop = (studentInfo || []).map((s) => ({
           maHocSinh: s.maHocSinh,
-          hoTen: s.hoTen,
-          lop: s.lop,
-          anhDaiDien: s.anhDaiDien,
-          trangThai: s.trangThai,
+          hoTen: s.hoTen || null,
+          lop: s.lop || null,
+          anhDaiDien: s.anhDaiDien || null,
+          trangThai: s.trangThai || 'cho_don',
           thuTuDiemDon: s.thuTuDiemDon,
-          thoiGianThucTe: s.thoiGianThucTe,
-          ghiChu: s.ghiChu,
+          thoiGianThucTe: s.thoiGianThucTe || null,
+          ghiChu: s.ghiChu || null,
         }));
-
-      return response.success(
-        res,
-        {
-          stop: {
-            maDiem: stop.maDiem,
-            tenDiem: stop.tenDiem,
-            sequence: stop.sequence,
-            viDo: stop.viDo,
-            kinhDo: stop.kinhDo,
-            address: stop.address,
+        
+        return response.success(
+          res,
+          {
+            stop: {
+              maDiem: stop.maDiem,
+              tenDiem: stop.tenDiem,
+              sequence: stop.sequence,
+              viDo: stop.viDo,
+              kinhDo: stop.kinhDo,
+              address: stop.address,
+            },
+            students: studentsAtThisStop,
+            studentsCount: studentsAtThisStop.length,
           },
-          students: studentsAtThisStop,
-          studentsCount: studentsAtThisStop.length,
-        },
-        "Danh sách học sinh tại điểm dừng"
-      );
+          "Danh sách học sinh tại điểm dừng"
+        );
+      } catch (dbError) {
+        console.error("❌ [TripController] getStudentsAtStop DB error:", dbError);
+        console.error("Error details:", {
+          tripId: id,
+          sequence,
+          errorMessage: dbError.message,
+          errorCode: dbError.code,
+          errorStack: dbError.stack,
+        });
+        throw dbError;
+      }
+
     } catch (error) {
       console.error("❌ [TripController] getStudentsAtStop error:", error);
+      console.error("Error details:", {
+        tripId: id,
+        sequence,
+        errorMessage: error.message,
+        errorStack: error.stack,
+      });
       return response.error(
         res,
         "GET_STUDENTS_AT_STOP_ERROR",
