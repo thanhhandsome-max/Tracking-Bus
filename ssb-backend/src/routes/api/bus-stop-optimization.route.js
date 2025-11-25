@@ -79,5 +79,14 @@ router.post(
   BusStopOptimizationController.createRoutes
 );
 
+// POST /api/v1/bus-stops/create-schedules - Tự động tạo lịch trình từ tuyến đường
+router.post(
+  "/create-schedules",
+  AuthMiddleware.authenticate,
+  AuthMiddleware.authorize("quan_tri"),
+  optimizationLimiter,
+  BusStopOptimizationController.createSchedules
+);
+
 export default router;
 

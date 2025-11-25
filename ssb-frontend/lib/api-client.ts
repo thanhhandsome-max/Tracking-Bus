@@ -524,14 +524,6 @@ class ApiClient {
     return this.request({ method: 'post', url: '/bus-stops/optimize-full', data });
   }
 
-  async getBusStopAssignments() {
-    return this.request({ method: 'get', url: '/bus-stops/assignments' });
-  }
-
-  async getBusStopStats() {
-    return this.request({ method: 'get', url: '/bus-stops/stats' });
-  }
-
   async createRoutesFromOptimization(data: {
     depot?: { lat: number; lng: number; name?: string };
     capacity?: number;
@@ -540,6 +532,24 @@ class ApiClient {
     vrp_result?: any;
   }) {
     return this.request({ method: 'post', url: '/bus-stops/create-routes', data });
+  }
+
+  async createSchedulesFromRoutes(data: {
+    route_ids?: number[];
+    default_departure_time?: string;
+    auto_assign_bus?: boolean;
+    auto_assign_driver?: boolean;
+    ngay_chay?: string;
+  }) {
+    return this.request({ method: 'post', url: '/bus-stops/create-schedules', data });
+  }
+
+  async getBusStopAssignments() {
+    return this.request({ method: 'get', url: '/bus-stops/assignments' });
+  }
+
+  async getBusStopStats() {
+    return this.request({ method: 'get', url: '/bus-stops/stats' });
   }
 }
 

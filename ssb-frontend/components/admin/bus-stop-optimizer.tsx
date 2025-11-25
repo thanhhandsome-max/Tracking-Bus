@@ -115,6 +115,16 @@ export function BusStopOptimizer() {
   } | null>(null);
 
   const [stats, setStats] = useState<any>(null);
+  const [routesCreated, setRoutesCreated] = useState<{
+    routes: any[];
+    stats: { totalRoutes: number; totalStops: number; totalStudents: number };
+  } | null>(null);
+  const [creatingRoutes, setCreatingRoutes] = useState(false);
+  const [schedulesCreated, setSchedulesCreated] = useState<{
+    schedules: any[];
+    stats: { totalSchedules: number; totalRoutes: number };
+  } | null>(null);
+  const [creatingSchedules, setCreatingSchedules] = useState(false);
 
   // Load stats on mount
   useEffect(() => {
@@ -270,6 +280,104 @@ export function BusStopOptimizer() {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCreateRoutes = async () => {
+    if (!tier2Result && !fullResult?.tier2) {
+      toast({
+        title: "Cảnh báo",
+        description: "Vui lòng chạy optimization Tầng 2 trước khi tạo tuyến đường",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setCreatingRoutes(true);
+    try {
+      const vrpResult = tier2Result || fullResult?.tier2;
+      const response = await apiClient.createRoutesFromOptimization({
+        depot: {
+          lat: params.school_location.lat,
+          lng: params.school_location.lng,
+          name: "Đại học Sài Gòn",
+        },
+        capacity: params.c_bus,
+        route_name_prefix: "Tuyến Tối Ưu",
+        create_return_routes: true,
+        vrp_result: vrpResult,
+      });
+
+      if (response.success && response.data) {
+        const result = response.data as {
+          routes: any[];
+          stats: { totalRoutes: number; totalStops: number; totalStudents: number };
+        };
+        setRoutesCreated(result);
+        toast({
+          title: "Thành công",
+          description: `Đã tạo ${result.stats.totalRoutes} tuyến đường thành công`,
+        });
+      } else {
+        throw new Error(response.error?.message || "Lỗi không xác định");
+      }
+    } catch (error: any) {
+      console.error("Create routes error:", error);
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể tạo tuyến đường",
+        variant: "destructive",
+      });
+    } finally {
+      setCreatingRoutes(false);
+    }
+  };
+
+  const handleCreateSchedules = async () => {
+    if (!routesCreated || !routesCreated.routes || routesCreated.routes.length === 0) {
+      toast({
+        title: "Cảnh báo",
+        description: "Vui lòng tạo tuyến đường trước khi tạo lịch trình",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setCreatingSchedules(true);
+    try {
+      const routeIds = routesCreated.routes
+        .filter((r: any) => r.maTuyen)
+        .map((r: any) => r.maTuyen);
+
+      const response = await apiClient.createSchedulesFromRoutes({
+        route_ids: routeIds,
+        default_departure_time: "06:00:00",
+        auto_assign_bus: true,
+        auto_assign_driver: true,
+      });
+
+      if (response.success && response.data) {
+        const result = response.data as {
+          schedules: any[];
+          stats: { totalSchedules: number; totalRoutes: number };
+        };
+        setSchedulesCreated(result);
+        toast({
+          title: "Thành công",
+          description: `Đã tạo ${result.stats.totalSchedules} lịch trình thành công`,
+        });
+      } else {
+        throw new Error(response.error?.message || "Lỗi không xác định");
+      }
+    } catch (error: any) {
+      console.error("Create schedules error:", error);
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể tạo lịch trình",
+        variant: "destructive",
+      });
+    } finally {
+      setCreatingSchedules(false);
     }
   };
 
@@ -497,6 +605,58 @@ export function BusStopOptimizer() {
                   </>
                 )}
               </Button>
+
+              {/* Button tạo tuyến đường - chỉ hiển thị khi đã có kết quả */}
+              {(tier2Result || fullResult?.tier2) && (
+                <>
+                  <Separator />
+                  <Button
+                    onClick={handleCreateRoutes}
+                    disabled={creatingRoutes || loading}
+                    className="w-full"
+                    size="lg"
+                    variant="outline"
+                  >
+                    {creatingRoutes ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Đang tạo tuyến đường...
+                      </>
+                    ) : (
+                      <>
+                        <Route className="w-4 h-4 mr-2" />
+                        Tạo Tuyến Đường
+                      </>
+                    )}
+                  </Button>
+                </>
+              )}
+
+              {/* Button tạo lịch trình - chỉ hiển thị khi đã tạo tuyến đường */}
+              {routesCreated && routesCreated.routes.length > 0 && (
+                <>
+                  <Separator />
+                  <Button
+                    onClick={handleCreateSchedules}
+                    disabled={creatingSchedules || creatingRoutes}
+                    className="w-full"
+                    size="lg"
+                    variant="secondary"
+                  >
+                    {creatingSchedules ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Đang tạo lịch trình...
+                      </>
+                    ) : (
+                      <>
+                        <Settings className="w-4 h-4 mr-2" />
+                        Tạo Lịch Trình Tự Động
+                      </>
+                    )}
+                  </Button>
+                </>
+              )}
             </CardContent>
           </Card>
 
@@ -521,6 +681,18 @@ export function BusStopOptimizer() {
                         <div className="text-2xl font-bold">{fullResult.summary.totalRoutes}</div>
                         <div className="text-sm text-muted-foreground">Tuyến xe</div>
                       </div>
+                      {routesCreated && (
+                        <div className="p-4 border rounded-lg bg-green-50">
+                          <div className="text-2xl font-bold text-green-600">{routesCreated.stats.totalRoutes}</div>
+                          <div className="text-sm text-muted-foreground">Tuyến đã tạo</div>
+                        </div>
+                      )}
+                      {schedulesCreated && (
+                        <div className="p-4 border rounded-lg bg-blue-50">
+                          <div className="text-2xl font-bold text-blue-600">{schedulesCreated.stats.totalSchedules}</div>
+                          <div className="text-sm text-muted-foreground">Lịch trình đã tạo</div>
+                        </div>
+                      )}
                       <div className="p-4 border rounded-lg">
                         <div className="text-2xl font-bold">{fullResult.summary.totalStudents}</div>
                         <div className="text-sm text-muted-foreground">Học sinh</div>

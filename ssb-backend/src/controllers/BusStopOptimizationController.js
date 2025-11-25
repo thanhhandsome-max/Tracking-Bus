@@ -1,6 +1,7 @@
 import BusStopOptimizationService from "../services/BusStopOptimizationService.js";
 import VehicleRoutingService from "../services/VehicleRoutingService.js";
 import RouteFromOptimizationService from "../services/RouteFromOptimizationService.js";
+import ScheduleFromRoutesService from "../services/ScheduleFromRoutesService.js";
 
 /**
  * Controller cho Bus Stop Optimization và Vehicle Routing
@@ -298,6 +299,47 @@ class BusStopOptimizationController {
         error: {
           code: "INTERNAL_ERROR",
           message: error.message || "Lỗi server khi tạo tuyến đường",
+        },
+      });
+    }
+  }
+
+  /**
+   * POST /api/v1/bus-stops/create-schedules
+   * Tự động tạo lịch trình từ tuyến đường đã tạo
+   */
+  static async createSchedules(req, res) {
+    try {
+      const {
+        route_ids = null,
+        default_departure_time = "06:00:00",
+        auto_assign_bus = true,
+        auto_assign_driver = true,
+        ngay_chay = null,
+      } = req.body;
+
+      console.log(`[BusStopOptimization] Creating schedules from routes`);
+
+      const result = await ScheduleFromRoutesService.createSchedulesFromRoutes({
+        routeIds: route_ids,
+        defaultDepartureTime: default_departure_time,
+        autoAssignBus: auto_assign_bus,
+        autoAssignDriver: auto_assign_driver,
+        ngayChay: ngay_chay,
+      });
+
+      res.status(200).json({
+        success: true,
+        data: result,
+        message: `Tạo lịch trình thành công: ${result.stats.totalSchedules} lịch trình`,
+      });
+    } catch (error) {
+      console.error("Error in BusStopOptimizationController.createSchedules:", error);
+      res.status(500).json({
+        success: false,
+        error: {
+          code: "INTERNAL_ERROR",
+          message: error.message || "Lỗi server khi tạo lịch trình",
         },
       });
     }
