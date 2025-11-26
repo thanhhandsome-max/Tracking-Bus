@@ -9,7 +9,7 @@ import HocSinhModel from "../models/HocSinhModel.js";
 import ThongBaoModel from "../models/ThongBaoModel.js"; // M5: Send notifications to parents
 import TripStopStatusModel from "../models/TripStopStatusModel.js"; // Store stop arrival/departure times
 import ScheduleStudentStopModel from "../models/ScheduleStudentStopModel.js"; // Schedule student stop mapping
-import tripService from "../services/tripService.js"; // kết nối tới service xử lý logic trip
+import tripService from "../services/TripService.js"; // kết nối tới service xử lý logic trip
 import TelemetryService from "../services/telemetryService.js"; // clear cache khi trip ends
 import * as response from "../utils/response.js"; // M4-M6: Response envelope
 
