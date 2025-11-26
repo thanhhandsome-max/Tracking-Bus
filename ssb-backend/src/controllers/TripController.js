@@ -145,62 +145,75 @@ class TripController {
       // 🔥 FIX: Tự động tạo ChuyenDi từ LichTrinh nếu chưa có khi driver xem lịch trình hôm nay
       if (ngayChay && maTaiXe) {
         try {
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          const queryDate = new Date(ngayChay);
-          queryDate.setHours(0, 0, 0, 0);
-          
-          // Chỉ tự động tạo nếu ngày query là hôm nay hoặc tương lai
-          if (queryDate >= today) {
-            // Lấy tất cả LichTrinh của driver cho ngày này
-            const schedules = await LichTrinhModel.getByDriver(maTaiXe);
-            const schedulesForDate = schedules.filter(s => {
-              const scheduleDate = new Date(s.ngayChay);
-              scheduleDate.setHours(0, 0, 0, 0);
-              return scheduleDate.getTime() === queryDate.getTime() && s.dangApDung;
-            });
+          // Convert maTaiXe to number if it's a string
+          const driverId = typeof maTaiXe === 'string' ? parseInt(maTaiXe, 10) : maTaiXe;
+          if (isNaN(driverId)) {
+            console.warn(`⚠️ [Auto-create] Invalid maTaiXe: ${maTaiXe}`);
+          } else {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const queryDate = new Date(ngayChay);
+            queryDate.setHours(0, 0, 0, 0);
             
-            // Tạo ChuyenDi cho mỗi LichTrinh chưa có ChuyenDi
-            for (const schedule of schedulesForDate) {
-              const existingTrip = await ChuyenDiModel.getByScheduleAndDate(
-                schedule.maLichTrinh,
-                ngayChay
-              );
-              if (!existingTrip) {
+            // Chỉ tự động tạo nếu ngày query là hôm nay hoặc tương lai
+            if (queryDate >= today) {
+              // Lấy tất cả LichTrinh của driver cho ngày này
+              const schedules = await LichTrinhModel.getByDriver(driverId);
+              const schedulesForDate = schedules.filter(s => {
+                if (!s.ngayChay) return false;
+                const scheduleDate = new Date(s.ngayChay);
+                scheduleDate.setHours(0, 0, 0, 0);
+                return scheduleDate.getTime() === queryDate.getTime() && s.dangApDung;
+              });
+              
+              // Tạo ChuyenDi cho mỗi LichTrinh chưa có ChuyenDi
+              for (const schedule of schedulesForDate) {
+                if (!schedule.maLichTrinh) continue;
                 try {
-                  const tripId = await ChuyenDiModel.create({
-                    maLichTrinh: schedule.maLichTrinh,
-                    ngayChay,
-                    trangThai: 'chua_khoi_hanh',
-                    ghiChu: null,
-                  });
-                  console.log(`✅ [Auto-create] Tạo ChuyenDi ${tripId} từ LichTrinh ${schedule.maLichTrinh} cho driver ${maTaiXe}, ngayChay: ${ngayChay}`);
-                } catch (createError) {
-                  console.error(`⚠️ [Auto-create] Không thể tạo ChuyenDi từ LichTrinh ${schedule.maLichTrinh}:`, createError.message);
+                  const existingTrip = await ChuyenDiModel.getByScheduleAndDate(
+                    schedule.maLichTrinh,
+                    ngayChay
+                  );
+                  if (!existingTrip) {
+                    try {
+                      const tripId = await ChuyenDiModel.create({
+                        maLichTrinh: schedule.maLichTrinh,
+                        ngayChay,
+                        trangThai: 'chua_khoi_hanh',
+                        ghiChu: null,
+                      });
+                      console.log(`✅ [Auto-create] Tạo ChuyenDi ${tripId} từ LichTrinh ${schedule.maLichTrinh} cho driver ${driverId}, ngayChay: ${ngayChay}`);
+                    } catch (createError) {
+                      console.error(`⚠️ [Auto-create] Không thể tạo ChuyenDi từ LichTrinh ${schedule.maLichTrinh}:`, createError.message);
+                    }
+                  }
+                } catch (checkError) {
+                  console.error(`⚠️ [Auto-create] Lỗi khi kiểm tra ChuyenDi cho LichTrinh ${schedule.maLichTrinh}:`, checkError.message);
                 }
               }
             }
           }
         } catch (autoCreateError) {
           // Log lỗi nhưng không fail request
-          console.error(`⚠️ [Auto-create] Lỗi khi tự động tạo ChuyenDi:`, autoCreateError.message);
+          console.error(`⚠️ [Auto-create] Lỗi khi tự động tạo ChuyenDi:`, autoCreateError);
         }
       }
 
       // Dùng SQL-level filter
+      // Convert numeric filters to numbers
       const filters = {
         ngayChay,
         trangThai,
-        maTuyen,
-        maXe,
-        maTaiXe,
+        maTuyen: maTuyen ? (typeof maTuyen === 'string' ? parseInt(maTuyen, 10) : maTuyen) : undefined,
+        maXe: maXe ? (typeof maXe === 'string' ? parseInt(maXe, 10) : maXe) : undefined,
+        maTaiXe: maTaiXe ? (typeof maTaiXe === 'string' ? parseInt(maTaiXe, 10) : maTaiXe) : undefined,
         search, // Thêm search nếu cần
       };
 
       // Use service if available, otherwise fallback to model
       let result;
-      if (tripService && tripService.list) {
-        result = await tripService.list({
+      if (TripService && TripService.list) {
+        result = await TripService.list({
           page: pageNum,
           limit,
           ...filters,
@@ -305,8 +318,8 @@ class TripController {
         ]);
       }
 
-      const trip = await (tripService && tripService.getById
-        ? tripService.getById(id)
+      const trip = await (TripService && TripService.getById
+        ? TripService.getById(id)
         : ChuyenDiModel.getById(id));
 
       if (!trip) {
@@ -517,8 +530,8 @@ class TripController {
       // Use service if available
       let trip;
       try {
-        if (tripService && tripService.create) {
-          trip = await tripService.create({
+        if (TripService && TripService.create) {
+          trip = await TripService.create({
             maLichTrinh,
             ngayChay,
             trangThai,
@@ -1318,8 +1331,8 @@ class TripController {
       // M4-M6: Use service if available (will calculate stats)
       let updatedTrip;
       try {
-        if (tripService && tripService.complete) {
-          updatedTrip = await tripService.complete(id, req.user?.userId);
+        if (TripService && TripService.complete) {
+          updatedTrip = await TripService.complete(id, req.user?.userId);
         } else {
           // Fallback: Update status and end time
           const isUpdated = await ChuyenDiModel.update(id, {
