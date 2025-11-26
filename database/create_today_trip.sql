@@ -1,50 +1,91 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- 🚌 CREATE TRIPS FOR TODAY (2025-10-30)
+-- 🚌 CREATE TRIPS & STUDENT STATUS FOR A GIVEN DATE (SAFE VERSION)
+--  - Không hardcode maLichTrinh, maChuyen
+--  - Tạo ChuyenDi từ LichTrinh
+--  - Gán học sinh vào chuyến dựa trên schedule_student_stops (nếu có)
+--  - Nếu chưa có LichTrinh hoặc schedule_student_stops thì chỉ không insert, KHÔNG lỗi
 -- ═══════════════════════════════════════════════════════════════════════════
 
 USE school_bus_system;
 
--- Insert trips for today
-INSERT INTO ChuyenDi (maLichTrinh, ngayChay, trangThai, ghiChu) VALUES
-(1, '2025-10-30', 'chua_khoi_hanh', 'Tuyến Quận 7 - Nhà Bè - Đón sáng'),
-(2, '2025-10-30', 'chua_khoi_hanh', 'Tuyến Quận 7 - Nhà Bè - Trả chiều'),
-(3, '2025-10-30', 'chua_khoi_hanh', 'Tuyến Quận 4 - Quận 7 - Đón sáng'),
-(4, '2025-10-30', 'chua_khoi_hanh', 'Tuyến Quận 4 - Quận 7 - Trả chiều'),
-(5, '2025-10-30', 'chua_khoi_hanh', 'Tuyến Quận 7 - Quận 1 - Đón sáng'),
-(6, '2025-10-30', 'chua_khoi_hanh', 'Tuyến Quận 7 - Quận 1 - Trả chiều');
+-- 📌 NGÀY CẦN TẠO CHUYẾN
+SET @target_date := '2025-10-30';
 
--- Add students to trips
-INSERT INTO TrangThaiHocSinh (maChuyen, maHocSinh, thuTuDiemDon, trangThai, ghiChu) VALUES
--- Trip 1 (Tuyến 1 - Đón sáng)
-(16, 1, 1, 'cho_don', 'Nguyễn Gia Bảo'),
-(16, 2, 2, 'cho_don', 'Trần Khánh Linh'),
-(16, 3, 3, 'cho_don', 'Lê Quang Huy'),
--- Trip 2 (Tuyến 1 - Trả chiều)
-(17, 1, 1, 'cho_don', 'Nguyễn Gia Bảo'),
-(17, 2, 2, 'cho_don', 'Trần Khánh Linh'),
-(17, 3, 3, 'cho_don', 'Lê Quang Huy'),
--- Trip 3 (Tuyến 2 - Đón sáng)
-(18, 4, 1, 'cho_don', 'Phạm Minh Anh'),
-(18, 5, 2, 'cho_don', 'Ngô Thị Lan'),
-(18, 6, 3, 'cho_don', 'Võ Đức Minh'),
--- Trip 4 (Tuyến 2 - Trả chiều)
-(19, 4, 1, 'cho_don', 'Phạm Minh Anh'),
-(19, 5, 2, 'cho_don', 'Ngô Thị Lan'),
-(19, 6, 3, 'cho_don', 'Võ Đức Minh'),
--- Trip 5 (Tuyến 3 - Đón sáng)
-(20, 7, 1, 'cho_don', 'Hoàng Thị Hoa'),
-(20, 8, 2, 'cho_don', 'Lý Văn Đức'),
-(20, 9, 3, 'cho_don', 'Trần Thị Mai'),
--- Trip 6 (Tuyến 3 - Trả chiều)
-(21, 7, 1, 'cho_don', 'Hoàng Thị Hoa'),
-(21, 8, 2, 'cho_don', 'Lý Văn Đức'),
-(21, 9, 3, 'cho_don', 'Trần Thị Mai');
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 1️⃣ TẠO CÁC CHUYẾN ĐI (ChuyenDi) TỪ LICH_TRINH TRONG NGÀY @target_date
+--    - Mỗi LichTrinh trong ngày mà CHƯA có ChuyenDi -> tạo 1 dòng
+-- ═══════════════════════════════════════════════════════════════════════════
 
--- Verify trips created
+INSERT INTO ChuyenDi (maLichTrinh, ngayChay, trangThai, ghiChu)
+SELECT 
+    lt.maLichTrinh,
+    @target_date AS ngayChay,
+    'chua_khoi_hanh' AS trangThai,
+    CONCAT('Auto trip for schedule #', lt.maLichTrinh, ' - ', lt.loaiChuyen) AS ghiChu
+FROM LichTrinh lt
+LEFT JOIN ChuyenDi cd
+    ON cd.maLichTrinh = lt.maLichTrinh
+   AND cd.ngayChay    = @target_date
+WHERE lt.ngayChay = @target_date
+  AND cd.maChuyen IS NULL;
+
+-- Thông tin kiểm tra số chuyến vừa tạo
+SELECT 
+    @target_date AS ngayChay,
+    COUNT(*) AS soChuyenTrongNgay
+FROM ChuyenDi
+WHERE ngayChay = @target_date;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 2️⃣ GÁN HỌC SINH VÀO CHUYẾN (TrangThaiHocSinh) DỰA TRÊN schedule_student_stops
+--    - Giả sử: schedule_student_stops.maLichTrinh đã mapping học sinh -> điểm dừng
+--    - Mỗi học sinh trong 1 lịch trình -> 1 dòng TrangThaiHocSinh cho chuyến tương ứng
+--    - Nếu schedule_student_stops trống -> không insert gì, không lỗi
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- Gán cho tất cả chuyến trong ngày (cả đón sáng & trả chiều)
+INSERT INTO TrangThaiHocSinh (maChuyen, maHocSinh, thuTuDiemDon, trangThai, thoiGianThucTe, ghiChu)
+SELECT 
+    cd.maChuyen,
+    sss.maHocSinh,
+    sss.thuTuDiem AS thuTuDiemDon,
+    'cho_don' AS trangThai,
+    NULL AS thoiGianThucTe,
+    NULL AS ghiChu
+FROM ChuyenDi cd
+JOIN LichTrinh lt 
+    ON lt.maLichTrinh = cd.maLichTrinh
+JOIN schedule_student_stops sss
+    ON sss.maLichTrinh = lt.maLichTrinh
+WHERE cd.ngayChay = @target_date
+-- Tránh insert trùng nếu đã có sẵn
+ON DUPLICATE KEY UPDATE
+    thuTuDiemDon    = VALUES(thuTuDiemDon),
+    trangThai       = VALUES(trangThai),
+    thoiGianThucTe  = VALUES(thoiGianThucTe),
+    ghiChu          = VALUES(ghiChu),
+    ngayCapNhat     = CURRENT_TIMESTAMP;
+
+-- Thông tin kiểm tra số record trạng thái học sinh
+SELECT 
+    cd.ngayChay,
+    COUNT(DISTINCT tths.maHocSinh) AS soHocSinhTrongNgay,
+    COUNT(*) AS tongRecordTrangThai
+FROM TrangThaiHocSinh tths
+JOIN ChuyenDi cd ON cd.maChuyen = tths.maChuyen
+WHERE cd.ngayChay = @target_date
+GROUP BY cd.ngayChay;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 3️⃣ TRUY VẤN KIỂM TRA CHI TIẾT
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- Danh sách chuyến trong ngày + thông tin tuyến/xe/tài xế
 SELECT 
   c.maChuyen,
   c.ngayChay,
   c.trangThai,
+  l.maLichTrinh,
   l.loaiChuyen,
   t.tenTuyen,
   x.bienSoXe,
@@ -54,7 +95,7 @@ JOIN LichTrinh l ON c.maLichTrinh = l.maLichTrinh
 JOIN TuyenDuong t ON l.maTuyen = t.maTuyen
 JOIN XeBuyt x ON l.maXe = x.maXe
 JOIN TaiXe tx ON l.maTaiXe = tx.maTaiXe
-WHERE c.ngayChay = '2025-10-30'
+WHERE c.ngayChay = @target_date
 ORDER BY c.maChuyen;
 
-SELECT '✅ Trips for today (2025-10-30) created successfully!' as message;
+SELECT CONCAT('✅ Trips & student statuses for ', @target_date, ' processed successfully!') AS message;

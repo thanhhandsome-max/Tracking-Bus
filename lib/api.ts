@@ -333,6 +333,48 @@ class ApiClient {
     const q = new URLSearchParams({ from: params.from, to: params.to }).toString()
     return this.request(`/trips/stats?${q}`)
   }
+
+  // Trip endpoints
+  async getTrips(params?: {
+    page?: number;
+    limit?: number;
+    pageSize?: number;
+    ngayChay?: string;
+    trangThai?: string;
+    maTuyen?: number;
+    maXe?: number;
+    maTaiXe?: number;
+    q?: string;
+    search?: string;
+    sortBy?: string;
+    sortOrder?: string;
+  }) {
+    const queryParams = new URLSearchParams();
+    if (params?.page) queryParams.append("page", params.page.toString());
+    if (params?.limit) queryParams.append("limit", params.limit.toString());
+    if (params?.pageSize) queryParams.append("pageSize", params.pageSize.toString());
+    if (params?.ngayChay) queryParams.append("ngayChay", params.ngayChay);
+    if (params?.trangThai) queryParams.append("trangThai", params.trangThai);
+    if (params?.maTuyen) queryParams.append("maTuyen", params.maTuyen.toString());
+    if (params?.maXe) queryParams.append("maXe", params.maXe.toString());
+    if (params?.maTaiXe) queryParams.append("maTaiXe", params.maTaiXe.toString());
+    if (params?.q) queryParams.append("q", params.q);
+    if (params?.search) queryParams.append("search", params.search);
+    if (params?.sortBy) queryParams.append("sortBy", params.sortBy);
+    if (params?.sortOrder) queryParams.append("sortOrder", params.sortOrder);
+
+    const query = queryParams.toString();
+    return this.request(`/trips${query ? `?${query}` : ""}`);
+  }
+
+  async getTripById(id: string | number) {
+    return this.request(`/trips/${id}`);
+  }
+
+  // Route endpoints
+  async getRouteById(id: string | number, signal?: AbortSignal) {
+    return this.request(`/routes/${id}`, { signal });
+  }
 }
 
 // Create singleton instance

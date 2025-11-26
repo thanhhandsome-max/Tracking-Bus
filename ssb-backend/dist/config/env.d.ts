@@ -14,10 +14,13 @@ interface Config {
         refreshExpiresIn: string;
     };
     frontend: {
-        origin: string;
+        origin: string | string[];
     };
     socket: {
         corsOrigin: string;
+    };
+    websocket: {
+        enabled: boolean;
     };
     api: {
         prefix: string;

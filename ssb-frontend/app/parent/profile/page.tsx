@@ -80,11 +80,11 @@ export default function ParentProfile() {
         
         setProfile({
           maNguoiDung: profileData.maNguoiDung || user.id || 0,
-          hoTen: profileData.hoTen || user.hoTen || user.name || "",
+          hoTen: profileData.hoTen || user.name || "",
           email: profileData.email || user.email || "",
-          soDienThoai: profileData.soDienThoai || user.soDienThoai || "",
+          soDienThoai: profileData.soDienThoai || "",
           diaChi: profileData.diaChi || "",
-          anhDaiDien: profileData.anhDaiDien || user.anhDaiDien || "",
+          anhDaiDien: profileData.anhDaiDien || "",
           vaiTro: profileData.vaiTro || user.role || "",
           ngayTao: profileData.ngayTao || "",
           ngayCapNhat: profileData.ngayCapNhat || "",
@@ -92,9 +92,9 @@ export default function ParentProfile() {
         })
         
         setFormData({
-          hoTen: profileData.hoTen || user.hoTen || "",
-          soDienThoai: profileData.soDienThoai || user.soDienThoai || "",
-          diaChi: profileData.diaChi || profileData.diaChi || "",
+          hoTen: profileData.hoTen || user.name || "",
+          soDienThoai: profileData.soDienThoai || "",
+          diaChi: profileData.diaChi || "",
         })
         
         setChildren(students)
@@ -235,9 +235,22 @@ export default function ParentProfile() {
             <CardContent className="space-y-6">
               <div className="flex items-center gap-6">
                 <Avatar className="w-24 h-24">
-                  <AvatarImage src={profile.anhDaiDien || "/placeholder.svg?height=96&width=96"} />
+                  <AvatarImage 
+                    src={(() => {
+                      const imagePath = profile.anhDaiDien;
+                      if (!imagePath) return "/placeholder.svg?height=96&width=96";
+                      // Nếu đã là full URL thì dùng luôn
+                      if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+                        return imagePath;
+                      }
+                      // Nếu là relative path, thêm base URL
+                      const apiBase = process.env.NEXT_PUBLIC_API_URL?.replace('/api/v1', '') || 'http://localhost:4000';
+                      const normalizedPath = imagePath.startsWith('/') ? imagePath : `/${imagePath}`;
+                      return `${apiBase}${normalizedPath}`;
+                    })()}
+                  />
                   <AvatarFallback className="text-2xl">
-                    {profile.hoTen?.charAt(0)?.toUpperCase() || user.hoTen?.charAt(0)?.toUpperCase() || "U"}
+                    {profile.hoTen?.charAt(0)?.toUpperCase() || user.name?.charAt(0)?.toUpperCase() || "U"}
                   </AvatarFallback>
                 </Avatar>
                 {isEditing && (
@@ -503,7 +516,20 @@ export default function ParentProfile() {
                         <div className="space-y-3 flex-1">
                           <div className="flex items-center gap-3">
                             <Avatar className="w-12 h-12">
-                              <AvatarImage src={child.anhDaiDien} />
+                              <AvatarImage 
+                                src={(() => {
+                                  const imagePath = child.anhDaiDien;
+                                  if (!imagePath) return undefined;
+                                  // Nếu đã là full URL thì dùng luôn
+                                  if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+                                    return imagePath;
+                                  }
+                                  // Nếu là relative path, thêm base URL
+                                  const apiBase = process.env.NEXT_PUBLIC_API_URL?.replace('/api/v1', '') || 'http://localhost:4000';
+                                  const normalizedPath = imagePath.startsWith('/') ? imagePath : `/${imagePath}`;
+                                  return `${apiBase}${normalizedPath}`;
+                                })()}
+                              />
                               <AvatarFallback>
                                 {child.hoTen?.charAt(0)?.toUpperCase() || "H"}
                               </AvatarFallback>
