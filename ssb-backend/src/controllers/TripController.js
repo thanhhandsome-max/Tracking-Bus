@@ -145,68 +145,55 @@ class TripController {
       // 🔥 FIX: Tự động tạo ChuyenDi từ LichTrinh nếu chưa có khi driver xem lịch trình hôm nay
       if (ngayChay && maTaiXe) {
         try {
-          // Convert maTaiXe to number if it's a string
-          const driverId = typeof maTaiXe === 'string' ? parseInt(maTaiXe, 10) : maTaiXe;
-          if (isNaN(driverId)) {
-            console.warn(`⚠️ [Auto-create] Invalid maTaiXe: ${maTaiXe}`);
-          } else {
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const queryDate = new Date(ngayChay);
-            queryDate.setHours(0, 0, 0, 0);
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const queryDate = new Date(ngayChay);
+          queryDate.setHours(0, 0, 0, 0);
+          
+          // Chỉ tự động tạo nếu ngày query là hôm nay hoặc tương lai
+          if (queryDate >= today) {
+            // Lấy tất cả LichTrinh của driver cho ngày này
+            const schedules = await LichTrinhModel.getByDriver(maTaiXe);
+            const schedulesForDate = schedules.filter(s => {
+              const scheduleDate = new Date(s.ngayChay);
+              scheduleDate.setHours(0, 0, 0, 0);
+              return scheduleDate.getTime() === queryDate.getTime() && s.dangApDung;
+            });
             
-            // Chỉ tự động tạo nếu ngày query là hôm nay hoặc tương lai
-            if (queryDate >= today) {
-              // Lấy tất cả LichTrinh của driver cho ngày này
-              const schedules = await LichTrinhModel.getByDriver(driverId);
-              const schedulesForDate = schedules.filter(s => {
-                if (!s.ngayChay) return false;
-                const scheduleDate = new Date(s.ngayChay);
-                scheduleDate.setHours(0, 0, 0, 0);
-                return scheduleDate.getTime() === queryDate.getTime() && s.dangApDung;
-              });
-              
-              // Tạo ChuyenDi cho mỗi LichTrinh chưa có ChuyenDi
-              for (const schedule of schedulesForDate) {
-                if (!schedule.maLichTrinh) continue;
+            // Tạo ChuyenDi cho mỗi LichTrinh chưa có ChuyenDi
+            for (const schedule of schedulesForDate) {
+              const existingTrip = await ChuyenDiModel.getByScheduleAndDate(
+                schedule.maLichTrinh,
+                ngayChay
+              );
+              if (!existingTrip) {
                 try {
-                  const existingTrip = await ChuyenDiModel.getByScheduleAndDate(
-                    schedule.maLichTrinh,
-                    ngayChay
-                  );
-                  if (!existingTrip) {
-                    try {
-                      const tripId = await ChuyenDiModel.create({
-                        maLichTrinh: schedule.maLichTrinh,
-                        ngayChay,
-                        trangThai: 'chua_khoi_hanh',
-                        ghiChu: null,
-                      });
-                      console.log(`✅ [Auto-create] Tạo ChuyenDi ${tripId} từ LichTrinh ${schedule.maLichTrinh} cho driver ${driverId}, ngayChay: ${ngayChay}`);
-                    } catch (createError) {
-                      console.error(`⚠️ [Auto-create] Không thể tạo ChuyenDi từ LichTrinh ${schedule.maLichTrinh}:`, createError.message);
-                    }
-                  }
-                } catch (checkError) {
-                  console.error(`⚠️ [Auto-create] Lỗi khi kiểm tra ChuyenDi cho LichTrinh ${schedule.maLichTrinh}:`, checkError.message);
+                  const tripId = await ChuyenDiModel.create({
+                    maLichTrinh: schedule.maLichTrinh,
+                    ngayChay,
+                    trangThai: 'chua_khoi_hanh',
+                    ghiChu: null,
+                  });
+                  console.log(`✅ [Auto-create] Tạo ChuyenDi ${tripId} từ LichTrinh ${schedule.maLichTrinh} cho driver ${maTaiXe}, ngayChay: ${ngayChay}`);
+                } catch (createError) {
+                  console.error(`⚠️ [Auto-create] Không thể tạo ChuyenDi từ LichTrinh ${schedule.maLichTrinh}:`, createError.message);
                 }
               }
             }
           }
         } catch (autoCreateError) {
           // Log lỗi nhưng không fail request
-          console.error(`⚠️ [Auto-create] Lỗi khi tự động tạo ChuyenDi:`, autoCreateError);
+          console.error(`⚠️ [Auto-create] Lỗi khi tự động tạo ChuyenDi:`, autoCreateError.message);
         }
       }
 
       // Dùng SQL-level filter
-      // Convert numeric filters to numbers
       const filters = {
         ngayChay,
         trangThai,
-        maTuyen: maTuyen ? (typeof maTuyen === 'string' ? parseInt(maTuyen, 10) : maTuyen) : undefined,
-        maXe: maXe ? (typeof maXe === 'string' ? parseInt(maXe, 10) : maXe) : undefined,
-        maTaiXe: maTaiXe ? (typeof maTaiXe === 'string' ? parseInt(maTaiXe, 10) : maTaiXe) : undefined,
+        maTuyen,
+        maXe,
+        maTaiXe,
         search, // Thêm search nếu cần
       };
 
