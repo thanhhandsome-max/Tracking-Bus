@@ -165,17 +165,30 @@ class RouteAutoCreateService {
       console.log(`[RouteAutoCreate] Step 6: Saving route_stops and suggestions...`);
       const suggestions = [];
       
+      // Thêm stops vào route_stops sử dụng RouteStopModel
       for (let i = 0; i < sortedStops.length; i++) {
         const stop = sortedStops[i];
         const sequence = i + 1;
 
-        // Lưu route_stops
-        await connection.query(
-          `INSERT INTO route_stops (route_id, stop_id, sequence, dwell_seconds)
-           VALUES (?, ?, ?, ?)
-           ON DUPLICATE KEY UPDATE sequence = VALUES(sequence)`,
-          [routeId, stop.maDiem, sequence, 30]
-        );
+        // Kiểm tra stop có tồn tại không
+        const existingStop = await DiemDungModel.getById(stop.maDiem);
+        if (!existingStop) {
+          console.warn(`[RouteAutoCreate] ⚠️ Stop ${stop.maDiem} not found, skipping`);
+          continue;
+        }
+
+        // Sử dụng RouteStopModel.addStop() thay vì raw SQL
+        try {
+          await RouteStopModel.addStop(routeId, stop.maDiem, sequence, 30);
+        } catch (stopError) {
+          // Nếu đã tồn tại, update sequence
+          if (stopError.message === "STOP_ALREADY_IN_ROUTE" || stopError.message === "SEQUENCE_ALREADY_EXISTS") {
+            await RouteStopModel.updateStop(routeId, stop.maDiem, sequence, 30);
+          } else {
+            console.warn(`[RouteAutoCreate] Failed to add stop ${stop.maDiem} to route:`, stopError.message);
+            continue;
+          }
+        }
 
         // Lưu suggestions
         if (stop.students && stop.students.length > 0) {
@@ -198,6 +211,24 @@ class RouteAutoCreateService {
             })),
             studentCount: stop.students.length,
           });
+        }
+      }
+
+      // 8. Thêm endPoint như điểm dừng cuối cùng (nếu chưa có)
+      const endPointStopId = await this.findOrCreateStop(endPoint, connection);
+      const endPointInStops = sortedStops.some(stop => {
+        const dist = StopSuggestionService.calculateDistance(
+          stop.viDo, stop.kinhDo, endPoint.lat, endPoint.lng
+        );
+        return dist < 0.01; // < 10m
+      });
+
+      if (!endPointInStops) {
+        try {
+          await RouteStopModel.addStop(routeId, endPointStopId, sortedStops.length + 1, 0);
+          console.log(`[RouteAutoCreate] ✅ Added endPoint as final stop`);
+        } catch (endPointError) {
+          console.warn(`[RouteAutoCreate] Failed to add endPoint stop:`, endPointError.message);
         }
       }
 
@@ -519,6 +550,36 @@ class RouteAutoCreateService {
     }
 
     return null;
+  }
+
+  /**
+   * Tìm hoặc tạo điểm dừng (helper method)
+   * @param {Object} point - {lat, lng, name, address}
+   * @param {Object} connection - Database connection
+   * @returns {Promise<number>} Stop ID
+   */
+  static async findOrCreateStop(point, connection) {
+    // Tìm điểm dừng đã có (trong bán kính 100m)
+    const [existing] = await connection.query(
+      `SELECT maDiem FROM DiemDung 
+       WHERE ABS(viDo - ?) < 0.001 AND ABS(kinhDo - ?) < 0.001
+       LIMIT 1`,
+      [point.lat, point.lng]
+    );
+
+    if (existing.length > 0) {
+      return existing[0].maDiem;
+    }
+
+    // Tạo mới nếu chưa có
+    const tenDiem = point.name || point.address || `Điểm dừng ${point.lat.toFixed(4)}, ${point.lng.toFixed(4)}`;
+    const [stopResult] = await connection.query(
+      `INSERT INTO DiemDung (tenDiem, viDo, kinhDo, address)
+       VALUES (?, ?, ?, ?)`,
+      [tenDiem, point.lat, point.lng, point.address || null]
+    );
+
+    return stopResult.insertId;
   }
 }
 

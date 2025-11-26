@@ -14,7 +14,14 @@ const HocSinhModel = {
        WHERE hs.trangThai = TRUE
        ORDER BY hs.hoTen`
     );
-    return rows;
+    // MySQL trả về BOOLEAN dưới dạng TINYINT (1 hoặc 0)
+    // Chuyển đổi để đảm bảo tương thích
+    return rows.map(row => ({
+      ...row,
+      trangThai: row.trangThai === 1 || row.trangThai === true || row.trangThai === '1',
+      viDo: row.viDo != null ? parseFloat(row.viDo) : null,
+      kinhDo: row.kinhDo != null ? parseFloat(row.kinhDo) : null,
+    }));
   },
 
   // Lấy học sinh theo ID

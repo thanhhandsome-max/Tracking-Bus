@@ -39,6 +39,7 @@ import mapsRoutes from "./routes/api/maps.js"; // Maps API proxy routes
 import stopRoutes from "./routes/api/stop.js"; // Stops routes
 import statsRoutes from "./routes/api/stats.route.js"; // M7: Stats routes
 import settingsRoutes from "./routes/api/settings.route.js"; // M8: Settings routes
+import busStopOptimizationRoutes from "./routes/api/bus-stop-optimization.route.js"; // Bus Stop Optimization routes
 
 // Create Express app
 const app = express();
@@ -198,6 +199,7 @@ app.use(`${API_PREFIX}/notifications`, notificationRoutes);
 app.use(`${API_PREFIX}/reports`, reportsRoutes);
 app.use(`${API_PREFIX}/stats`, statsRoutes); // M7: Stats routes
 app.use(`${API_PREFIX}/settings`, settingsRoutes); // M8: Settings routes
+app.use(`${API_PREFIX}/bus-stops`, busStopOptimizationRoutes); // Bus Stop Optimization routes
 
 // app.use(`${API_PREFIX}/reports`, (_req, res) => {
 //   res.json({

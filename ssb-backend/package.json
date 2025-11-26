@@ -20,6 +20,9 @@
     "check:backend": "node scripts/check-backend.js",
     "check:env": "node scripts/check-env.js",
     "test:watch": "jest --watch",
+    "test:optimization": "node scripts/test_bus_stop_optimization.js",
+    "test:api": "node scripts/test_optimization_api.js",
+    "test:coords": "node scripts/test_student_coords.js",
     "lint": "eslint src --ext .js",
     "lint:fix": "eslint src --ext .js --fix"
   },

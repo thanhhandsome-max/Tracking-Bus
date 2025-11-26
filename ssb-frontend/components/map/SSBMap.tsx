@@ -1950,6 +1950,10 @@ function SSBMap({
               lat: firstBusLat,
               lng: firstBusLng,
             });
+            // Auto-zoom when following bus (use zoom prop if provided, otherwise use default)
+            if (zoom && zoom > 0) {
+              mapInstanceRef.current.setZoom(zoom);
+            }
           }
         }
       }

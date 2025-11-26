@@ -173,6 +173,15 @@ router.get(
   TripController.getStudentsAtStop
 );
 
+// GET /api/v1/trips/:id/students-from-morning - Get students from morning trip (for afternoon trip)
+router.get(
+  "/:id/students-from-morning",
+  AuthMiddleware.authenticate,
+  AuthMiddleware.authorize("quan_tri", "tai_xe"),
+  ValidationMiddleware.validateId,
+  TripController.getStudentsFromMorningTrip
+);
+
 // M5: Arrive at stop (Driver only) - notify parents when bus arrives at stop
 router.post(
   "/:id/stops/:stopId/arrive",
