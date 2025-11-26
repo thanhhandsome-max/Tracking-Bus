@@ -227,7 +227,7 @@ export function BusStopOptimizer() {
     }
   };
 
-  const handleOptimizeFull = async () => {
+   const handleOptimizeFull = async () => {
     setLoading(true);
     try {
       const response = await apiClient.optimizeFull({
@@ -236,8 +236,9 @@ export function BusStopOptimizer() {
         s_max: params.s_max,
         c_bus: params.c_bus,
         max_stops: params.max_stops,
-        use_roads_api: params.use_roads_api,
-        use_places_api: params.use_places_api,
+        // Xóa hoặc comment out nếu backend không hỗ trợ
+        // use_roads_api: params.use_roads_api,
+        // use_places_api: params.use_places_api,
         split_virtual_nodes: params.split_virtual_nodes,
       });
 
@@ -252,7 +253,6 @@ export function BusStopOptimizer() {
         setTier2Result(result.tier2);
         await loadStats();
         
-        // Kiểm tra nếu không có kết quả
         if (result.summary.totalStops === 0 || result.summary.totalRoutes === 0) {
           const errorMsg = (result.tier1?.stats as any)?.error 
             ? (result.tier1.stats as any).error 
@@ -382,7 +382,26 @@ export function BusStopOptimizer() {
   };
 
   // Convert stops to StopDTO format for map
+  // Convert stops to StopDTO format for map
   const getStopsForMap = (): StopDTO[] => {
+    // ƯU TIÊN dùng kết quả FULL (tier2 – VRP) nếu có
+    if (fullResult?.tier2 && fullResult.tier2.routes.length > 0) {
+      const vrp = fullResult.tier2;
+
+      return vrp.routes.flatMap((route, routeIndex) =>
+        route.nodes.map((node, idx) => ({
+          maDiem: node.maDiem,
+          tenDiem: node.tenDiem,
+          viDo: node.viDo,
+          kinhDo: node.kinhDo,
+          address: null,              // VRPResult hiện không có address
+          sequence: idx + 1,
+          routeIndex,                 // ⬅️ tuyến thứ mấy (0,1,2,...)
+        }))
+      );
+    }
+
+    // Nếu chưa có tier2, fallback về tier1 như cũ
     const result = tier1Result || fullResult?.tier1;
     if (!result) return [];
 
@@ -393,8 +412,10 @@ export function BusStopOptimizer() {
       kinhDo: stop.kinhDo,
       address: stop.address || null,
       sequence: index + 1,
+      // không set routeIndex -> SSBMap sẽ dùng màu mặc định
     }));
   };
+
 
   return (
     <div className="space-y-6">
@@ -710,6 +731,7 @@ export function BusStopOptimizer() {
                         center={params.school_location}
                         zoom={13}
                         stops={getStopsForMap()}
+                        disableDirections={true}   // ⬅️ thêm dòng này
                         height="100%"
                       />
                     </div>
@@ -774,6 +796,7 @@ export function BusStopOptimizer() {
                       <SSBMap
                         center={params.school_location}
                         zoom={13}
+                        disableDirections={true}   // ⬅️ thêm dòng này
                         stops={getStopsForMap()}
                         height="100%"
                       />

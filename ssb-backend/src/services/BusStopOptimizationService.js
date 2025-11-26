@@ -18,6 +18,38 @@ import StopSuggestionService from "./StopSuggestionService.js";
  * 4. Lưu vào DB: DiemDung và HocSinh_DiemDung
  */
 class BusStopOptimizationService {
+
+  static async _findOrCreateStop({ tenDiem, viDo, kinhDo, diaChiChiTiet }) {
+    // Tạo điểm dừng nếu chưa có, nếu trùng unique key thì lấy lại record cũ
+    const lat = Number(viDo);
+    const lng = Number(kinhDo);
+
+    // 1. Thử tìm theo (tên + toạ độ)
+    const existing = await DiemDungModel.findByNameAndCoords(tenDiem, lat, lng);
+    if (existing) {
+      return existing.maDiem; // trả về ID
+    }
+
+    try {
+      // 2. Nếu chưa có thì tạo mới
+      const id = await DiemDungModel.create({
+        tenDiem,
+        viDo: lat,
+        kinhDo: lng,
+        address: diaChiChiTiet || null,
+      });
+      return id;
+    } catch (err) {
+      // 3. Nếu vẫn bị ER_DUP_ENTRY (race condition) => tìm lại
+      if (err.code === "ER_DUP_ENTRY") {
+        const again = await DiemDungModel.findByNameAndCoords(tenDiem, lat, lng);
+        if (again) return again.maDiem;
+      }
+      throw err;
+    }
+  }
+
+
   /**
    * Tính khoảng cách giữa 2 điểm (mét) - wrapper cho Haversine
    */
@@ -69,6 +101,11 @@ class BusStopOptimizationService {
     
     console.log(`[BusStopOptimization] Students with valid coordinates: ${filtered.length}`);
     
+    // Code snippet removed - this was orphaned code that's not part of any function
+
+
+
+
     // Log thống kê về học sinh không có tọa độ
     const withoutCoords = allStudents.filter((s) => {
       return !s.viDo || 
@@ -204,8 +241,8 @@ class BusStopOptimizationService {
    *   R_walk: Number (mét, default: 500),
    *   S_max: Number (default: 25),
    *   MAX_STOPS: Number (optional),
-   *   useRoadsAPI: Boolean (default: true),
-   *   usePlacesAPI: Boolean (default: true)
+   *   use_roads_api: Boolean (default: false),
+   *   use_places_api: Boolean (default: false)
    * }
    * @returns {Promise<Object>} {stops, assignments, stats}
    */
@@ -215,8 +252,8 @@ class BusStopOptimizationService {
       R_walk = 500, // meters
       S_max = 25,
       MAX_STOPS = null,
-      useRoadsAPI = true,
-      usePlacesAPI = true,
+      use_roads_api = false,
+      use_places_api = false,
     } = options;
 
     console.log(`[BusStopOptimization] Starting Greedy Maximum Coverage`);
@@ -287,25 +324,23 @@ class BusStopOptimizationService {
       if (!bestCandidate || bestCoverageSize === 0) {
         console.log(`[BusStopOptimization] No candidate can cover more students. Creating individual stops for remaining ${U.length} students`);
         
-        // Tạo điểm dừng riêng cho từng học sinh còn lại
+          // Tạo điểm dừng riêng cho từng học sinh còn lại
         for (const student of U) {
-          const stopCoords = useRoadsAPI
+          const stopCoords = use_roads_api
             ? await this.snapToRoad(student.viDo, student.kinhDo)
             : { lat: student.viDo, lng: student.kinhDo };
 
-          const placeInfo = usePlacesAPI
+          const placeInfo = use_places_api
             ? await this.findNearbyPlace(stopCoords.lat, stopCoords.lng)
             : {
                 name: `Điểm dừng ${student.hoTen}`,
                 address: student.diaChi || null,
-              };
-
-          // Tạo điểm dừng
-          const stopId = await DiemDungModel.create({
+              };          // Tạo điểm dừng
+          const stopId = await this._findOrCreateStop({
             tenDiem: placeInfo.name,
             viDo: stopCoords.lat,
             kinhDo: stopCoords.lng,
-            address: placeInfo.address,
+            diaChiChiTiet: placeInfo.address,
           });
 
           STOP_SET.push({
@@ -330,12 +365,12 @@ class BusStopOptimizationService {
       const assignedStudentIds = assignedStudents.map((item) => item.student.maHocSinh);
 
       // Snap điểm dừng lên đường
-      const stopCoords = useRoadsAPI
+      const stopCoords = use_roads_api
         ? await this.snapToRoad(bestCandidate.lat, bestCandidate.lng)
         : { lat: bestCandidate.lat, lng: bestCandidate.lng };
 
       // Tìm địa điểm gần nhất
-      const placeInfo = usePlacesAPI
+      const placeInfo = use_places_api
         ? await this.findNearbyPlace(stopCoords.lat, stopCoords.lng)
         : {
             name: `Điểm dừng ${stopCoords.lat.toFixed(6)}, ${stopCoords.lng.toFixed(6)}`,
@@ -343,11 +378,11 @@ class BusStopOptimizationService {
           };
 
       // Tạo điểm dừng
-      const stopId = await DiemDungModel.create({
+      const stopId = await this._findOrCreateStop({
         tenDiem: placeInfo.name,
         viDo: stopCoords.lat,
         kinhDo: stopCoords.lng,
-        address: placeInfo.address,
+        diaChiChiTiet: placeInfo.address,
       });
 
       STOP_SET.push({

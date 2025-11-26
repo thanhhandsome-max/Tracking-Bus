@@ -25,6 +25,8 @@ export interface StopDTO {
   address?: string | null;
   sequence: number;
   dwell_seconds?: number;
+  routeIndex?: number;    // dùng để phân biệt tuyến
+
 }
 
 export interface BusMarker {
@@ -53,6 +55,8 @@ interface SSBMapProps {
   height?: string;
   onStopClick?: (stop: StopDTO) => void;
   onBusClick?: (bus: BusMarker) => void;
+  disableDirections?: boolean;  // true => không vẽ đường, không decode polyline
+
   className?: string;
   autoFitOnUpdate?: boolean; // Auto fit bounds when markers update
   followFirstMarker?: boolean; // Pan to first marker when it moves
@@ -73,6 +77,7 @@ function SSBMap({
   onBusClick,
   className = "",
   autoFitOnUpdate = false,
+  disableDirections = false, 
   followFirstMarker = false,
   showMyLocation = true,
   customLocationLabel,
@@ -203,6 +208,12 @@ function SSBMap({
   // Auto-fetch directions if no polyline but has stops
   // Only fetch if we don't have routes with polylines (for tracking page)
   useEffect(() => {
+
+    if (disableDirections) {
+      console.log("[SSBMap] Directions disabled, skip auto-fetching");
+      return;
+    }
+
     // Clear any pending fetch
     if (fetchTimeoutRef.current) {
       clearTimeout(fetchTimeoutRef.current);
@@ -577,7 +588,7 @@ function SSBMap({
         fetchTimeoutRef.current = null;
       }
     };
-  }, [polyline, fetchedPolyline, stops, isFetchingDirections, routes]);
+  }, [polyline, fetchedPolyline, stops, isFetchingDirections, routes, disableDirections]);
 
   // Fallback: Create simple polyline from stops if Directions API fails
   const createSimplePolylineFromStops = useCallback(
@@ -643,6 +654,8 @@ function SSBMap({
 
   // Memoized polyline path - Ưu tiên polyline từ backend, sau đó từ fetched directions, cuối cùng là fallback
   const polylinePath = useMemo(() => {
+
+    if (disableDirections) return null;
     // Use polyline from backend first, then fetched polyline
     const activePolyline = polyline || fetchedPolyline;
 
@@ -1535,10 +1548,21 @@ function SSBMap({
     } catch (error) {
       console.error("[SSBMap] Error rendering polyline:", error);
     }
-  }, [polylinePath, routes]); // Add routes to dependencies
+  }, [polylinePath, routes, disableDirections]); // Add routes to dependencies
 
   // Render multiple route polylines
   useEffect(() => {
+
+    // Nếu tắt directions: xoá polyline cũ và không vẽ lại
+  if (disableDirections) {
+    routePolylinesRef.current.forEach((polyline) => {
+      polyline.setMap(null);
+    });
+    routePolylinesRef.current.clear();
+    return;
+  }
+
+
     if (!mapInstanceRef.current || !geometryReady || routes.length === 0) {
       return;
     }
@@ -1659,7 +1683,7 @@ function SSBMap({
         });
       }
     }
-  }, [routes, geometryReady, autoFitOnUpdate, decodePolyline]);
+  }, [routes, geometryReady, autoFitOnUpdate, decodePolyline, disableDirections]);
 
   // Render stop markers
   useEffect(() => {
@@ -1728,18 +1752,28 @@ function SSBMap({
       let marker = markersRef.current.get(key);
 
       if (!marker) {
-        // Create new marker
+        // ---- TẠO MÀU THEO TUYẾN (ĐẶT Ở ĐÂY – TRƯỚC KHI TẠO MARKER) ----
+        const COLORS = ["#EF4444", "#3B82F6", "#10B981", "#F97316", "#8B5CF6"];
+
+        const routeColor =
+          typeof stop.routeIndex === "number"
+            ? COLORS[stop.routeIndex % COLORS.length]
+            : "#EF4444"; // màu mặc định cho file khác
+
+        // ---- TẠO MARKER ----
         marker = new g.maps.Marker({
           position: { lat, lng },
           map: mapInstanceRef.current,
+
           icon: {
             path: g.maps.SymbolPath.CIRCLE,
             scale: 8,
-            fillColor: "#EF4444",
+            fillColor: routeColor,     // <<--- DÙNG Ở ĐÂY
             fillOpacity: 1,
             strokeColor: "#FFFFFF",
             strokeWeight: 2,
           },
+
           label: {
             text: String(stop.sequence || ""),
             color: "#FFFFFF",
@@ -1753,23 +1787,14 @@ function SSBMap({
           marker.addListener("click", () => onStopClick(stop));
         }
 
-        // Info window
         const infoWindow = new g.maps.InfoWindow({
           content: `
             <div style="padding: 8px; min-width: 200px;">
-              <h3 style="margin: 0 0 4px 0; font-size: 14px; font-weight: bold;">${
-                stop.sequence
-              }. ${stop.tenDiem}</h3>
-              ${
-                stop.address
-                  ? `<p style="margin: 0; font-size: 12px; color: #666;">${stop.address}</p>`
-                  : ""
-              }
-              ${
-                stop.dwell_seconds
-                  ? `<p style="margin: 4px 0 0 0; font-size: 12px; color: #666;">Dừng: ${stop.dwell_seconds}s</p>`
-                  : ""
-              }
+              <h3 style="margin: 0 0 4px 0; font-size: 14px; font-weight: bold;">
+                ${stop.sequence}. ${stop.tenDiem}
+              </h3>
+              ${stop.address ? `<p style="margin: 0; font-size: 12px; color: #666;">${stop.address}</p>` : ""}
+              ${stop.dwell_seconds ? `<p style="margin: 4px 0 0 0; font-size: 12px; color: #666;">Dừng: ${stop.dwell_seconds}s</p>` : ""}
             </div>
           `,
         });
@@ -1779,7 +1804,8 @@ function SSBMap({
         });
 
         markersRef.current.set(key, marker);
-      } else {
+      }
+ else {
         // Update existing marker position
         const lat = Number(stop.viDo);
         const lng = Number(stop.kinhDo);
