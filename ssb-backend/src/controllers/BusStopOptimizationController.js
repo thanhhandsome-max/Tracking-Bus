@@ -48,8 +48,8 @@ class BusStopOptimizationController {
         R_walk: r_walk,
         S_max: s_max,
         MAX_STOPS: max_stops,
-        useRoadsAPI: use_roads_api,
-        usePlacesAPI: use_places_api,
+        use_roads_api: use_roads_api,
+        use_places_api: use_places_api,
       });
 
       res.status(200).json({

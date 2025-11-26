@@ -220,7 +220,7 @@ npm run dev
 1. Mở Admin page trên laptop
 2. Mở Parent page trên tab khác
 3. Chạy DEMO script
-4. Verify: Cả 2 clients đều nhận được updates
+4. Verify: x1Cả 2 clients đều nhận được updates
 
 **Expected:** ✅ Broadcast hoạt động đúng
 
