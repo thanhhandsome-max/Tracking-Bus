@@ -12,6 +12,7 @@ CREATE DATABASE IF NOT EXISTS school_bus_system;
 USE school_bus_system;
 
 -- Drop existing tables if they exist (for clean initialization)
+DROP TABLE IF EXISTS temp_student_stop_mapping;
 DROP TABLE IF EXISTS HocSinh_DiemDung;
 DROP TABLE IF EXISTS student_stop_suggestions;
 DROP TABLE IF EXISTS trip_stop_status;

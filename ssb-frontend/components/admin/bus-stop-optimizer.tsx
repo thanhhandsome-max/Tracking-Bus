@@ -37,6 +37,7 @@ interface OptimizationParams {
     lat: number;
     lng: number;
   };
+  max_distance_from_school: number; // meters - khoảng cách tối đa từ trường
 }
 
 interface OptimizationResult {
@@ -104,6 +105,7 @@ export function BusStopOptimizer() {
       lat: 10.77653,
       lng: 106.700981,
     },
+    max_distance_from_school: 15000, // 15km
   });
 
   const [tier1Result, setTier1Result] = useState<OptimizationResult | null>(null);
@@ -125,11 +127,89 @@ export function BusStopOptimizer() {
     stats: { totalSchedules: number; totalRoutes: number };
   } | null>(null);
   const [creatingSchedules, setCreatingSchedules] = useState(false);
+  const [selectedRouteId, setSelectedRouteId] = useState<number | null>(null);
+  const [allRoutePolylines, setAllRoutePolylines] = useState<Array<{
+    routeId: number;
+    routeName: string;
+    polyline: string;
+    color: string;
+  }>>([]);
+  const [isLoadingAllPolylines, setIsLoadingAllPolylines] = useState(false);
 
   // Load stats on mount
   useEffect(() => {
     loadStats();
   }, []);
+
+  // Tự động fetch polyline cho tất cả các tuyến khi tier2Result được set
+  useEffect(() => {
+    const fetchAllRoutePolylines = async () => {
+      const vrpResult = tier2Result || fullResult?.tier2;
+      if (!vrpResult || !vrpResult.routes || vrpResult.routes.length === 0) {
+        setAllRoutePolylines([]);
+        return;
+      }
+
+      setIsLoadingAllPolylines(true);
+      const COLORS = ["#EF4444", "#3B82F6", "#10B981", "#F97316", "#8B5CF6", "#EC4899", "#14B8A6", "#F59E0B"];
+      
+      try {
+        const polylinePromises = vrpResult.routes.map(async (route, index) => {
+          const nodes = route.nodes;
+          if (nodes.length === 0) {
+            return null;
+          }
+
+          try {
+            // Origin = điểm dừng đầu tiên
+            const origin = `${nodes[0].viDo},${nodes[0].kinhDo}`;
+            // Destination = trường học (depot)
+            const destination = `${params.school_location.lat},${params.school_location.lng}`;
+            // Waypoints = các điểm dừng còn lại
+            const waypoints = nodes.slice(1).map((node) => ({
+              location: `${node.viDo},${node.kinhDo}`,
+            }));
+
+            const response = await apiClient.getDirections({
+              origin,
+              destination,
+              waypoints: waypoints.length > 0 ? waypoints : undefined,
+              mode: "driving",
+              vehicleType: "bus",
+            });
+
+            if (response.success && response.data) {
+              const polyline = (response.data as any).polyline;
+              if (polyline && typeof polyline === "string") {
+                return {
+                  routeId: route.routeId,
+                  routeName: `Tuyến ${route.routeId}`,
+                  polyline: polyline,
+                  color: COLORS[index % COLORS.length],
+                };
+              }
+            }
+            return null;
+          } catch (error) {
+            console.error(`[BusStopOptimizer] Error fetching polyline for route ${route.routeId}:`, error);
+            return null;
+          }
+        });
+
+        const results = await Promise.all(polylinePromises);
+        const validPolylines = results.filter((r): r is NonNullable<typeof r> => r !== null);
+        setAllRoutePolylines(validPolylines);
+        console.log(`[BusStopOptimizer] Fetched ${validPolylines.length} route polylines`);
+      } catch (error) {
+        console.error("[BusStopOptimizer] Error fetching all route polylines:", error);
+        setAllRoutePolylines([]);
+      } finally {
+        setIsLoadingAllPolylines(false);
+      }
+    };
+
+    fetchAllRoutePolylines();
+  }, [tier2Result, fullResult?.tier2, params.school_location]);
 
   const loadStats = async () => {
     try {
@@ -151,11 +231,15 @@ export function BusStopOptimizer() {
         max_stops: params.max_stops,
         use_roads_api: params.use_roads_api,
         use_places_api: params.use_places_api,
+        school_location: params.school_location,
+        max_distance_from_school: params.max_distance_from_school,
       });
 
       if (response.success && response.data) {
         const result = response.data as OptimizationResult;
         setTier1Result(result);
+        // Reset selected route when new optimization runs
+        setSelectedRouteId(null);
         await loadStats();
         
         // Kiểm tra nếu không có kết quả
@@ -198,6 +282,9 @@ export function BusStopOptimizer() {
       if (response.success && response.data) {
         const result = response.data as VRPResult;
         setTier2Result(result);
+        // Reset selected route when new optimization runs
+        setSelectedRouteId(null);
+        setAllRoutePolylines([]); // Reset all route polylines, sẽ được fetch tự động bởi useEffect
         
         // Kiểm tra nếu không có kết quả
         if (result.stats.totalRoutes === 0) {
@@ -240,6 +327,7 @@ export function BusStopOptimizer() {
         // use_roads_api: params.use_roads_api,
         // use_places_api: params.use_places_api,
         split_virtual_nodes: params.split_virtual_nodes,
+        max_distance_from_school: params.max_distance_from_school,
       });
 
       if (response.success && response.data) {
@@ -251,6 +339,9 @@ export function BusStopOptimizer() {
         setFullResult(result);
         setTier1Result(result.tier1);
         setTier2Result(result.tier2);
+        // Reset selected route when new optimization runs
+        setSelectedRouteId(null);
+        setAllRoutePolylines([]); // Reset all route polylines, sẽ được fetch tự động bởi useEffect
         await loadStats();
         
         if (result.summary.totalStops === 0 || result.summary.totalRoutes === 0) {
@@ -381,14 +472,24 @@ export function BusStopOptimizer() {
     }
   };
 
-  // Convert stops to StopDTO format for map
-  // Convert stops to StopDTO format for map
+  // Handle route click to toggle selection
+  const handleRouteClick = (route: VRPResult['routes'][0]) => {
+    if (selectedRouteId === route.routeId) {
+      // Click lại cùng tuyến -> bỏ chọn
+      setSelectedRouteId(null);
+      return;
+    }
+
+    // Chọn tuyến mới
+    setSelectedRouteId(route.routeId);
+  };
+
+  // Get stops for map - filter by selected route if any
   const getStopsForMap = (): StopDTO[] => {
     // ƯU TIÊN dùng kết quả FULL (tier2 – VRP) nếu có
     if (fullResult?.tier2 && fullResult.tier2.routes.length > 0) {
       const vrp = fullResult.tier2;
-
-      return vrp.routes.flatMap((route, routeIndex) =>
+      let stops = vrp.routes.flatMap((route, routeIndex) =>
         route.nodes.map((node, idx) => ({
           maDiem: node.maDiem,
           tenDiem: node.tenDiem,
@@ -399,13 +500,71 @@ export function BusStopOptimizer() {
           routeIndex,                 // ⬅️ tuyến thứ mấy (0,1,2,...)
         }))
       );
+      
+      // Filter by selected route if any
+      if (selectedRouteId !== null) {
+        const selectedRoute = vrp.routes.find((r) => r.routeId === selectedRouteId);
+        if (selectedRoute) {
+          const selectedRouteIndex = vrp.routes.findIndex((r) => r.routeId === selectedRouteId);
+          stops = selectedRoute.nodes.map((node, idx) => ({
+            maDiem: node.maDiem,
+            tenDiem: node.tenDiem,
+            viDo: node.viDo,
+            kinhDo: node.kinhDo,
+            address: null,
+            sequence: idx + 1,
+            routeIndex: selectedRouteIndex,
+          }));
+        }
+      }
+      
+      console.log("[BusStopOptimizer] getStopsForMap: Using fullResult.tier2, stops count:", stops.length);
+      return stops;
+    }
+
+    // Nếu có tier2Result riêng (chạy tier2 độc lập)
+    if (tier2Result && tier2Result.routes.length > 0) {
+      let stops = tier2Result.routes.flatMap((route, routeIndex) =>
+        route.nodes.map((node, idx) => ({
+          maDiem: node.maDiem,
+          tenDiem: node.tenDiem,
+          viDo: node.viDo,
+          kinhDo: node.kinhDo,
+          address: null,
+          sequence: idx + 1,
+          routeIndex,
+        }))
+      );
+      
+      // Filter by selected route if any
+      if (selectedRouteId !== null) {
+        const selectedRoute = tier2Result.routes.find((r) => r.routeId === selectedRouteId);
+        if (selectedRoute) {
+          const selectedRouteIndex = tier2Result.routes.findIndex((r) => r.routeId === selectedRouteId);
+          stops = selectedRoute.nodes.map((node, idx) => ({
+            maDiem: node.maDiem,
+            tenDiem: node.tenDiem,
+            viDo: node.viDo,
+            kinhDo: node.kinhDo,
+            address: null,
+            sequence: idx + 1,
+            routeIndex: selectedRouteIndex,
+          }));
+        }
+      }
+      
+      console.log("[BusStopOptimizer] getStopsForMap: Using tier2Result, stops count:", stops.length);
+      return stops;
     }
 
     // Nếu chưa có tier2, fallback về tier1 như cũ
     const result = tier1Result || fullResult?.tier1;
-    if (!result) return [];
+    if (!result) {
+      console.log("[BusStopOptimizer] getStopsForMap: No result available, returning empty array");
+      return [];
+    }
 
-    return result.stops.map((stop, index) => ({
+    const stops = result.stops.map((stop, index) => ({
       maDiem: stop.maDiem,
       tenDiem: stop.tenDiem,
       viDo: stop.viDo,
@@ -414,6 +573,8 @@ export function BusStopOptimizer() {
       sequence: index + 1,
       // không set routeIndex -> SSBMap sẽ dùng màu mặc định
     }));
+    console.log("[BusStopOptimizer] getStopsForMap: Using tier1 result, stops count:", stops.length);
+    return stops;
   };
 
 
@@ -521,41 +682,37 @@ export function BusStopOptimizer() {
               <Separator />
 
               <div className="space-y-2">
-                <Label htmlFor="school_lat">Vĩ độ trường học</Label>
-                <Input
-                  id="school_lat"
-                  type="number"
-                  step="0.000001"
-                  value={params.school_location.lat}
-                  onChange={(e) =>
-                    setParams({
-                      ...params,
-                      school_location: {
-                        ...params.school_location,
-                        lat: parseFloat(e.target.value) || 10.77653,
-                      },
-                    })
-                  }
-                />
+                <Label>Thông tin trường học</Label>
+                <div className="p-3 bg-muted rounded-md">
+                  <p className="font-semibold text-sm">Đại Học Sài Gòn</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    273 An Dương Vương, Phường Chợ Quán, Thành phố Hồ Chí Minh 700000
+                  </p>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Tọa độ: {params.school_location.lat.toFixed(6)}, {params.school_location.lng.toFixed(6)}
+                </p>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="school_lng">Kinh độ trường học</Label>
+                <Label htmlFor="max_distance_from_school">Khoảng cách tối đa từ trường (mét)</Label>
                 <Input
-                  id="school_lng"
+                  id="max_distance_from_school"
                   type="number"
-                  step="0.000001"
-                  value={params.school_location.lng}
+                  value={params.max_distance_from_school}
                   onChange={(e) =>
                     setParams({
                       ...params,
-                      school_location: {
-                        ...params.school_location,
-                        lng: parseFloat(e.target.value) || 106.700981,
-                      },
+                      max_distance_from_school: parseInt(e.target.value) || 15000,
                     })
                   }
+                  min={1000}
+                  max={50000}
+                  step={1000}
                 />
+                <p className="text-xs text-muted-foreground">
+                  Giới hạn khoảng cách tối đa từ trường học (mặc định: 15km = 15000m)
+                </p>
               </div>
 
               <Separator />
@@ -726,21 +883,54 @@ export function BusStopOptimizer() {
                       </div>
                     </div>
 
-                    <div className="h-[500px] rounded-lg overflow-hidden border">
+                    <div className="h-[500px] rounded-lg overflow-hidden border relative">
                       <SSBMap
                         center={params.school_location}
                         zoom={13}
                         stops={getStopsForMap()}
-                        disableDirections={true}   // ⬅️ thêm dòng này
+                        routes={
+                          allRoutePolylines.length > 0
+                            ? selectedRouteId !== null
+                              ? allRoutePolylines
+                                  .filter((r) => r.routeId === selectedRouteId)
+                                  .map((r) => ({
+                                    routeId: r.routeId,
+                                    routeName: r.routeName,
+                                    polyline: r.polyline,
+                                    color: r.color,
+                                  }))
+                              : allRoutePolylines.map((r) => ({
+                                  routeId: r.routeId,
+                                  routeName: r.routeName,
+                                  polyline: r.polyline,
+                                  color: r.color,
+                                }))
+                            : undefined
+                        }
+                        disableDirections={true}
                         height="100%"
                       />
+                      {isLoadingAllPolylines && (
+                        <div className="absolute top-2 right-2 bg-white/90 px-3 py-2 rounded-md shadow-md flex items-center gap-2 z-10">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span className="text-sm">Đang tải tất cả tuyến đường...</span>
+                        </div>
+                      )}
                     </div>
 
                     <div className="space-y-2">
                       <h3 className="font-semibold">Chi tiết Tuyến Xe</h3>
                       <ScrollArea className="h-[200px]">
                         {fullResult.tier2.routes.map((route) => (
-                          <div key={route.routeId} className="p-3 border rounded-lg mb-2">
+                          <div
+                            key={route.routeId}
+                            className={`p-3 border rounded-lg mb-2 cursor-pointer transition-colors ${
+                              selectedRouteId === route.routeId
+                                ? "bg-primary/10 border-primary"
+                                : "hover:bg-muted/50"
+                            }`}
+                            onClick={() => handleRouteClick(route)}
+                          >
                             <div className="flex items-center justify-between">
                               <div>
                                 <span className="font-medium">Tuyến {route.routeId}</span>
@@ -750,6 +940,11 @@ export function BusStopOptimizer() {
                                 <Badge variant="outline" className="ml-2">
                                   {route.totalDemand} học sinh
                                 </Badge>
+                                {selectedRouteId === route.routeId && (
+                                  <Badge variant="default" className="ml-2">
+                                    Đang xem
+                                  </Badge>
+                                )}
                               </div>
                               <div className="text-sm text-muted-foreground">
                                 ~{route.estimatedDistance.toFixed(1)} km
@@ -796,10 +991,45 @@ export function BusStopOptimizer() {
                       <SSBMap
                         center={params.school_location}
                         zoom={13}
-                        disableDirections={true}   // ⬅️ thêm dòng này
+                        disableDirections={true}
                         stops={getStopsForMap()}
                         height="100%"
                       />
+                    </div>
+
+                    <div className="space-y-2">
+                      <h3 className="font-semibold">Danh Sách Điểm Dừng</h3>
+                      <ScrollArea className="h-[200px]">
+                        {tier1Result.stops.length > 0 ? (
+                          tier1Result.stops.map((stop, index) => (
+                            <div key={stop.maDiem} className="p-3 border rounded-lg mb-2">
+                              <div className="flex items-center justify-between">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <Badge variant="outline">{index + 1}</Badge>
+                                    <span className="font-medium">{stop.tenDiem}</span>
+                                  </div>
+                                  {stop.address && (
+                                    <p className="text-xs text-muted-foreground mt-1 ml-8">
+                                      {stop.address}
+                                    </p>
+                                  )}
+                                  <div className="flex items-center gap-4 mt-2 ml-8 text-xs text-muted-foreground">
+                                    <span>Tọa độ: {stop.viDo.toFixed(6)}, {stop.kinhDo.toFixed(6)}</span>
+                                    {stop.studentCount !== undefined && (
+                                      <Badge variant="secondary">{stop.studentCount} học sinh</Badge>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-center py-8 text-muted-foreground">
+                            <p>Chưa có điểm dừng nào</p>
+                          </div>
+                        )}
+                      </ScrollArea>
                     </div>
                   </div>
                 ) : (
@@ -836,39 +1066,77 @@ export function BusStopOptimizer() {
                       </div>
                     </div>
 
-                    <ScrollArea className="h-[500px]">
-                      {tier2Result.routes.map((route) => (
-                        <div key={route.routeId} className="p-4 border rounded-lg mb-3">
-                          <div className="flex items-center justify-between mb-3">
-                            <div>
-                              <span className="font-semibold text-lg">Tuyến {route.routeId}</span>
-                              <Badge variant="outline" className="ml-2">
-                                {route.stopCount} điểm dừng
-                              </Badge>
-                              <Badge variant="outline" className="ml-2">
-                                {route.totalDemand} học sinh
-                              </Badge>
-                            </div>
-                            <div className="text-sm text-muted-foreground">
-                              ~{route.estimatedDistance.toFixed(1)} km
-                            </div>
-                          </div>
-                          <div className="space-y-1">
-                            {route.nodes.map((node, idx) => (
-                              <div
-                                key={idx}
-                                className="text-sm p-2 bg-muted rounded flex items-center justify-between"
-                              >
-                                <span>
-                                  {idx + 1}. {node.tenDiem}
-                                </span>
-                                <Badge variant="secondary">{node.demand} HS</Badge>
-                              </div>
-                            ))}
-                          </div>
+                    <div className="h-[500px] rounded-lg overflow-hidden border relative">
+                      <SSBMap
+                        center={params.school_location}
+                        zoom={13}
+                        stops={getStopsForMap()}
+                        routes={
+                          allRoutePolylines.length > 0
+                            ? selectedRouteId !== null
+                              ? allRoutePolylines
+                                  .filter((r) => r.routeId === selectedRouteId)
+                                  .map((r) => ({
+                                    routeId: r.routeId,
+                                    routeName: r.routeName,
+                                    polyline: r.polyline,
+                                    color: r.color,
+                                  }))
+                              : allRoutePolylines.map((r) => ({
+                                  routeId: r.routeId,
+                                  routeName: r.routeName,
+                                  polyline: r.polyline,
+                                  color: r.color,
+                                }))
+                            : undefined
+                        }
+                        disableDirections={true}
+                        height="100%"
+                      />
+                      {isLoadingAllPolylines && (
+                        <div className="absolute top-2 right-2 bg-white/90 px-3 py-2 rounded-md shadow-md flex items-center gap-2 z-10">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span className="text-sm">Đang tải tất cả tuyến đường...</span>
                         </div>
-                      ))}
-                    </ScrollArea>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <h3 className="font-semibold">Chi tiết Tuyến Xe</h3>
+                      <ScrollArea className="h-[200px]">
+                        {tier2Result.routes.map((route) => (
+                          <div
+                            key={route.routeId}
+                            className={`p-3 border rounded-lg mb-2 cursor-pointer transition-colors ${
+                              selectedRouteId === route.routeId
+                                ? "bg-primary/10 border-primary"
+                                : "hover:bg-muted/50"
+                            }`}
+                            onClick={() => handleRouteClick(route)}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <span className="font-medium">Tuyến {route.routeId}</span>
+                                <Badge variant="outline" className="ml-2">
+                                  {route.stopCount} điểm dừng
+                                </Badge>
+                                <Badge variant="outline" className="ml-2">
+                                  {route.totalDemand} học sinh
+                                </Badge>
+                                {selectedRouteId === route.routeId && (
+                                  <Badge variant="default" className="ml-2">
+                                    Đang xem
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="text-sm text-muted-foreground">
+                                ~{route.estimatedDistance.toFixed(1)} km
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </ScrollArea>
+                    </div>
                   </div>
                 ) : (
                   <div className="text-center py-12 text-muted-foreground">

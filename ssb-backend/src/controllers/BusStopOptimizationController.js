@@ -1,5 +1,6 @@
 import BusStopOptimizationService from "../services/BusStopOptimizationService.js";
 import VehicleRoutingService from "../services/VehicleRoutingService.js";
+import ClusteringRoutingService from "../services/ClusteringRoutingService.js";
 import RouteFromOptimizationService from "../services/RouteFromOptimizationService.js";
 import ScheduleFromRoutesService from "../services/ScheduleFromRoutesService.js";
 
@@ -20,6 +21,8 @@ class BusStopOptimizationController {
         use_roads_api = true,
         use_places_api = true,
         students = null, // Optional: nếu không có sẽ lấy từ DB
+        school_location = null, // Optional: {lat, lng}
+        max_distance_from_school = 15000, // Optional: meters (15km)
       } = req.body;
 
       // Validate parameters
@@ -43,6 +46,34 @@ class BusStopOptimizationController {
         });
       }
 
+      // Validate school_location nếu được cung cấp
+      if (school_location !== null) {
+        if (
+          typeof school_location !== "object" ||
+          typeof school_location.lat !== "number" ||
+          typeof school_location.lng !== "number"
+        ) {
+          return res.status(400).json({
+            success: false,
+            error: {
+              code: "INVALID_PARAMETER",
+              message: "school_location phải là object có lat và lng (number)",
+            },
+          });
+        }
+      }
+
+      // Validate max_distance_from_school
+      if (max_distance_from_school <= 0 || max_distance_from_school > 50000) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            code: "INVALID_PARAMETER",
+            message: "max_distance_from_school phải trong khoảng (0, 50000] mét",
+          },
+        });
+      }
+
       const result = await BusStopOptimizationService.greedyMaximumCoverage({
         students,
         R_walk: r_walk,
@@ -50,6 +81,8 @@ class BusStopOptimizationController {
         MAX_STOPS: max_stops,
         use_roads_api: use_roads_api,
         use_places_api: use_places_api,
+        school_location: school_location,
+        max_distance_from_school: max_distance_from_school,
       });
 
       res.status(200).json({
@@ -140,6 +173,7 @@ class BusStopOptimizationController {
         use_roads_api = true,
         use_places_api = true,
         split_virtual_nodes = true,
+        max_distance_from_school = 15000, // meters (15km)
       } = req.body;
 
       // Validate parameters
@@ -153,35 +187,40 @@ class BusStopOptimizationController {
         });
       }
 
-      console.log(`[BusStopOptimization] Starting full optimization pipeline`);
+      // Validate max_distance_from_school
+      if (max_distance_from_school <= 0 || max_distance_from_school > 50000) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            code: "INVALID_PARAMETER",
+            message: "max_distance_from_school phải trong khoảng (0, 50000] mét",
+          },
+        });
+      }
 
-      // Tầng 1: Tối ưu điểm dừng
-      console.log(`[BusStopOptimization] Tier 1: Greedy Maximum Coverage`);
-      const tier1Result = await BusStopOptimizationService.greedyMaximumCoverage({
-        R_walk: r_walk,
-        S_max: s_max,
-        MAX_STOPS: max_stops,
-        useRoadsAPI: use_roads_api,
-        usePlacesAPI: use_places_api,
+      console.log(`[BusStopOptimization] Starting full optimization pipeline (Clustering-First)`);
+
+      // Sử dụng Clustering-First approach thay vì Sweep Algorithm
+      const clusteringResult = await ClusteringRoutingService.solveClusteringVRP({
+        school_location: school_location,
+        r_walk: r_walk,
+        s_max: s_max,
+        c_bus: c_bus,
+        use_roads_api: use_roads_api,
+        use_places_api: use_places_api,
+        max_distance_from_school: max_distance_from_school,
       });
 
-      // Tầng 2: Tối ưu tuyến xe
-      console.log(`[BusStopOptimization] Tier 2: Vehicle Routing Problem`);
-      const tier2Result = await VehicleRoutingService.solveVRP({
-        depot: school_location,
-        capacity: c_bus,
-        splitVirtualNodes: split_virtual_nodes,
-      });
-
+      // Format response để tương thích với frontend
       const result = {
-        tier1: tier1Result,
-        tier2: tier2Result,
+        tier1: clusteringResult.tier1,
+        tier2: clusteringResult.tier2,
         summary: {
-          totalStops: tier1Result.stats.totalStops,
-          totalStudents: tier1Result.stats.assignedStudents,
-          totalRoutes: tier2Result.stats.totalRoutes,
-          averageStudentsPerStop: tier1Result.stats.averageStudentsPerStop,
-          averageStopsPerRoute: tier2Result.stats.averageStopsPerRoute,
+          totalStops: clusteringResult.tier1.stats.totalStops,
+          totalStudents: clusteringResult.tier1.stats.assignedStudents,
+          totalRoutes: clusteringResult.tier2.stats.totalRoutes,
+          averageStudentsPerStop: clusteringResult.tier1.stats.averageStudentsPerStop,
+          averageStopsPerRoute: clusteringResult.tier2.stats.averageStopsPerRoute,
         },
       };
 

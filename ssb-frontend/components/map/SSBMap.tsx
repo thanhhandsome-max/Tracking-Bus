@@ -129,6 +129,7 @@ function SSBMap({
   const [geometryReady, setGeometryReady] = useState(false);
   const [fetchedPolyline, setFetchedPolyline] = useState<string | null>(null);
   const [isFetchingDirections, setIsFetchingDirections] = useState(false);
+  const [isMapReady, setIsMapReady] = useState(false);
 
   // Update ref when customLocationTarget changes
   useEffect(() => {
@@ -828,6 +829,7 @@ function SSBMap({
           });
 
           mapInstanceRef.current = map;
+          setIsMapReady(true); // Mark map as ready
 
           // Add "Locate me" control (only if showMyLocation is true)
           if (showMyLocation) {
@@ -1689,11 +1691,12 @@ function SSBMap({
   useEffect(() => {
     console.log("[SSBMap] Stops effect triggered:", {
       hasMap: !!mapInstanceRef.current,
+      isMapReady,
       stopsCount: stops.length,
     });
 
-    if (!mapInstanceRef.current) {
-      console.warn("[SSBMap] Map instance not ready for stops");
+    if (!mapInstanceRef.current || !isMapReady) {
+      console.warn("[SSBMap] Map instance not ready for stops, will retry when map is ready");
       return;
     }
 
@@ -1853,7 +1856,7 @@ function SSBMap({
       "[SSBMap] Finished rendering stops, total valid:",
       validStopsCount
     );
-  }, [stops, onStopClick, autoFitOnUpdate]);
+  }, [stops, onStopClick, autoFitOnUpdate, isMapReady]);
 
   // Render bus markers
   useEffect(() => {
@@ -2005,6 +2008,7 @@ function SSBMap({
         marker.setMap(null);
       });
       markersRef.current.clear();
+      setIsMapReady(false); // Reset map ready state
     };
   }, []);
 
