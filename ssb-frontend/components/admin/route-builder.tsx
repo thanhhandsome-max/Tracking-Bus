@@ -42,7 +42,8 @@ import {
   XCircle,
   Zap,
   Sparkles,
-  Users
+  Users,
+  TrendingUp
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import apiClient from '@/lib/api-client';
@@ -163,6 +164,22 @@ export function RouteBuilder({
   const [pendingStop, setPendingStop] = useState<Stop | null>(null);
   const pendingMarkerRef = useRef<google.maps.Marker | null>(null);
   const pendingCircleRef = useRef<google.maps.Circle | null>(null);
+  const isGeneratingRouteRef = useRef(false);
+  
+  // State cho 5 tuyến đường đề xuất
+  const [alternativeRoutes, setAlternativeRoutes] = useState<Array<{
+    id: number;
+    polyline: string;
+    distance: number;
+    duration: number;
+    segments: Array<{ polyline: string; from: number; to: number }>;
+    students: Array<any>;
+    studentCount: number;
+    score?: number;
+  }>>([]);
+  const [selectedAlternativeRouteId, setSelectedAlternativeRouteId] = useState<number | null>(null);
+  const [expandedRouteCardId, setExpandedRouteCardId] = useState<number | null>(null);
+  const alternativePolylinesRef = useRef<Map<number, google.maps.Polyline>>(new Map());
   const [allSuggestions, setAllSuggestions] = useState<Array<{
     id: string;
     name: string;
@@ -175,6 +192,7 @@ export function RouteBuilder({
   }>>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  
   
   // State cho học sinh gần điểm dừng
   const [nearbyStudents, setNearbyStudents] = useState<Array<{
@@ -492,11 +510,19 @@ export function RouteBuilder({
       routeSegmentsCount: routeSegments.length,
       isMapReady,
       hasMap: !!mapInstanceRef.current,
-      selectedStopId
+      selectedStopId,
+      isGenerating: isGeneratingRouteRef.current
     });
     
     if (!isMapReady || !mapInstanceRef.current) {
       console.log('⚠️ Map not ready, skipping updatePolylinesOnMap');
+      return;
+    }
+    
+    // Nếu đang generate route, không gọi updatePolylinesOnMap (sẽ được gọi trực tiếp)
+    if (isGeneratingRouteRef.current) {
+      console.log('⏸️ Skipping updatePolylinesOnMap because route is being generated');
+      isGeneratingRouteRef.current = false; // Reset flag
       return;
     }
     
@@ -921,12 +947,13 @@ export function RouteBuilder({
 
     const google: typeof window.google = window.google;
     
-    // Remove old polylines
-    console.log(`🗑️ Removing ${polylinesRef.current.length} old polylines`);
+    // Remove old polylines (chỉ xóa polylines của route chính, không xóa alternative routes)
+    console.log(`🗑️ Removing ${polylinesRef.current.length} old polylines (main route only)`);
     polylinesRef.current.forEach((polyline) => {
       polyline.setMap(null);
     });
     polylinesRef.current = [];
+    // Note: Không xóa alternativePolylinesRef vì chúng ta muốn giữ 5 tuyến đường đề xuất
 
     if (routeSegments.length === 0) {
       console.log('⚠️ No route segments to display');
@@ -1088,6 +1115,172 @@ export function RouteBuilder({
     }
   };
 
+  // Vẽ 5 tuyến đường đề xuất lên map
+  const renderAlternativeRoutes = (
+    routes: Array<{
+      id: number;
+      polyline: string;
+      distance: number;
+      duration: number;
+      segments: Array<{ polyline: string; from: number; to: number }>;
+      students: Array<any>;
+      studentCount: number;
+      score?: number;
+    }>,
+    selectedRouteId: number
+  ) => {
+    if (!mapInstanceRef.current || !isMapReady || !window.google?.maps) {
+      console.warn('⚠️ Cannot render alternative routes: map not ready');
+      return;
+    }
+    
+    const google = window.google.maps;
+    
+    // Xóa các polyline cũ của alternative routes
+    alternativePolylinesRef.current.forEach((polyline) => {
+      polyline.setMap(null);
+    });
+    alternativePolylinesRef.current.clear();
+    
+    if (routes.length === 0) {
+      console.warn('⚠️ No alternative routes to render');
+      return;
+    }
+    
+    console.log(`🗺️ Rendering ${routes.length} alternative routes on map`);
+    
+    try {
+      // Vẽ từng tuyến đường
+      routes.forEach((route) => {
+        try {
+          if (!route.polyline) {
+            console.warn(`⚠️ Route ${route.id} has no polyline`);
+            return;
+          }
+          
+          const decodedPath = google.geometry.encoding.decodePath(route.polyline);
+          const isSelected = route.id === selectedRouteId;
+          
+          // Mỗi tuyến có màu khác nhau
+          const routeColors = [
+            '#1a73e8', // Blue - Route 1
+            '#ea4335', // Red - Route 2
+            '#34a853', // Green - Route 3
+            '#fbbc04', // Yellow - Route 4
+            '#9c27b0', // Purple - Route 5
+          ];
+          const routeColor = routeColors[route.id - 1] || '#4285F4';
+          
+          const polyline = new google.Polyline({
+            path: decodedPath,
+            geodesic: true,
+            strokeColor: routeColor,
+            strokeOpacity: isSelected ? 1.0 : 0.7,
+            strokeWeight: isSelected ? 6 : 4,
+            map: mapInstanceRef.current,
+            zIndex: isSelected ? 1000 : 100 - route.id,
+          });
+          
+          alternativePolylinesRef.current.set(route.id, polyline);
+          console.log(`   ✅ Rendered route ${route.id} (${isSelected ? 'SELECTED' : 'alternative'})`);
+        } catch (error) {
+          console.error(`❌ Failed to render alternative route ${route.id}:`, error);
+        }
+      });
+      
+      // Fit bounds để hiển thị tất cả tuyến đường
+      const bounds = new google.LatLngBounds();
+      routes.forEach((route) => {
+        if (route.polyline) {
+          try {
+            const decodedPath = google.geometry.encoding.decodePath(route.polyline);
+            decodedPath.forEach(point => bounds.extend(point));
+          } catch (error) {
+            console.error(`❌ Failed to decode route ${route.id} for bounds:`, error);
+          }
+        }
+      });
+      
+      if (!bounds.isEmpty()) {
+        mapInstanceRef.current.fitBounds(bounds);
+        console.log(`✅ Fitted map bounds to show all ${routes.length} routes`);
+      }
+      
+      console.log(`✅ Successfully rendered ${alternativePolylinesRef.current.size} alternative routes`);
+    } catch (error) {
+      console.error('❌ Failed to render alternative routes:', error);
+    }
+  };
+
+  // Hàm xử lý khi chọn một tuyến để tạo tuyến đường
+  const handleSelectRoute = async (selectedRoute: {
+    id: number;
+    polyline: string;
+    distance: number;
+    duration: number;
+    segments: Array<{ polyline: string; from: number; to: number }>;
+    students: Array<any>;
+    studentCount: number;
+    score?: number;
+  }) => {
+    try {
+      console.log(`🎯 Selecting route ${selectedRoute.id} to create route`);
+      
+      // Cập nhật route segments với tuyến được chọn
+      setRouteSegments(selectedRoute.segments);
+      
+      // Cập nhật route info
+      const distanceKm = (selectedRoute.distance / 1000).toFixed(1);
+      const durationMin = Math.round(selectedRoute.duration / 60);
+      setRouteInfo({
+        distance: `${distanceKm} km`,
+        duration: `${durationMin} phút`,
+      });
+
+      // Cập nhật học sinh của tuyến được chọn
+      setAllStudents(selectedRoute.students);
+      setShowAllStudents(true);
+      
+      // Cập nhật selected route
+      setSelectedAlternativeRouteId(selectedRoute.id);
+
+      toast({
+        title: 'Đã chọn tuyến đường',
+        description: `Đã chọn Tuyến ${selectedRoute.id} với ${selectedRoute.studentCount} học sinh`,
+        variant: 'default',
+      });
+
+      // Vẽ lại tuyến được chọn và hiển thị học sinh
+      setTimeout(() => {
+        // Xóa tất cả alternative routes, chỉ giữ tuyến được chọn
+        alternativePolylinesRef.current.forEach((polyline, routeId) => {
+          if (routeId !== selectedRoute.id) {
+            polyline.setMap(null);
+          }
+        });
+        
+        // Vẽ lại tuyến được chọn với màu nổi bật
+        renderAlternativeRoutes([selectedRoute], selectedRoute.id);
+        
+        // Cập nhật polylines chính
+        updatePolylinesOnMap();
+        
+        // Hiển thị học sinh của tuyến được chọn
+        setTimeout(() => {
+          console.log(`🎨 Displaying ${selectedRoute.students.length} students for selected route`);
+          displayAllStudentMarkers();
+        }, 100);
+      }, 300);
+    } catch (error) {
+      console.error('❌ Failed to select route:', error);
+      toast({
+        title: 'Lỗi',
+        description: 'Không thể chọn tuyến đường. Vui lòng thử lại.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   const handleMapClick = async (lat: number, lng: number) => {
     if (mapMode !== 'add') return;
     // Don't allow adding new pending stop if there's already one
@@ -1155,9 +1348,9 @@ export function RouteBuilder({
       setPendingStop(newPendingStop);
       
       // Tự động tìm học sinh trong 500m (chỉ khi người dùng muốn)
- `     // Không tự động tìm để tránh lag - người dùng có thể click vào điểm dừng để xem học sinh
+  // Không tự động tìm để tránh lag - người dùng có thể click vào điểm dừng để xem học sinh
       // findNearbyStudents(finalLat, finalLng, newPendingStop.name);
-      
+    
       // Show pending marker on map
       if (mapInstanceRef.current && window.google?.maps) {
         const google: typeof window.google = window.google;
@@ -1977,6 +2170,388 @@ export function RouteBuilder({
     return minDist;
   };
 
+  // Tạo 5 tuyến đường và tự động chọn tuyến tốt nhất
+  const generateAndSelectBestRoute = async () => {
+    if (!originStop || !destinationStop || !isMapReady) return;
+
+    setLoadingAllStudents(true);
+    isGeneratingRouteRef.current = true; // Đánh dấu đang generate route
+    try {
+      console.log('🔄 Generating 5 route alternatives and selecting best one...');
+
+      const alternativesList: Array<{
+        id: number;
+        polyline: string;
+        distance: number;
+        duration: number;
+        segments: Array<{ polyline: string; from: number; to: number }>;
+        students: Array<any>;
+        studentCount: number;
+      }> = [];
+
+      // Tuyến 1: Direct route
+      try {
+        const directResponse = await apiClient.getDirections({
+          origin: `${originStop.lat},${originStop.lng}`,
+          destination: `${destinationStop.lat},${destinationStop.lng}`,
+          mode: 'driving',
+          vehicleType: 'bus',
+        });
+
+        if (directResponse.success && (directResponse.data as any)?.polyline) {
+          const data = directResponse.data as any;
+          alternativesList.push({
+            id: 1,
+            polyline: data.polyline,
+            distance: data.distance || 0,
+            duration: data.duration || 0,
+            segments: [{ polyline: data.polyline, from: 0, to: 1 }],
+            students: [],
+            studentCount: 0,
+          });
+        }
+      } catch (error) {
+        console.error('Failed to get direct route:', error);
+      }
+
+      // Tuyến 2-5: Với waypoints khác nhau
+      if (!originStop.lat || !originStop.lng || !destinationStop.lat || !destinationStop.lng) {
+        throw new Error('Origin or destination coordinates are missing');
+      }
+      
+      const midLat = (originStop.lat + destinationStop.lat) / 2;
+      const midLng = (originStop.lng + destinationStop.lng) / 2;
+      const deltaLat = destinationStop.lat - originStop.lat;
+      const deltaLng = destinationStop.lng - originStop.lng;
+
+      const waypointVariations = [
+        { lat: midLat + Math.abs(deltaLat) * 0.3, lng: midLng },
+        { lat: midLat - Math.abs(deltaLat) * 0.3, lng: midLng },
+        { lat: midLat, lng: midLng + Math.abs(deltaLng) * 0.3 },
+        { lat: midLat, lng: midLng - Math.abs(deltaLng) * 0.3 },
+      ];
+
+      for (let i = 0; i < waypointVariations.length && alternativesList.length < 5; i++) {
+        try {
+          const waypoint = waypointVariations[i];
+          const response = await apiClient.getDirections({
+            origin: `${originStop.lat},${originStop.lng}`,
+            destination: `${destinationStop.lat},${destinationStop.lng}`,
+            waypoints: [{ location: `${waypoint.lat},${waypoint.lng}` }],
+            mode: 'driving',
+            vehicleType: 'bus',
+          });
+
+          if (response.success && (response.data as any)?.polyline) {
+            const data = response.data as any;
+            alternativesList.push({
+              id: alternativesList.length + 1,
+              polyline: data.polyline,
+              distance: data.distance || 0,
+              duration: data.duration || 0,
+              segments: [{ polyline: data.polyline, from: 0, to: 1 }],
+              students: [],
+              studentCount: 0,
+            });
+          }
+        } catch (error) {
+          console.error(`Failed to get route with waypoint ${i + 1}:`, error);
+        }
+      }
+
+      console.log(`✅ Generated ${alternativesList.length} route alternatives`);
+
+      // Quét học sinh cho mỗi tuyến và chọn tuyến tốt nhất
+      if (alternativesList.length > 0 && window.google?.maps?.geometry?.encoding) {
+        const google = window.google.maps;
+        const corridorRadiusKm = 1.0; // Giảm xuống 1km để quét chính xác hơn
+        const corridorRadiusMeters = corridorRadiusKm * 1000;
+
+        // Load tất cả học sinh
+        let allStudentsData: any[] = [];
+        let currentPage = 1;
+        let hasMore = true;
+        const pageSize = 200;
+
+        while (hasMore) {
+          try {
+            const response: any = await apiClient.request({
+              method: 'get',
+              url: '/students',
+              params: { pageSize: pageSize, page: currentPage },
+            });
+
+            let pageStudents: any[] = [];
+            if (response && typeof response === 'object') {
+              const resp = response as any;
+              if (Array.isArray(resp.data)) {
+                pageStudents = resp.data;
+              } else if (Array.isArray(resp)) {
+                pageStudents = resp;
+              }
+            } else if (Array.isArray(response)) {
+              pageStudents = response;
+            }
+
+            if (pageStudents.length > 0) {
+              allStudentsData = [...allStudentsData, ...pageStudents];
+            }
+
+            const resp = response as any;
+            const meta = resp?.meta || resp?.pagination || {};
+            const totalPages = meta.totalPages || 1;
+            const total = meta.total || meta.totalItems || 0;
+
+            if (pageStudents.length === 0 || currentPage >= totalPages || (total > 0 && allStudentsData.length >= total)) {
+              hasMore = false;
+            } else {
+              currentPage++;
+            }
+          } catch (error: any) {
+            console.error(`❌ Page ${currentPage} failed:`, error);
+            hasMore = false;
+          }
+        }
+
+        console.log(`👥 Loaded ${allStudentsData.length} students from database`);
+
+        // Bước 1: Tính khoảng cách từ mỗi học sinh đến tất cả các tuyến
+        // Map: studentId -> Array<{routeId, distance}>
+        const studentToRoutesDistance = new Map<number, Array<{routeId: number; distance: number}>>();
+        
+        // Decode tất cả polylines trước
+        const routePolylinePoints = new Map<number, Array<{ lat: number; lng: number }>>();
+        for (const route of alternativesList) {
+          const allPolylinePoints: Array<{ lat: number; lng: number }> = [];
+          if (route.polyline) {
+            try {
+              const decodedPath = google.geometry.encoding.decodePath(route.polyline);
+              decodedPath.forEach(point => {
+                allPolylinePoints.push({ lat: point.lat(), lng: point.lng() });
+              });
+              routePolylinePoints.set(route.id, allPolylinePoints);
+            } catch (error) {
+              console.error(`Failed to decode polyline for route ${route.id}:`, error);
+            }
+          }
+        }
+
+        // Tính khoảng cách từ mỗi học sinh đến tất cả các tuyến
+        for (const student of allStudentsData) {
+          let viDo: number | null = null;
+          let kinhDo: number | null = null;
+          
+          if (student.viDo != null && student.viDo !== '') {
+            viDo = typeof student.viDo === 'string' ? parseFloat(student.viDo) : Number(student.viDo);
+          }
+          if (student.kinhDo != null && student.kinhDo !== '') {
+            kinhDo = typeof student.kinhDo === 'string' ? parseFloat(student.kinhDo) : Number(student.kinhDo);
+          }
+
+          if (!viDo || !kinhDo || 
+              isNaN(viDo) || isNaN(kinhDo) || 
+              !isFinite(viDo) || !isFinite(kinhDo) ||
+              viDo === 0 || kinhDo === 0 ||
+              Math.abs(viDo) > 90 || Math.abs(kinhDo) > 180) {
+            continue;
+          }
+
+          const distances: Array<{routeId: number; distance: number}> = [];
+          
+          for (const route of alternativesList) {
+            const polylinePoints = routePolylinePoints.get(route.id);
+            if (!polylinePoints || polylinePoints.length < 2) continue;
+            
+            const distToCorridor = minDistancePointToPolyline(viDo, kinhDo, polylinePoints);
+            if (distToCorridor <= corridorRadiusMeters) {
+              distances.push({ routeId: route.id, distance: distToCorridor });
+            }
+          }
+          
+          if (distances.length > 0) {
+            studentToRoutesDistance.set(student.maHocSinh, distances);
+          }
+        }
+
+        console.log(`📊 Found ${studentToRoutesDistance.size} students within 1km of at least one route`);
+
+        // Bước 2: Phân bổ học sinh vào tuyến gần nhất (không trùng lặp)
+        const routeStudents = new Map<number, Array<any>>();
+        const assignedStudents = new Set<number>(); // Để đảm bảo không trùng lặp
+        
+        // Sắp xếp học sinh theo khoảng cách gần nhất đến tuyến nào đó
+        const sortedStudents = Array.from(studentToRoutesDistance.entries())
+          .map(([studentId, distances]) => {
+            const student = allStudentsData.find(s => s.maHocSinh === studentId);
+            if (!student) return null;
+            
+            // Tìm tuyến gần nhất
+            const nearestRoute = distances.reduce((prev, curr) => 
+              curr.distance < prev.distance ? curr : prev
+            );
+            
+            return {
+              studentId,
+              student,
+              nearestRoute,
+              distances
+            };
+          })
+          .filter(item => item !== null)
+          .sort((a, b) => a!.nearestRoute.distance - b!.nearestRoute.distance); // Sắp xếp theo khoảng cách gần nhất
+
+        // Phân bổ học sinh vào tuyến gần nhất
+        for (const item of sortedStudents) {
+          if (!item) continue;
+          
+          const { studentId, student, nearestRoute } = item;
+          
+          // Chỉ phân bổ nếu học sinh chưa được gán
+          if (!assignedStudents.has(studentId)) {
+            if (!routeStudents.has(nearestRoute.routeId)) {
+              routeStudents.set(nearestRoute.routeId, []);
+            }
+            
+            let viDo = typeof student.viDo === 'string' ? parseFloat(student.viDo) : Number(student.viDo);
+            let kinhDo = typeof student.kinhDo === 'string' ? parseFloat(student.kinhDo) : Number(student.kinhDo);
+            
+            routeStudents.get(nearestRoute.routeId)!.push({
+              maHocSinh: student.maHocSinh,
+              hoTen: student.hoTen,
+              lop: student.lop,
+              diaChi: student.diaChi,
+              viDo: Number(viDo),
+              kinhDo: Number(kinhDo),
+              anhDaiDien: student.anhDaiDien,
+              distanceToRoute: nearestRoute.distance, // Lưu khoảng cách để debug
+            });
+            
+            assignedStudents.add(studentId);
+          }
+        }
+
+        // Gán học sinh vào từng tuyến
+        for (const route of alternativesList) {
+          const students = routeStudents.get(route.id) || [];
+          route.students = students;
+          route.studentCount = students.length;
+          
+          console.log(`✅ Route ${route.id}: ${students.length} students (unique, no duplicates)`);
+          if (students.length > 0) {
+            console.log(`   Sample students: ${students.slice(0, 3).map(s => s.hoTen).join(', ')}`);
+          }
+        }
+
+        // Thống kê
+        const totalAssigned = assignedStudents.size;
+        const totalInMultipleRoutes = Array.from(studentToRoutesDistance.values())
+          .filter(distances => distances.length > 1).length;
+        
+        console.log(`📊 Student Assignment Summary:`);
+        console.log(`   Total students assigned: ${totalAssigned}`);
+        console.log(`   Students in multiple routes: ${totalInMultipleRoutes}`);
+        console.log(`   Students assigned to nearest route only: ${totalAssigned - totalInMultipleRoutes}`);
+
+        // Tối ưu hóa: Chọn tuyến tốt nhất dựa trên nhiều yếu tố
+        // Tính điểm số cho mỗi tuyến: học sinh (70%), khoảng cách ngắn (20%), thời gian ngắn (10%)
+        const scoredRoutes = alternativesList.map(route => {
+          // Normalize các giá trị (0-1 scale)
+          const maxStudents = Math.max(...alternativesList.map(r => r.studentCount), 1);
+          const maxDistance = Math.max(...alternativesList.map(r => r.distance), 1);
+          const maxDuration = Math.max(...alternativesList.map(r => r.duration), 1);
+          
+          const studentScore = maxStudents > 0 ? (route.studentCount / maxStudents) : 0;
+          const distanceScore = maxDistance > 0 ? (1 - route.distance / maxDistance) : 0; // Ngắn hơn = tốt hơn
+          const durationScore = maxDuration > 0 ? (1 - route.duration / maxDuration) : 0; // Nhanh hơn = tốt hơn
+          
+          // Tính điểm tổng hợp
+          const totalScore = 
+            studentScore * 0.7 +      // 70% trọng số cho số học sinh
+            distanceScore * 0.2 +     // 20% trọng số cho khoảng cách ngắn
+            durationScore * 0.1;      // 10% trọng số cho thời gian ngắn
+          
+          return {
+            route,
+            score: totalScore,
+            studentScore,
+            distanceScore,
+            durationScore,
+          };
+        });
+        
+        // Sắp xếp theo điểm số giảm dần
+        scoredRoutes.sort((a, b) => b.score - a.score);
+        
+        const bestRoute = scoredRoutes[0].route;
+        
+        console.log(`🎯 Route scoring results:`);
+        scoredRoutes.forEach((sr, idx) => {
+          console.log(`   ${idx + 1}. Route ${sr.route.id}: Score=${sr.score.toFixed(3)} (Students: ${sr.route.studentCount}, Distance: ${(sr.route.distance/1000).toFixed(1)}km, Duration: ${Math.round(sr.route.duration/60)}min)`);
+        });
+        console.log(`✅ Best route: ${bestRoute.id} with score ${scoredRoutes[0].score.toFixed(3)}`);
+        
+        // Lưu tất cả 5 tuyến đường với score vào state
+        const routesWithScore = alternativesList.map(route => {
+          const scored = scoredRoutes.find(sr => sr.route.id === route.id);
+          return {
+            ...route,
+            score: scored?.score || 0
+          };
+        });
+        
+        setAlternativeRoutes(routesWithScore);
+        setSelectedAlternativeRouteId(bestRoute.id);
+        
+        // Gộp tất cả học sinh từ các tuyến lại (loại bỏ trùng lặp)
+        const allStudentsFromRoutes = alternativesList.flatMap(r => r.students);
+        const uniqueStudents = Array.from(
+          new Map(allStudentsFromRoutes.map(s => [s.maHocSinh, s])).values()
+        );
+        
+        console.log(`📊 Total unique students from all routes: ${uniqueStudents.length}`);
+        console.log(`   Route 1: ${alternativesList[0]?.students.length || 0} students`);
+        console.log(`   Route 2: ${alternativesList[1]?.students.length || 0} students`);
+        console.log(`   Route 3: ${alternativesList[2]?.students.length || 0} students`);
+        console.log(`   Route 4: ${alternativesList[3]?.students.length || 0} students`);
+        console.log(`   Route 5: ${alternativesList[4]?.students.length || 0} students`);
+
+        // Cập nhật học sinh (tất cả học sinh từ 5 tuyến)
+        setAllStudents(uniqueStudents);
+        setShowAllStudents(true);
+
+        toast({
+          title: 'Đã tạo 5 tuyến đường',
+          description: `Đã tạo ${alternativesList.length} tuyến đường và quét ${uniqueStudents.length} học sinh trong phạm vi 1km`,
+          variant: 'default',
+        });
+
+        // Vẽ cả 5 tuyến đường lên map và hiển thị học sinh
+        setTimeout(() => {
+          // Vẽ cả 5 tuyến đường
+          renderAlternativeRoutes(routesWithScore, bestRoute.id);
+          
+          // Hiển thị học sinh - đợi thêm một chút để đảm bảo state đã update
+          setTimeout(() => {
+            console.log(`🎨 Displaying ${uniqueStudents.length} students after state update`);
+            displayAllStudentMarkers();
+          }, 100);
+          
+          // Reset flag sau khi đã render xong
+          isGeneratingRouteRef.current = false;
+        }, 300);
+      }
+    } catch (error: any) {
+      console.error('Failed to generate routes:', error);
+      toast({
+        title: 'Lỗi',
+        description: error?.message || 'Không thể tạo tuyến đường đề xuất',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoadingAllStudents(false);
+    }
+  };
+
   // Quét học sinh trong phạm vi 3km dọc theo đường đi
   const scanStudentsAlongRoute = async () => {
     if (!isMapReady || !originStop || !destinationStop || !originStop.lat || !originStop.lng || !destinationStop.lat || !destinationStop.lng) {
@@ -2031,7 +2606,7 @@ export function RouteBuilder({
           const response: any = await apiClient.request({
             method: 'get',
             url: '/students',
-            params: { limit: pageSize, page: currentPage },
+            params: { pageSize: pageSize, page: currentPage },
           });
 
           let pageStudents: any[] = [];
@@ -2068,12 +2643,8 @@ export function RouteBuilder({
 
       console.log(`👥 Loaded ${allStudentsData.length} students from database`);
 
-      // Chỉ quét học sinh dọc theo đường đi (polyline) với bán kính 3km
-      const corridorRadiusKm = 0.5
-      
-      
-      
-      ; // 0.5km dọc theo đường đi
+      // Quét học sinh dọc theo đường đi (polyline) với bán kính 3km mỗi bên
+      const corridorRadiusKm = 3.0; // 3km mỗi bên tuyến đường (tổng 6km chiều rộng)
       const corridorRadiusMeters = corridorRadiusKm * 1000; // Convert to meters
 
       // Filter học sinh trong phạm vi 3km DỌC THEO ĐƯỜNG ĐI (polyline)
@@ -2138,7 +2709,7 @@ export function RouteBuilder({
         })
         .filter((s): s is NonNullable<typeof s> => s !== null); // Filter out null values
 
-      console.log(`✅ Found ${studentsInCorridor.length} students in 3km corridor along route`);
+      console.log(`✅ Found ${studentsInCorridor.length} students in ${corridorRadiusKm}km corridor along route (${corridorRadiusKm * 2}km total width)`);
 
       setAllStudents(studentsInCorridor);
       setShowAllStudents(true);
@@ -2148,7 +2719,7 @@ export function RouteBuilder({
 
       toast({
         title: 'Thành công',
-        description: `Đã quét ${studentsInCorridor.length} học sinh trong phạm vi 3km dọc theo đường đi`,
+        description: `Đã quét ${studentsInCorridor.length} học sinh trong phạm vi ${corridorRadiusKm}km mỗi bên tuyến đường`,
         variant: 'default',
       });
     } catch (error: any) {
@@ -2163,7 +2734,7 @@ export function RouteBuilder({
     }
   };
 
-  // Load tất cả học sinh có tọa độ, lọc theo quận dọc tuyến đường
+  // Load tất cả học sinh có tọa độ, lọc theo khoảng cách đến route hoặc quận
   const loadAllStudents = async () => {
     if (!isMapReady) return;
     
@@ -2179,20 +2750,37 @@ export function RouteBuilder({
     
     setLoadingAllStudents(true);
     try {
-      console.log('🔄 Loading students filtered by districts along route...');
+      console.log('🔄 Loading students with optimized filtering...');
       
-      // Xác định các quận dọc tuyến đường
+      // Xác định các quận dọc tuyến đường (để dùng làm fallback)
       const routeDistricts = getDistrictsAlongRoute(originStop, destinationStop);
       console.log('📍 Districts along route:', routeDistricts);
       
-      if (routeDistricts.length === 0) {
-        toast({
-          title: 'Cảnh báo',
-          description: 'Không thể xác định quận từ địa chỉ. Vui lòng kiểm tra lại địa chỉ.',
-          variant: 'default',
-        });
-        setLoadingAllStudents(false);
-        return;
+      // Kiểm tra xem có route segments không (để dùng distance-based filtering)
+      const hasRouteSegments = routeSegments.length > 0;
+      let allPolylinePoints: Array<{ lat: number; lng: number }> = [];
+      
+      if (hasRouteSegments && window.google?.maps?.geometry?.encoding) {
+        console.log('✅ Using distance-based filtering with route polyline');
+        const google = window.google.maps;
+        
+        // Decode tất cả segments và gộp lại
+        for (const segment of routeSegments) {
+          try {
+            const decodedPath = google.geometry.encoding.decodePath(segment.polyline);
+            decodedPath.forEach(point => {
+              allPolylinePoints.push({ lat: point.lat(), lng: point.lng() });
+            });
+          } catch (error) {
+            console.error('❌ Failed to decode polyline segment:', error);
+          }
+        }
+        
+        if (allPolylinePoints.length > 0) {
+          console.log(`📍 Decoded ${allPolylinePoints.length} points from route polyline`);
+        }
+      } else {
+        console.log('⚠️ No route segments available, will use district + bounding box filtering');
       }
       
       // Backend có limit tối đa 200, cần load nhiều trang nếu có nhiều học sinh
@@ -2208,7 +2796,7 @@ export function RouteBuilder({
             method: 'get',
             url: '/students',
             params: {
-              limit: pageSize,
+              pageSize: pageSize,
               page: currentPage,
             },
           });
@@ -2335,7 +2923,7 @@ export function RouteBuilder({
           const method1Response = await apiClient.request({
             method: 'get',
             url: '/students',
-            params: { limit: 100, page: 1 },
+            params: { pageSize: 100, page: 1 },
           });
           
           console.log('🔍 Method 1 response:', method1Response);
@@ -2399,69 +2987,151 @@ export function RouteBuilder({
         }
       }
       
-      // Lọc chỉ lấy học sinh có tọa độ VÀ trong các quận dọc tuyến (KHÔNG dùng bounding box)
+      // Tối ưu: Lọc học sinh bằng nhiều phương pháp kết hợp
+      // 1. Ưu tiên: Distance-based filtering (nếu có route polyline)
+      // 2. Fallback: District + Bounding box filtering
+      const corridorRadiusKm = 1.0; // Tăng lên 1km để bao phủ tốt hơn
+      const corridorRadiusMeters = corridorRadiusKm * 1000;
+      
+      // Tạo bounding box từ origin và destination với buffer 2km
+      const boundingBox = createBoundingBox(originStop, destinationStop, 2);
+      
       const studentsWithCoords = allStudents.filter((s: any) => {
         if (!s) {
           console.warn('⚠️ Null student object found');
           return false;
         }
         
-        // Kiểm tra tọa độ - cho phép cả số và chuỗi số
-        const viDo = s.viDo != null ? Number(s.viDo) : null;
-        const kinhDo = s.kinhDo != null ? Number(s.kinhDo) : null;
+        // Parse và validate tọa độ - xử lý nhiều định dạng
+        let viDo: number | null = null;
+        let kinhDo: number | null = null;
         
-        const hasCoords = viDo != null && kinhDo != null && 
-          !isNaN(viDo) && !isNaN(kinhDo) &&
-          viDo !== 0 && kinhDo !== 0 &&
-          Math.abs(viDo) <= 90 && Math.abs(kinhDo) <= 180; // Validate lat/lng range
+        if (s.viDo != null && s.viDo !== '') {
+          viDo = typeof s.viDo === 'string' ? parseFloat(s.viDo) : Number(s.viDo);
+        }
+        if (s.kinhDo != null && s.kinhDo !== '') {
+          kinhDo = typeof s.kinhDo === 'string' ? parseFloat(s.kinhDo) : Number(s.kinhDo);
+        }
         
-        if (!hasCoords) {
+        // Validate tọa độ hợp lệ
+        if (!viDo || !kinhDo || 
+            isNaN(viDo) || isNaN(kinhDo) || 
+            !isFinite(viDo) || !isFinite(kinhDo) ||
+            viDo === 0 || kinhDo === 0 ||
+            Math.abs(viDo) > 90 || Math.abs(kinhDo) > 180) {
           return false;
         }
         
-        // CHỈ lọc theo quận - không dùng bounding box
-        if (routeDistricts.length > 0 && s.diaChi) {
-          const studentDistrict = extractDistrict(s.diaChi);
-          if (!studentDistrict || !routeDistricts.some(d => 
-            d.toLowerCase() === studentDistrict.toLowerCase() ||
-            studentDistrict.toLowerCase().includes(d.toLowerCase()) ||
-            d.toLowerCase().includes(studentDistrict.toLowerCase())
-          )) {
-            return false;
+        // PHƯƠNG PHÁP 1: Distance-based filtering (ưu tiên nếu có route polyline)
+        if (allPolylinePoints.length >= 2) {
+          const distToCorridor = minDistancePointToPolyline(viDo, kinhDo, allPolylinePoints);
+          if (distToCorridor <= corridorRadiusMeters) {
+            return true; // Học sinh nằm trong phạm vi dọc theo route
           }
-        } else if (routeDistricts.length === 0) {
-          // Nếu không xác định được quận, không lọc gì cả (hiển thị tất cả)
-          console.warn('⚠️ Could not determine districts, showing all students');
         }
         
-        return true;
-      }).map((s: any) => ({
-        maHocSinh: s.maHocSinh,
-        hoTen: s.hoTen,
-        lop: s.lop,
-        diaChi: s.diaChi,
-        viDo: Number(s.viDo),
-        kinhDo: Number(s.kinhDo),
-        anhDaiDien: s.anhDaiDien, // Thêm anhDaiDien vào state
-      }));
+        // PHƯƠNG PHÁP 2: Bounding box filtering (nếu có)
+        if (boundingBox && isPointInBounds(viDo, kinhDo, boundingBox)) {
+          return true; // Học sinh nằm trong bounding box
+        }
+        
+        // PHƯƠNG PHÁP 3: District filtering (fallback, linh hoạt hơn)
+        if (routeDistricts.length > 0 && s.diaChi) {
+          const studentDistrict = extractDistrict(s.diaChi);
+          if (studentDistrict) {
+            // Matching linh hoạt hơn: exact match, contains, hoặc similar
+            const matches = routeDistricts.some(d => {
+              const dLower = d.toLowerCase().trim();
+              const sLower = studentDistrict.toLowerCase().trim();
+              
+              // Exact match
+              if (dLower === sLower) return true;
+              
+              // Contains match (ví dụ: "1" matches "quận 1")
+              if (sLower.includes(dLower) || dLower.includes(sLower)) return true;
+              
+              // Number match (ví dụ: "1" matches "1")
+              const dNum = parseInt(dLower.replace(/\D/g, ''));
+              const sNum = parseInt(sLower.replace(/\D/g, ''));
+              if (!isNaN(dNum) && !isNaN(sNum) && dNum === sNum) return true;
+              
+              return false;
+            });
+            
+            if (matches) {
+              return true; // Học sinh trong quận dọc tuyến
+            }
+          }
+        }
+        
+        // Nếu không có route segments và không có districts, hiển thị tất cả học sinh có tọa độ
+        if (!hasRouteSegments && routeDistricts.length === 0) {
+          return true;
+        }
+        
+        return false;
+      }).map((s: any) => {
+        // Parse lại tọa độ để đảm bảo đúng
+        let viDo = s.viDo;
+        let kinhDo = s.kinhDo;
+        
+        if (typeof viDo === 'string') viDo = parseFloat(viDo);
+        if (typeof kinhDo === 'string') kinhDo = parseFloat(kinhDo);
+        
+        viDo = Number(viDo);
+        kinhDo = Number(kinhDo);
+        
+        // Validate lại trước khi map
+        if (isNaN(viDo) || isNaN(kinhDo) || !isFinite(viDo) || !isFinite(kinhDo)) {
+          console.warn(`Student ${s.maHocSinh} has invalid coordinates after parsing:`, {
+            original: { viDo: s.viDo, kinhDo: s.kinhDo },
+            parsed: { viDo, kinhDo }
+          });
+          return null;
+        }
+        
+        return {
+          maHocSinh: s.maHocSinh,
+          hoTen: s.hoTen,
+          lop: s.lop,
+          diaChi: s.diaChi,
+          viDo: viDo,
+          kinhDo: kinhDo,
+          anhDaiDien: s.anhDaiDien,
+        };
+      })
+      .filter((s): s is NonNullable<typeof s> => s !== null); // Filter out null values
       
-      console.log('✅ Students filtered by districts:', studentsWithCoords.length);
-      console.log('📍 Route districts:', routeDistricts);
-      console.log('❌ Students filtered out:', allStudents.length - studentsWithCoords.length);
+      const filterMethod = hasRouteSegments && allPolylinePoints.length >= 2 
+        ? 'distance-based (polyline)' 
+        : routeDistricts.length > 0 
+          ? 'district + bounding box' 
+          : 'all students with coordinates';
+      
+      console.log(`✅ Students filtered (${filterMethod}):`, studentsWithCoords.length);
+      console.log(`📍 Total students loaded: ${allStudents.length}`);
+      console.log(`📍 Route districts: ${routeDistricts.length > 0 ? routeDistricts.join(', ') : 'none'}`);
+      console.log(`📍 Route segments: ${hasRouteSegments ? routeSegments.length : 0}`);
+      console.log(`❌ Students filtered out: ${allStudents.length - studentsWithCoords.length}`);
       
       if (studentsWithCoords.length > 0) {
         console.log('📍 Sample student with coords:', studentsWithCoords[0]);
       } else if (allStudents.length > 0) {
-        console.warn('⚠️ All students lack coordinates. Sample student:', allStudents[0]);
+        console.warn('⚠️ All students filtered out. Sample student:', allStudents[0]);
         // Log thêm thông tin để debug
-        console.warn('⚠️ First 3 students details:', allStudents.slice(0, 3).map(s => ({
-          id: s.maHocSinh,
-          name: s.hoTen,
-          viDo: s.viDo,
-          kinhDo: s.kinhDo,
-          viDoType: typeof s.viDo,
-          kinhDoType: typeof s.kinhDo,
-        })));
+        console.warn('⚠️ First 3 students details:', allStudents.slice(0, 3).map(s => {
+          const viDo = s.viDo != null ? Number(s.viDo) : null;
+          const kinhDo = s.kinhDo != null ? Number(s.kinhDo) : null;
+          return {
+            id: s.maHocSinh,
+            name: s.hoTen,
+            diaChi: s.diaChi,
+            viDo: viDo,
+            kinhDo: kinhDo,
+            hasValidCoords: viDo != null && kinhDo != null && !isNaN(viDo) && !isNaN(kinhDo),
+            district: s.diaChi ? extractDistrict(s.diaChi) : null,
+          };
+        }));
       }
       
       setAllStudents(studentsWithCoords);
@@ -2472,10 +3142,13 @@ export function RouteBuilder({
       const districtText = routeDistricts.length > 0 
         ? ` (${routeDistricts.map(d => `Q${d}`).join(', ')})`
         : '';
+      const methodText = hasRouteSegments && allPolylinePoints.length >= 2 
+        ? ' dọc theo đường đi' 
+        : '';
       
       toast({
         title: 'Thành công',
-        description: `Đã tải ${studentsWithCoords.length} học sinh${districtText}`,
+        description: `Đã tải ${studentsWithCoords.length} học sinh${districtText}${methodText}`,
         variant: 'default',
       });
     } catch (error: any) {
@@ -2502,7 +3175,17 @@ export function RouteBuilder({
     });
     allStudentMarkersRef.current.clear();
     
-    if (!showAllStudents || allStudents.length === 0) return;
+    console.log(`🎨 displayAllStudentMarkers called:`, {
+      showAllStudents,
+      allStudentsLength: allStudents.length,
+      isMapReady,
+      hasMapInstance: !!mapInstanceRef.current
+    });
+    
+    if (!showAllStudents || allStudents.length === 0) {
+      console.warn(`⚠️ Cannot display students: showAllStudents=${showAllStudents}, allStudents.length=${allStudents.length}`);
+      return;
+    }
     
     // 🔥 SỬA LỖI: Tạo marker cho mỗi học sinh - HIỂN THỊ ĐÚNG TỌA ĐỘ TỪ DATABASE
     // KHÔNG offset, KHÔNG gom lại - mỗi học sinh hiển thị ở đúng tọa độ nhà
@@ -2878,10 +3561,48 @@ export function RouteBuilder({
     }
   };
   
-  // Effect để load học sinh khi toggle bật lần đầu
+  // Effect để tự động quét học sinh khi có origin, destination và route segments
+  useEffect(() => {
+    // Tự động quét khi:
+    // 1. Có origin và destination
+    // 2. Có route segments (đã tính toán được đường đi)
+    // 3. Chưa có học sinh nào được load
+    // 4. Map đã sẵn sàng
+    // 5. Không đang loading
+    if (
+      isMapReady &&
+      originStop &&
+      destinationStop &&
+      originStop.lat &&
+      originStop.lng &&
+      destinationStop.lat &&
+      destinationStop.lng &&
+      routeSegments.length > 0 &&
+      allStudents.length === 0 &&
+      !loadingAllStudents &&
+      !showAllStudents // Chỉ quét khi chưa hiển thị
+    ) {
+      // Debounce để tránh quét quá nhiều lần
+      const timeoutId = setTimeout(() => {
+        console.log('🔄 Tự động quét học sinh dọc theo tuyến đường (3km mỗi bên)...');
+        scanStudentsAlongRoute();
+      }, 2000); // Đợi 2 giây sau khi route segments được tính toán
+      
+      return () => clearTimeout(timeoutId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [originStop?.lat, originStop?.lng, destinationStop?.lat, destinationStop?.lng, routeSegments.length, isMapReady]);
+
+  // Effect để load học sinh khi toggle bật lần đầu (fallback)
   useEffect(() => {
     if (showAllStudents && allStudents.length === 0 && isMapReady) {
-      loadAllStudents();
+      // Nếu có route segments, dùng scanStudentsAlongRoute (ưu tiên)
+      if (routeSegments.length > 0 && originStop && destinationStop) {
+        scanStudentsAlongRoute();
+      } else {
+        // Nếu không có route segments, dùng loadAllStudents
+        loadAllStudents();
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showAllStudents, isMapReady]);
@@ -3124,7 +3845,7 @@ export function RouteBuilder({
     setStops(newStops);
   };
 
-  // Đề xuất điểm dừng dựa trên học sinh - CHỈ dùng điểm bắt đầu và điểm kết thúc
+  // Đề xuất điểm dừng dựa trên học sinh - Tự động quét học sinh trước, sau đó đề xuất
   const handleSuggestStops = async () => {
     try {
       // 🔥 Validation: Phải có origin và destination
@@ -3146,15 +3867,39 @@ export function RouteBuilder({
         return;
       }
 
+      // Kiểm tra có route segments chưa
+      if (routeSegments.length === 0) {
+        toast({
+          title: "Chưa có tuyến đường",
+          description: "Vui lòng đợi hệ thống tính toán tuyến đường trước",
+          variant: "default",
+        });
+        return;
+      }
+
       setLoadingSuggestions(true);
       setShowSuggestions(true);
 
-      // 🔥 CHỈ dùng origin và destination, không dùng area hay các tham số khác
+      // BƯỚC 1: Tự động quét học sinh dọc theo tuyến đường (3km mỗi bên) nếu chưa có
+      if (allStudents.length === 0) {
+        console.log('🔄 Tự động quét học sinh trước khi đề xuất điểm dừng...');
+        await scanStudentsAlongRoute();
+        
+        // Đợi một chút để học sinh được load
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+
+      // BƯỚC 2: Gọi API đề xuất điểm dừng dựa trên học sinh đã quét
       const originParam = `${originStop.lat},${originStop.lng}`;
       const destinationParam = `${destinationStop.lat},${destinationStop.lng}`;
 
+      console.log('🔄 Đang đề xuất điểm dừng dựa trên học sinh đã quét...', {
+        studentsCount: allStudents.length,
+        origin: originParam,
+        destination: destinationParam,
+      });
+
       const response = await apiClient.suggestStops({
-        // Không dùng area - chỉ dựa vào origin và destination
         maxDistanceKm: 2.0,
         minStudentsPerStop: 1, // Giảm xuống 1 để có thể đề xuất ngay cả khi chỉ có 1 học sinh
         maxStops: 20,
@@ -3169,7 +3914,9 @@ export function RouteBuilder({
       if (suggestionsList.length === 0) {
         toast({
           title: "Không có đề xuất",
-          description: "Không tìm thấy học sinh để đề xuất điểm dừng",
+          description: allStudents.length === 0 
+            ? "Không tìm thấy học sinh trong phạm vi 3km dọc theo tuyến đường. Vui lòng kiểm tra lại."
+            : "Không tìm thấy học sinh để đề xuất điểm dừng",
           variant: "default",
         });
         setShowSuggestions(false);
@@ -3180,7 +3927,7 @@ export function RouteBuilder({
 
       toast({
         title: "Đề xuất thành công",
-        description: `Đã tìm thấy ${suggestionsList.length} điểm dừng đề xuất`,
+        description: `Đã quét ${allStudents.length} học sinh và tìm thấy ${suggestionsList.length} điểm dừng đề xuất`,
       });
     } catch (error: any) {
       console.error("Failed to get stop suggestions:", error);
@@ -4227,20 +4974,21 @@ export function RouteBuilder({
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={handleSuggestStops}
-                    disabled={loadingSuggestions}
+                    onClick={async () => {
+                      if (!originStop || !destinationStop) {
+                        toast({
+                          title: "Thiếu thông tin",
+                          description: "Vui lòng chọn điểm bắt đầu và điểm kết thúc trước",
+                          variant: "destructive",
+                        });
+                        return;
+                      }
+                      await generateAndSelectBestRoute();
+                    }}
+                    disabled={!originStop || !destinationStop || loadingAllStudents}
                   >
-                    {loadingSuggestions ? (
-                      <>
-                        <Sparkles className="w-3 h-3 mr-1 animate-spin" />
-                        Đang tải...
-                      </>
-                    ) : (
-                      <>
-                        <Zap className="w-3 h-3 mr-1" />
-                        Đề xuất
-                      </>
-                    )}
+                    <Zap className="w-3 h-3 mr-1" />
+                    Đề xuất tuyến
                   </Button>
                   <Button
                     variant="default"
@@ -4607,6 +5355,155 @@ export function RouteBuilder({
             </Card>
           </div>
         )}
+        
+        {/* Hiển thị 5 card tuyến đường đề xuất ở dưới map */}
+        {alternativeRoutes.length > 0 && (
+          <div className="absolute bottom-4 left-4 right-4 z-10">
+            <div className="bg-background/95 backdrop-blur-sm border rounded-lg shadow-xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-primary" />
+                  5 Tuyến đường đề xuất
+                </h3>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setAlternativeRoutes([]);
+                    setSelectedAlternativeRouteId(null);
+                    alternativePolylinesRef.current.forEach(p => p.setMap(null));
+                    alternativePolylinesRef.current.clear();
+                  }}
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+              <ScrollArea className="h-[200px]">
+                <div className="grid grid-cols-5 gap-3 pr-4">
+                  {alternativeRoutes.map((route) => {
+                    const routeColors = [
+                      '#1a73e8', // Blue
+                      '#ea4335', // Red
+                      '#34a853', // Green
+                      '#fbbc04', // Yellow
+                      '#9c27b0', // Purple
+                    ];
+                    const routeColor = routeColors[route.id - 1] || '#4285F4';
+                    const isSelected = route.id === selectedAlternativeRouteId;
+                    const showDetails = expandedRouteCardId === route.id;
+                    
+                    return (
+                      <Card
+                        key={route.id}
+                        className={`cursor-pointer transition-all border-2 ${
+                          isSelected
+                            ? 'border-primary ring-2 ring-primary/50 bg-primary/5'
+                            : 'hover:border-primary/50'
+                        }`}
+                        onClick={() => {
+                          setSelectedAlternativeRouteId(route.id);
+                          // Highlight tuyến được chọn trên map
+                          renderAlternativeRoutes(alternativeRoutes, route.id);
+                        }}
+                      >
+                        <CardHeader className="p-3 pb-2">
+                          <div className="flex items-center justify-between">
+                            <CardTitle className="text-sm flex items-center gap-2">
+                              <div
+                                className="w-4 h-4 rounded-full border-2 border-white shadow-sm"
+                                style={{ backgroundColor: routeColor }}
+                              />
+                              Tuyến {route.id}
+                            </CardTitle>
+                            {isSelected && (
+                              <CheckCircle2 className="w-4 h-4 text-primary" />
+                            )}
+                          </div>
+                        </CardHeader>
+                        <CardContent className="p-3 pt-0 space-y-2">
+                          <div className="flex items-center gap-1.5 text-xs">
+                            <Users className="w-3 h-3 text-muted-foreground" />
+                            <span className="font-medium">{route.studentCount} học sinh</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-xs">
+                            <Route className="w-3 h-3 text-muted-foreground" />
+                            <span>{(route.distance / 1000).toFixed(1)} km</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-xs">
+                            <Timer className="w-3 h-3 text-muted-foreground" />
+                            <span>{Math.round(route.duration / 60)} phút</span>
+                          </div>
+                          {route.score !== undefined && (
+                            <div className="flex items-center gap-1.5 text-xs">
+                              <TrendingUp className="w-3 h-3 text-muted-foreground" />
+                              <span>Điểm: {route.score.toFixed(2)}</span>
+                            </div>
+                          )}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full text-xs h-7"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setExpandedRouteCardId(showDetails ? null : route.id);
+                            }}
+                          >
+                            <Eye className="w-3 h-3 mr-1" />
+                            {showDetails ? 'Ẩn' : 'Xem'} chi tiết
+                          </Button>
+                          <Button
+                            variant="default"
+                            size="sm"
+                            className="w-full text-xs h-7 mt-1"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              await handleSelectRoute(route);
+                            }}
+                          >
+                            <CheckCircle2 className="w-3 h-3 mr-1" />
+                            Chọn tuyến này
+                          </Button>
+                        </CardContent>
+                        {showDetails && (
+                          <div className="p-3 pt-0 border-t">
+                            <ScrollArea className="h-[150px]">
+                              <div className="space-y-2">
+                                <p className="text-xs font-semibold mb-2">Danh sách học sinh ({route.students.length}):</p>
+                                {route.students.length === 0 ? (
+                                  <p className="text-xs text-muted-foreground">Không có học sinh trong phạm vi 1km</p>
+                                ) : (
+                                  route.students.map((student) => (
+                                    <div
+                                      key={student.maHocSinh}
+                                      className="flex items-center gap-2 p-2 bg-muted/50 rounded text-xs"
+                                    >
+                                      <Avatar className="w-6 h-6">
+                                        <AvatarImage src={student.anhDaiDien} />
+                                        <AvatarFallback>
+                                          {student.hoTen?.charAt(0) || 'H'}
+                                        </AvatarFallback>
+                                      </Avatar>
+                                      <div className="flex-1 min-w-0">
+                                        <p className="font-medium truncate">{student.hoTen}</p>
+                                        <p className="text-muted-foreground truncate">
+                                          {student.lop} • {student.diaChi}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            </ScrollArea>
+                          </div>
+                        )}
+                      </Card>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Dialog xem chi tiết điểm dừng */}
@@ -4864,6 +5761,7 @@ export function RouteBuilder({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
     </div>
   );
 }

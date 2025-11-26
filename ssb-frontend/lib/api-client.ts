@@ -450,6 +450,7 @@ class ApiClient {
     language?: string;
     units?: string;
     vehicleType?: string; // "bus", "car", "motorcycle" - để tối ưu routing cho xe buýt
+    alternatives?: boolean; // Yêu cầu alternative routes từ Google Maps
   }) {
     // Log the request data for debugging
     console.log('[api-client] getDirections request data:');
