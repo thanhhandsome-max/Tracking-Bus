@@ -20,6 +20,72 @@ function calculateDistance(lat1, lng1, lat2, lng2) {
   return R * c; // Distance in km
 }
 
+/**
+ * Validate stops order for "di" route - đảm bảo các điểm dừng theo thứ tự từ điểm bắt đầu đến điểm kết thúc
+ * @param {Object} route - Route object với origin_lat, origin_lng, routeType
+ * @param {Array} stops - Array of stops với viDo, kinhDo, sequence
+ * @returns {Object} { valid: boolean, error: string|null }
+ */
+function validateStopsOrder(route, stops) {
+  // Chỉ validate cho tuyến "đi"
+  if (!route.routeType || route.routeType !== 'di') {
+    return { valid: true, error: null };
+  }
+
+  // Cần có origin coordinates để validate
+  if (!route.origin_lat || !route.origin_lng) {
+    console.warn('[RouteService] validateStopsOrder: No origin coordinates, skipping validation');
+    return { valid: true, error: null };
+  }
+
+  // Sắp xếp stops theo sequence
+  const sortedStops = [...stops].sort((a, b) => (a.sequence || 0) - (b.sequence || 0));
+
+  // Tính khoảng cách từ origin đến từng stop
+  const stopDistances = sortedStops.map((stop, index) => {
+    if (!stop.viDo || !stop.kinhDo) {
+      return { stop, index, distance: null, error: 'Missing coordinates' };
+    }
+    const distance = calculateDistance(
+      route.origin_lat,
+      route.origin_lng,
+      stop.viDo,
+      stop.kinhDo
+    );
+    return { stop, index, distance, error: null };
+  });
+
+  // Kiểm tra nếu có stop nào thiếu coordinates
+  const missingCoords = stopDistances.find(s => s.error);
+  if (missingCoords) {
+    return {
+      valid: false,
+      error: `Điểm dừng "${missingCoords.stop.tenDiem || `thứ ${missingCoords.index + 1}`}" thiếu tọa độ`
+    };
+  }
+
+  // Kiểm tra thứ tự: khoảng cách phải tăng dần (cho phép sai số nhỏ)
+  const MAX_BACKWARD_DISTANCE_KM = 0.2; // Cho phép quay lại tối đa 200m (để xử lý đường cong)
+  
+  for (let i = 1; i < stopDistances.length; i++) {
+    const prevDistance = stopDistances[i - 1].distance;
+    const currDistance = stopDistances[i].distance;
+    const backwardDistance = prevDistance - currDistance;
+
+    // Nếu điểm hiện tại gần origin hơn điểm trước đó quá nhiều (> 200m), báo lỗi
+    if (backwardDistance > MAX_BACKWARD_DISTANCE_KM) {
+      const prevStop = stopDistances[i - 1].stop;
+      const currStop = stopDistances[i].stop;
+      return {
+        valid: false,
+        error: `Điểm dừng "${currStop.tenDiem || `thứ ${i + 1}`}" nằm quay lại về phía điểm bắt đầu so với điểm dừng trước đó "${prevStop.tenDiem || `thứ ${i}`}". Tuyến "đi" không cho phép quay lại.`
+      };
+    }
+  }
+
+  return { valid: true, error: null };
+}
+
 class RouteService {
   static async list(options = {}) {
     const { page = 1, limit = 10, routeType } = options;
@@ -67,6 +133,31 @@ class RouteService {
     // Thêm stops vào tuyến đi nếu có trong payload
     if (payload.stops && Array.isArray(payload.stops) && payload.stops.length > 0) {
       console.log(`[RouteService] Adding ${payload.stops.length} stops to route ${routeId}`);
+      
+      // 🔥 Validate stops order cho tuyến "đi" - đảm bảo không quay lại
+      const routeInfo = {
+        routeType: routeType || 'di',
+        origin_lat: payload.origin_lat,
+        origin_lng: payload.origin_lng,
+      };
+      const stopsForValidation = payload.stops.map((stop, i) => ({
+        tenDiem: stop.tenDiem || stop.name,
+        viDo: stop.viDo || stop.lat,
+        kinhDo: stop.kinhDo || stop.lng,
+        sequence: stop.sequence || i + 1,
+      }));
+      
+      const validation = validateStopsOrder(routeInfo, stopsForValidation);
+      if (!validation.valid) {
+        // Xóa route đã tạo nếu validation fail
+        try {
+          await TuyenDuongModel.delete(routeId);
+        } catch (deleteError) {
+          console.warn(`[RouteService] Failed to delete route ${routeId} after validation failure:`, deleteError);
+        }
+        throw new Error(validation.error || 'INVALID_STOPS_ORDER');
+      }
+      
       for (let i = 0; i < payload.stops.length; i++) {
         const stop = payload.stops[i];
         try {
@@ -223,6 +314,27 @@ class RouteService {
             throw new Error(`Route ${routeIndex}: INSUFFICIENT_STOPS - Tuyến phải có ít nhất 2 điểm dừng (hiện tại: ${stops.length})`);
           }
 
+          // 🔥 Validate stops order cho tuyến "đi" - đảm bảo không quay lại
+          const routeType = payload.routeType || 'di';
+          if (routeType === 'di' && payload.origin_lat && payload.origin_lng) {
+            const routeInfo = {
+              routeType: routeType,
+              origin_lat: payload.origin_lat,
+              origin_lng: payload.origin_lng,
+            };
+            const stopsForValidation = stops.map((stop, j) => ({
+              tenDiem: stop.tenDiem || stop.name || `Điểm dừng ${j + 1}`,
+              viDo: stop.viDo !== undefined ? stop.viDo : stop.lat,
+              kinhDo: stop.kinhDo !== undefined ? stop.kinhDo : stop.lng,
+              sequence: stop.sequence || j + 1,
+            }));
+            
+            const validation = validateStopsOrder(routeInfo, stopsForValidation);
+            if (!validation.valid) {
+              throw new Error(`Route ${routeIndex}: ${validation.error || 'INVALID_STOPS_ORDER'}`);
+            }
+          }
+
           // Kiểm tra duplicate tên tuyến trong batch
           const duplicateInBatch = routesPayload.slice(0, i).find(r => r.tenTuyen === payload.tenTuyen);
           if (duplicateInBatch) {
@@ -239,7 +351,6 @@ class RouteService {
           }
 
           // Tạo tuyến đường (sử dụng connection trong transaction)
-          const routeType = payload.routeType || 'di';
           const finalTrangThai = payload.trangThai !== undefined 
             ? (payload.trangThai === true || payload.trangThai === 1 || payload.trangThai === 'true' || payload.trangThai === '1')
             : true;
@@ -402,6 +513,37 @@ class RouteService {
     const route = await TuyenDuongModel.getById(routeId);
     if (!route) throw new Error("ROUTE_NOT_FOUND");
 
+    // 🔥 Validate stops order cho tuyến "đi" khi thêm stop mới
+    if (route.routeType === 'di' && route.origin_lat && route.origin_lng) {
+      // Lấy tất cả stops hiện tại của route
+      const existingStops = await RouteStopModel.getByRouteId(routeId);
+      
+      // Tạo danh sách stops bao gồm stop mới
+      const allStops = existingStops.map(s => ({
+        tenDiem: s.tenDiem,
+        viDo: s.viDo,
+        kinhDo: s.kinhDo,
+        sequence: s.sequence,
+      }));
+      
+      // Thêm stop mới vào danh sách
+      if (stopData.viDo !== undefined && stopData.kinhDo !== undefined) {
+        allStops.push({
+          tenDiem: stopData.tenDiem || stopData.name || 'Điểm dừng mới',
+          viDo: stopData.viDo,
+          kinhDo: stopData.kinhDo,
+          sequence: stopData.sequence || existingStops.length + 1,
+        });
+      }
+      
+      // Validate thứ tự
+      const validation = validateStopsOrder(route, allStops);
+      if (!validation.valid) {
+        throw new Error(validation.error || 'INVALID_STOPS_ORDER');
+      }
+    }
+    if (!route) throw new Error("ROUTE_NOT_FOUND");
+
     let stopId = stopData.stop_id;
 
     // Nếu không có stop_id, kiểm tra xem điểm dừng đã tồn tại chưa (theo unique constraint)
@@ -495,6 +637,42 @@ class RouteService {
   static async updateStopInRoute(routeId, stopId, updateData) {
     const route = await TuyenDuongModel.getById(routeId);
     if (!route) throw new Error("ROUTE_NOT_FOUND");
+
+    // 🔥 Validate stops order cho tuyến "đi" khi cập nhật sequence hoặc tọa độ
+    if (route.routeType === 'di' && route.origin_lat && route.origin_lng) {
+      if (updateData.sequence !== undefined || updateData.viDo !== undefined || updateData.kinhDo !== undefined) {
+        // Lấy tất cả stops hiện tại
+        const existingStops = await RouteStopModel.getByRouteId(routeId);
+        
+        // Tìm stop đang được cập nhật
+        const stopToUpdate = existingStops.find(s => s.maDiem === stopId);
+        if (!stopToUpdate) throw new Error("STOP_NOT_IN_ROUTE");
+        
+        // Tạo danh sách stops với dữ liệu cập nhật
+        const allStops = existingStops.map(s => {
+          if (s.maDiem === stopId) {
+            return {
+              tenDiem: s.tenDiem,
+              viDo: updateData.viDo !== undefined ? updateData.viDo : s.viDo,
+              kinhDo: updateData.kinhDo !== undefined ? updateData.kinhDo : s.kinhDo,
+              sequence: updateData.sequence !== undefined ? updateData.sequence : s.sequence,
+            };
+          }
+          return {
+            tenDiem: s.tenDiem,
+            viDo: s.viDo,
+            kinhDo: s.kinhDo,
+            sequence: s.sequence,
+          };
+        });
+        
+        // Validate thứ tự
+        const validation = validateStopsOrder(route, allStops);
+        if (!validation.valid) {
+          throw new Error(validation.error || 'INVALID_STOPS_ORDER');
+        }
+      }
+    }
 
     // Kiểm tra stop có trong route không
     const routeStop = await RouteStopModel.getByRouteAndStop(routeId, stopId);
