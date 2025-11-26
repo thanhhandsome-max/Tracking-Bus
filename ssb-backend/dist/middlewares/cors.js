@@ -1,7 +1,32 @@
 import cors from 'cors';
 import config from '../config/env.js';
+function isOriginAllowed(origin, allowedOrigins) {
+    if (!origin)
+        return false;
+    const origins = Array.isArray(allowedOrigins) ? allowedOrigins : [allowedOrigins];
+    if (origins.includes(origin))
+        return true;
+    return origins.some(allowed => {
+        if (typeof allowed === 'string') {
+            const pattern = allowed.replace(/\*/g, '.*');
+            const regex = new RegExp(`^${pattern}$`);
+            return regex.test(origin);
+        }
+        return false;
+    });
+}
 const corsOptions = {
-    origin: config.frontend.origin,
+    origin: (origin, callback) => {
+        if (!origin) {
+            return callback(null, true);
+        }
+        if (isOriginAllowed(origin, config.frontend.origin)) {
+            callback(null, true);
+        }
+        else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: false,
@@ -10,7 +35,26 @@ const corsOptions = {
 export const corsMiddleware = cors(corsOptions);
 export const corsHandler = (req, res, next) => {
     if (req.method === 'OPTIONS') {
-        res.header('Access-Control-Allow-Origin', config.frontend.origin);
+        const origin = req.headers.origin;
+        const allowedOrigins = Array.isArray(config.frontend.origin)
+            ? config.frontend.origin
+            : [config.frontend.origin];
+        const matchingOrigin = allowedOrigins.find(allowed => {
+            if (!origin)
+                return false;
+            if (typeof allowed === 'string') {
+                const pattern = allowed.replace(/\*/g, '.*');
+                const regex = new RegExp(`^${pattern}$`);
+                return regex.test(origin) || allowed === origin;
+            }
+            return false;
+        }) || origin;
+        if (origin && isOriginAllowed(origin, config.frontend.origin)) {
+            res.header('Access-Control-Allow-Origin', origin);
+        }
+        else if (matchingOrigin) {
+            res.header('Access-Control-Allow-Origin', matchingOrigin);
+        }
         res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
         res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
         res.header('Access-Control-Allow-Credentials', 'false');

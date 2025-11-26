@@ -30,6 +30,7 @@ export declare const driverSchemas: {
 export declare const routeSchemas: {
     create: Joi.ObjectSchema<any>;
     stop: Joi.ObjectSchema<any>;
+    routeStop: Joi.ObjectSchema<any>;
 };
 export declare const scheduleSchemas: {
     create: Joi.ObjectSchema<any>;

@@ -150,8 +150,19 @@ export const routeSchemas = {
         tenDiem: Joi.string().min(2).max(255).required(),
         kinhDo: commonSchemas.coordinates.extract('lat'),
         viDo: commonSchemas.coordinates.extract('lng'),
-        thuTu: Joi.number().integer().min(1).required(),
+        address: Joi.string().max(255).optional(),
+        scheduled_time: commonSchemas.time.optional(),
     }),
+    routeStop: Joi.object({
+        stop_id: Joi.number().integer().positive().optional(),
+        sequence: Joi.number().integer().min(1).optional(),
+        dwell_seconds: Joi.number().integer().min(0).optional(),
+        tenDiem: Joi.string().min(2).max(255).optional(),
+        kinhDo: commonSchemas.coordinates.extract('lat').optional(),
+        viDo: commonSchemas.coordinates.extract('lng').optional(),
+        address: Joi.string().max(255).optional(),
+        scheduled_time: commonSchemas.time.optional(),
+    }).or('stop_id', 'tenDiem'),
 };
 export const scheduleSchemas = {
     create: Joi.object({
