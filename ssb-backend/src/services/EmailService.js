@@ -1,5 +1,9 @@
 import nodemailer from "nodemailer";
 import config from "../config/env.js";
+const host = process.env.SMTP_HOST || "smtp.gmail.com";
+const port = Number(process.env.SMTP_PORT || 587);
+const user = process.env.SMTP_USER;
+const pass = process.env.SMTP_PASS;
 
 class EmailService {
   static transporter = null;
@@ -10,15 +14,15 @@ class EmailService {
     }
 
     // Chỉ tạo transporter nếu có cấu hình email
-    if (config.email) {
+    if (!user || !pass) {
+      console.warn("Email disabled: SMTP_USER/SMTP_PASS missing");
+      this.transporter = null;
+    } else {
       this.transporter = nodemailer.createTransport({
-        host: config.email.host,
-        port: config.email.port,
-        secure: config.email.port === 587, // true for 465, false for other ports
-        auth: {
-          user: config.email.user,
-          pass: config.email.password,
-        },
+        host,
+        port,
+        secure: port === 465,
+        auth: { user, pass },
       });
     }
 
