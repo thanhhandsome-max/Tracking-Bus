@@ -127,6 +127,22 @@ const DiemDungModel = {
     );
     return rows;
   },
+
+  async findByNameAndCoords(tenDiem, viDo, kinhDo) {
+    const [rows] = await pool.query(
+      `
+        SELECT *
+        FROM DiemDung
+        WHERE tenDiem = ?
+          AND viDo = ?
+          AND kinhDo = ?
+        LIMIT 1
+      `,
+      [tenDiem, viDo, kinhDo]
+    );
+    return rows[0] || null;
+  }
+
 };
 
 export default DiemDungModel;
