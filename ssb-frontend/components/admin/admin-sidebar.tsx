@@ -15,6 +15,7 @@ import {
   UserCircle,
   Settings,
   ShieldCheck,
+  Zap,
 } from "lucide-react"
 
 const managementNav = [
@@ -22,6 +23,7 @@ const managementNav = [
   { name: "Quản lý Xe buýt", href: "/admin/buses", icon: Bus },
   { name: "Quản lý Tài xế", href: "/admin/drivers", icon: UserCircle },
   { name: "Quản lý Học sinh", href: "/admin/students", icon: Users },
+  { name: "Tối ưu hóa Điểm dừng", href: "/admin/bus-stop-optimization", icon: Zap },
   { name: "Quản lý Tuyến đường", href: "/admin/routes", icon: Route },
   { name: "Lịch trình & Phân công", href: "/admin/schedule", icon: Calendar },
 ]

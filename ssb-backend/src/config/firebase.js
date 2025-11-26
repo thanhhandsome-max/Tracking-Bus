@@ -14,7 +14,12 @@
 import admin from "firebase-admin";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "url";
-import { dirname, resolve } from "path";
+import { dirname } from "path";
+import path from "path";
+import dotenv from "dotenv";
+
+// Load environment variables (ensure .env is loaded before reading serviceAccountKey)
+dotenv.config({ path: path.join(dirname(fileURLToPath(import.meta.url)), "../../.env") });
 
 const require = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
@@ -26,7 +31,23 @@ const __dirname = dirname(__filename);
 let serviceAccount;
 try {
   serviceAccount = require("./serviceAccountKey.json");
-  console.log("✅ [Firebase] Service account loaded");
+  
+  // Replace ${FIREBASE_PRIVATE_KEY} placeholder with actual value from .env
+  if (serviceAccount.private_key === "${FIREBASE_PRIVATE_KEY}") {
+    const privateKey = process.env.FIREBASE_PRIVATE_KEY;
+    
+    if (!privateKey) {
+      throw new Error(
+        "FIREBASE_PRIVATE_KEY is not set in .env file. Please add FIREBASE_PRIVATE_KEY to your .env file."
+      );
+    }
+    
+    // Replace \n with actual newlines (private keys in .env often use \n as string)
+    serviceAccount.private_key = privateKey.replace(/\\n/g, "\n");
+    console.log("✅ [Firebase] Service account loaded with private key from .env");
+  } else {
+    console.log("✅ [Firebase] Service account loaded");
+  }
 } catch (error) {
   console.error(
     "❌ [Firebase] Cannot load serviceAccountKey.json:",

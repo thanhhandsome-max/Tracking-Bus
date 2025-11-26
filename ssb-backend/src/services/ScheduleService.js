@@ -210,13 +210,40 @@ class ScheduleService {
             });
           });
           
-          // BƯỚC 1: Thử load suggestions từ student_stop_suggestions
+          // BƯỚC 1: Ưu tiên load từ HocSinh_DiemDung (mapping độc lập từ Greedy Maximum Coverage)
+          const BusStopOptimizationService = (await import("./BusStopOptimizationService.js")).default;
+          const assignments = await BusStopOptimizationService.getAssignments();
+          console.log(`[ScheduleService] Loaded ${assignments.length} assignments from HocSinh_DiemDung`);
+          
+          const autoAssignedStudents = [];
+          const assignedStudentIds = new Set(); // Track học sinh đã được gán
+          
+          // Sử dụng assignments từ HocSinh_DiemDung nếu có và stop nằm trong route
+          if (assignments.length > 0) {
+            const routeStopIds = new Set(routeStops.map(s => s.maDiem || s.stop_id));
+            
+            for (const assignment of assignments) {
+              // Chỉ gán nếu stop nằm trong route này
+              if (routeStopIds.has(assignment.maDiemDung)) {
+                const matchingStop = routeStops.find(s => (s.maDiem || s.stop_id) === assignment.maDiemDung);
+                if (matchingStop) {
+                  autoAssignedStudents.push({
+                    maHocSinh: assignment.maHocSinh,
+                    thuTuDiem: matchingStop.sequence,
+                    maDiem: assignment.maDiemDung,
+                    source: 'hocsinh_diemdung',
+                  });
+                  assignedStudentIds.add(assignment.maHocSinh);
+                }
+              }
+            }
+            console.log(`[ScheduleService] Assigned ${autoAssignedStudents.length} students from HocSinh_DiemDung`);
+          }
+          
+          // BƯỚC 2: Fallback - Thử load suggestions từ student_stop_suggestions cho học sinh chưa được gán
           const StudentStopSuggestionModel = (await import("../models/StudentStopSuggestionModel.js")).default;
           const suggestions = await StudentStopSuggestionModel.getByRouteId(maTuyen);
           console.log(`[ScheduleService] Loaded ${suggestions.length} suggestions from student_stop_suggestions`);
-          
-          const autoAssignedStudents = [];
-          const studentsFromSuggestions = new Set(); // Track học sinh đã được gán từ suggestions
           
           if (suggestions.length > 0) {
             // Group suggestions theo maHocSinh (một học sinh có thể có nhiều suggestions)
@@ -228,10 +255,14 @@ class ScheduleService {
               suggestionsByStudent.get(s.maHocSinh).push(s);
             });
             
-            // Với mỗi học sinh có suggestions:
+            // Với mỗi học sinh có suggestions (chỉ xử lý học sinh chưa được gán từ HocSinh_DiemDung):
             // - Nếu chỉ có 1 suggestion → dùng luôn
             // - Nếu có nhiều suggestions → chọn stop gần nhất đến nhà học sinh
             for (const [maHocSinh, studentSuggestions] of suggestionsByStudent.entries()) {
+              // Bỏ qua học sinh đã được gán từ HocSinh_DiemDung
+              if (assignedStudentIds.has(maHocSinh)) {
+                continue;
+              }
               let selectedSuggestion = null;
               
               if (studentSuggestions.length === 1) {

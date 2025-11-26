@@ -1,5 +1,6 @@
 import pool from "../config/db.js";
 import HocSinhModel from "../models/HocSinhModel.js";
+import TuyenDuongModel from "../models/TuyenDuongModel.js";
 import MapsService from "./MapsService.js";
 import StopSuggestionService from "./StopSuggestionService.js";
 
@@ -1202,6 +1203,192 @@ class RouteSuggestionService {
       console.warn(`[RouteSuggestion] Error calculating route distance:`, error);
       return 0;
     }
+  }
+
+  /**
+   * Tạo routes trong database từ suggestions
+   * @param {Object} suggestionResult - Kết quả từ suggestRoutes()
+   * @param {Object} options - { createReturnRoutes: boolean }
+   * @returns {Promise<Object>} { createdRoutes, returnRoutes, errors }
+   */
+  static async createRoutesFromSuggestions(suggestionResult, options = {}) {
+    const { createReturnRoutes = true } = options;
+    const createdRoutes = [];
+    const createdReturnRoutes = [];
+    const errors = [];
+
+    // Import RouteService và DiemDungModel
+    const RouteService = (await import("./RouteService.js")).default;
+    const DiemDungModel = (await import("../models/DiemDungModel.js")).default;
+    const MapsService = (await import("./MapsService.js")).default;
+
+    // Tạo routes đi
+    for (const route of suggestionResult.routes || []) {
+      try {
+        console.log(`[RouteSuggestion] Creating route: ${route.name}`);
+
+        // Tạo hoặc tìm các stops trong DB
+        const stopIds = [];
+        for (const stop of route.stops || []) {
+          if (!stop.lat || !stop.lng) {
+            console.warn(`[RouteSuggestion] Stop missing coordinates, skipping`);
+            continue;
+          }
+
+          // Tìm hoặc tạo stop
+          const existingStops = await DiemDungModel.getByCoordinates(
+            stop.lat, stop.lng, 0.0001 // ~11m tolerance
+          );
+
+          let stopId;
+          if (existingStops.length > 0) {
+            stopId = existingStops[0].maDiem;
+          } else {
+            // Tạo stop mới
+            stopId = await DiemDungModel.create({
+              tenDiem: stop.tenDiem || stop.address || `Điểm dừng ${stop.lat.toFixed(4)}, ${stop.lng.toFixed(4)}`,
+              viDo: stop.lat,
+              kinhDo: stop.lng,
+              address: stop.address || null,
+            });
+          }
+
+          stopIds.push({ stop_id: stopId, sequence: stop.sequence || stopIds.length + 1 });
+        }
+
+        if (stopIds.length < 2) {
+          console.warn(`[RouteSuggestion] Route ${route.name} has insufficient stops (${stopIds.length}), skipping`);
+          errors.push({ route: route.name, error: "INSUFFICIENT_STOPS" });
+          continue;
+        }
+
+        // Tạo route với stops
+        const routeData = {
+          tenTuyen: route.name,
+          diemBatDau: route.origin.address || "Điểm xuất phát",
+          diemKetThuc: route.destination.address || "Đại học Sài Gòn",
+          thoiGianUocTinh: route.estimatedTimeMinutes || null,
+          origin_lat: route.origin.lat,
+          origin_lng: route.origin.lng,
+          dest_lat: route.destination.lat,
+          dest_lng: route.destination.lng,
+          routeType: route.routeType || 'di',
+          createReturnRoute: false, // Tạo riêng để kiểm soát tốt hơn
+          stops: stopIds.map(s => ({
+            stop_id: s.stop_id,
+            sequence: s.sequence,
+          })),
+        };
+
+        const createdRoute = await RouteService.create(routeData);
+
+        // Rebuild polyline
+        try {
+          await RouteService.rebuildPolyline(createdRoute.maTuyen, MapsService);
+        } catch (polylineError) {
+          console.warn(`[RouteSuggestion] Failed to rebuild polyline:`, polylineError.message);
+        }
+
+        createdRoutes.push({
+          maTuyen: createdRoute.maTuyen,
+          tenTuyen: createdRoute.tenTuyen,
+          totalStudents: route.totalStudents,
+          stopCount: stopIds.length,
+        });
+
+        console.log(`[RouteSuggestion] ✅ Created route ${createdRoute.maTuyen}: ${route.name}`);
+
+        // Tạo tuyến về nếu yêu cầu
+        if (createReturnRoutes) {
+          const returnRoute = suggestionResult.returnRoutes?.find(
+            r => r.name === route.name.replace('(Đi)', '(Về)')
+          );
+
+          if (returnRoute) {
+            try {
+              const returnStopIds = [];
+              for (const stop of returnRoute.stops || []) {
+                if (!stop.lat || !stop.lng) continue;
+
+                const existingStops = await DiemDungModel.getByCoordinates(
+                  stop.lat, stop.lng, 0.0001
+                );
+
+                let stopId;
+                if (existingStops.length > 0) {
+                  stopId = existingStops[0].maDiem;
+                } else {
+                  stopId = await DiemDungModel.create({
+                    tenDiem: stop.tenDiem || stop.address || `Điểm dừng ${stop.lat.toFixed(4)}, ${stop.lng.toFixed(4)}`,
+                    viDo: stop.lat,
+                    kinhDo: stop.lng,
+                    address: stop.address || null,
+                  });
+                }
+
+                returnStopIds.push({ stop_id: stopId, sequence: stop.sequence || returnStopIds.length + 1 });
+              }
+
+              if (returnStopIds.length >= 2) {
+                const returnRouteData = {
+                  tenTuyen: returnRoute.name,
+                  diemBatDau: returnRoute.origin.address || "Đại học Sài Gòn",
+                  diemKetThuc: returnRoute.destination.address || "Điểm kết thúc",
+                  thoiGianUocTinh: returnRoute.estimatedTimeMinutes || null,
+                  origin_lat: returnRoute.origin.lat,
+                  origin_lng: returnRoute.origin.lng,
+                  dest_lat: returnRoute.destination.lat,
+                  dest_lng: returnRoute.destination.lng,
+                  routeType: 've',
+                  pairedRouteId: createdRoute.maTuyen,
+                  createReturnRoute: false,
+                  stops: returnStopIds.map(s => ({
+                    stop_id: s.stop_id,
+                    sequence: s.sequence,
+                  })),
+                };
+
+                const createdReturn = await RouteService.create(returnRouteData);
+
+                // Update pairedRouteId cho route đi
+                await TuyenDuongModel.update(createdRoute.maTuyen, {
+                  pairedRouteId: createdReturn.maTuyen,
+                });
+
+                // Rebuild polyline
+                try {
+                  await RouteService.rebuildPolyline(createdReturn.maTuyen, MapsService);
+                } catch (polylineError) {
+                  console.warn(`[RouteSuggestion] Failed to rebuild return route polyline:`, polylineError.message);
+                }
+
+                createdReturnRoutes.push({
+                  maTuyen: createdReturn.maTuyen,
+                  tenTuyen: createdReturn.tenTuyen,
+                  pairedRouteId: createdRoute.maTuyen,
+                });
+
+                console.log(`[RouteSuggestion] ✅ Created return route ${createdReturn.maTuyen}`);
+              }
+            } catch (returnError) {
+              console.error(`[RouteSuggestion] Failed to create return route:`, returnError);
+              errors.push({ route: returnRoute.name, error: returnError.message });
+            }
+          }
+        }
+
+      } catch (error) {
+        console.error(`[RouteSuggestion] Failed to create route ${route.name}:`, error);
+        errors.push({ route: route.name, error: error.message });
+      }
+    }
+
+    return {
+      createdRoutes,
+      createdReturnRoutes,
+      totalCreated: createdRoutes.length + createdReturnRoutes.length,
+      errors: errors.length > 0 ? errors : undefined,
+    };
   }
 }
 

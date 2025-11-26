@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { DriverSidebar } from "@/components/driver/driver-sidebar";
@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import {
   MapPin,
   Navigation,
@@ -62,6 +63,7 @@ import {
   cancelTrip,
 } from "@/lib/services/trip.service";
 import { useGPS } from "@/hooks/use-gps";
+import { useGPSSimulator } from "@/hooks/use-gps-simulator";
 import apiClient from "@/lib/api-client";
 import { apiClient as api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
@@ -69,6 +71,7 @@ import { cn } from "@/lib/utils";
 import dynamic from "next/dynamic";
 import type { StopDTO, BusMarker } from "@/components/map/SSBMap";
 import { useETA } from "@/lib/hooks/useMaps";
+import { SpeedControlCard } from "@/components/driver/speed-control-card";
 
 const SSBMap = dynamic(() => import("@/components/map/SSBMap"), {
   ssr: false,
@@ -218,6 +221,11 @@ export default function TripDetailPage() {
   const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
   const [locationSource, setLocationSource] = useState<"demo" | "real">("real");
   const { toast } = useToast();
+  const [routeId, setRouteId] = useState<number | string | undefined>(undefined);
+  const [demoSpeed, setDemoSpeed] = useState<number>(40); // Speed for DEMO mode (km/h)
+  const [mapZoom, setMapZoom] = useState<number>(13); // Dynamic zoom level
+  const [isLastStop, setIsLastStop] = useState<boolean>(false); // Is current stop the final stop
+  const [tripType, setTripType] = useState<"don_sang" | "tra_chieu" | null>(null); // Trip type
 
   // Realtime: join driver's trip room and move the vehicle marker when updates arrive
   const tripIdParam = (params?.id as string) || "";
@@ -240,6 +248,25 @@ export default function TripDetailPage() {
     running: gpsRunning,
     lastPoint: gpsLastPoint,
   } = useGPS(effectiveTripId);
+  
+  // GPS Simulator for DEMO mode
+  const {
+    start: startSimulator,
+    stop: stopSimulator,
+    continueToNextStop: continueSimulator,
+    updateSpeed: updateSimulatorSpeed,
+    running: simulatorRunning,
+    currentPosition: simulatorPosition,
+    isAtStop: simulatorAtStop,
+    error: simulatorError,
+    currentSpeed: simulatorCurrentSpeed,
+  } = useGPSSimulator({
+    tripId: effectiveTripId,
+    routeId: routeId,
+    speed: demoSpeed,
+    interval: 3,
+    stopDistanceThreshold: 50,
+  });
   // Khởi tạo theo vị trí test script (Hà Nội) để tránh nhảy từ HCM ra HN khi mới vào trang
   const [busLocation, setBusLocation] = useState<{ lat: number; lng: number }>({
     lat: 21.0285,
@@ -256,6 +283,72 @@ export default function TripDetailPage() {
       setBusLocation({ lat: busPosition.lat, lng: busPosition.lng });
     }
   }, [busPosition]);
+
+  // Update busLocation from GPS simulator when in DEMO mode
+  useEffect(() => {
+    if (
+      locationSource === "demo" &&
+      simulatorPosition &&
+      Number.isFinite(simulatorPosition.lat) &&
+      Number.isFinite(simulatorPosition.lng)
+    ) {
+      console.log("[Driver Trip] simulatorPosition", simulatorPosition);
+      setBusLocation({ lat: simulatorPosition.lat, lng: simulatorPosition.lng });
+    }
+  }, [simulatorPosition, locationSource]);
+
+  // Derive UI display for status/speed/time
+  const currentSpeed =
+    typeof (busPosition as any)?.speed === "number"
+      ? Math.round((busPosition as any).speed)
+      : trip.vehicle.speed;
+
+  // 🔥 Cập nhật isLastStop khi currentStop thay đổi
+  useEffect(() => {
+    if (trip.stops.length > 0 && trip.currentStop >= 0) {
+      const currentStopData = trip.stops[trip.currentStop];
+      const currentStopSequence = (currentStopData as any)?.sequence || (trip.currentStop + 1);
+      const maxSequence = Math.max(...trip.stops.map((s: any) => s.sequence || 0));
+      const isLastStopValue = currentStopSequence === maxSequence;
+      setIsLastStop(isLastStopValue);
+    }
+  }, [trip.currentStop, trip.stops]);
+
+  // Auto-zoom map when bus moves (smooth zoom, not too close)
+  useEffect(() => {
+    if (
+      tripStatus === "dang_chay" &&
+      busLocation &&
+      Number.isFinite(busLocation.lat) &&
+      Number.isFinite(busLocation.lng)
+    ) {
+      // Calculate zoom based on speed: faster = zoom out more, slower = zoom in more
+      // But keep it reasonable: between 14 (close) and 16 (very close)
+      const currentSpeedValue = 
+        locationSource === "demo" 
+          ? simulatorCurrentSpeed || demoSpeed
+          : currentSpeed || 30;
+      
+      // Zoom formula: faster speed = lower zoom (zoom out), slower = higher zoom (zoom in)
+      // Speed range: 10-80 km/h -> Zoom range: 16-14
+      const minZoom = 14;
+      const maxZoom = 16;
+      const minSpeed = 10;
+      const maxSpeed = 80;
+      
+      const normalizedSpeed = Math.max(minSpeed, Math.min(maxSpeed, currentSpeedValue));
+      const zoomLevel = maxZoom - ((normalizedSpeed - minSpeed) / (maxSpeed - minSpeed)) * (maxZoom - minZoom);
+      
+      setMapZoom(Math.round(zoomLevel * 10) / 10); // Round to 1 decimal
+    }
+  }, [busLocation, tripStatus, locationSource, simulatorCurrentSpeed, demoSpeed, currentSpeed]);
+
+  // Sync atCurrentStop with simulatorAtStop in DEMO mode
+  useEffect(() => {
+    if (locationSource === "demo") {
+      setAtCurrentStop(simulatorAtStop);
+    }
+  }, [simulatorAtStop, locationSource]);
 
   // P1 Fix: Fetch dynamic directions from current position to next stop
   useEffect(() => {
@@ -344,6 +437,9 @@ export default function TripDetailPage() {
   }, [busLocation, trip.currentStop, trip.stops, tripStatus]);
 
   // Day 5: Show toast notifications for trip alerts
+  // 🔥 Ref để tránh gọi API liên tục
+  const loadedStopsRef = useRef<Set<number>>(new Set());
+  
   useEffect(() => {
     if (approachStop && tripStatus === "dang_chay") {
       const stopName =
@@ -357,8 +453,10 @@ export default function TripDetailPage() {
         variant: "default",
       });
 
-      // Auto-load students when approaching stop (< 60m)
-      if (distance < 60 && stopSequence && tripIdNum) {
+      // Auto-load students when approaching stop (< 60m) - chỉ load 1 lần cho mỗi stop
+      if (distance < 60 && stopSequence && tripIdNum && !loadedStopsRef.current.has(stopSequence)) {
+        loadedStopsRef.current.add(stopSequence);
+        
         const token =
           typeof window !== "undefined"
             ? localStorage.getItem("ssb_token")
@@ -373,7 +471,12 @@ export default function TripDetailPage() {
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
         })
-          .then((res) => res.json())
+          .then((res) => {
+            if (!res.ok) {
+              throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+            }
+            return res.json();
+          })
           .then((data) => {
             const studentsList = data.data?.students || [];
             
@@ -409,6 +512,8 @@ export default function TripDetailPage() {
           })
           .catch((err) => {
             console.warn("[Driver Trip] Failed to auto-load students:", err);
+            // Remove from loaded set để có thể retry sau
+            loadedStopsRef.current.delete(stopSequence);
           });
       }
     }
@@ -518,6 +623,18 @@ export default function TripDetailPage() {
           "[Driver Trip] Sample stop fields:",
           routeStops.length > 0 ? Object.keys(routeStops[0]) : "No stops"
         );
+
+        // Get route ID for GPS simulator
+        const currentRouteId =
+          data?.routeInfo?.maTuyen ||
+          data?.maTuyen ||
+          data?.tuyenId ||
+          data?.routeId ||
+          data?.idTuyen;
+        if (currentRouteId) {
+          setRouteId(currentRouteId);
+          console.log("[Driver Trip] Route ID for simulator:", currentRouteId);
+        }
 
         // Get polyline from route data
         const routePolyline = data?.routeInfo?.polyline || null;
@@ -630,6 +747,7 @@ export default function TripDetailPage() {
             students: stopStudents,
             lat: stopLat,
             lng: stopLng,
+            sequence: stop.sequence || stopSequence || (index + 1), // 🔥 Lưu sequence để tính điểm cuối
           };
         });
 
@@ -659,6 +777,27 @@ export default function TripDetailPage() {
           );
           currentStopIndex = firstNonCompleted >= 0 ? firstNonCompleted : 0;
         }
+
+        // 🔥 Tính toán điểm cuối và tripType
+        const maxSequence = mappedStops.length > 0 
+          ? Math.max(...mappedStops.map((s: any) => s.sequence || 0))
+          : mappedStops.length;
+        const currentStopSequence = mappedStops[currentStopIndex]?.sequence || (currentStopIndex + 1);
+        const isLastStopValue = currentStopSequence === maxSequence;
+        
+        // Lấy tripType từ schedule
+        const tripTypeValue = data?.schedule?.loaiChuyen || data?.loaiChuyen || null;
+        
+        setIsLastStop(isLastStopValue);
+        setTripType(tripTypeValue as "don_sang" | "tra_chieu" | null);
+        
+        console.log("[Driver Trip] Trip type and last stop:", {
+          tripType: tripTypeValue,
+          isLastStop: isLastStopValue,
+          currentStopSequence,
+          maxSequence,
+          currentStopIndex,
+        });
 
         // Update trip state with real data
         setTrip({
@@ -817,6 +956,88 @@ export default function TripDetailPage() {
   const progress = ((trip.currentStop + 1) / trip.stops.length) * 100;
 
   // 🔥 UPDATE: Sử dụng API endpoints mới (POST /checkin, /absent, /checkout)
+  
+  // Handle checkout (trả học sinh) - cho chuyến về
+  const handleStudentCheckout = async (studentId: string) => {
+    // Update UI optimistically
+    setTrip((prev) => ({
+      ...prev,
+      stops: prev.stops.map((stop) =>
+        stop.id === currentStop.id
+          ? {
+              ...stop,
+              students: stop.students.map((student) =>
+                student.id === studentId
+                  ? { ...student, status: "dropped" }
+                  : student
+              ),
+            }
+          : stop
+      ),
+    }));
+
+    // Call API POST /checkout
+    try {
+      const token = localStorage.getItem("ssb_token");
+      const API_URL =
+        process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
+
+      const response = await fetch(
+        `${API_URL}/trips/${tripIdNum}/students/${studentId}/checkout`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || "Failed to checkout student");
+      }
+
+      const result = await response.json();
+      console.log("[Driver Trip] Student checked out:", result);
+
+      toast({
+        title: "✅ Đã trả học sinh",
+        description: "Phụ huynh đã nhận thông báo",
+      });
+      
+      // Reload trip data để cập nhật summary
+      const res = await api.getTripById(tripIdNum);
+      const data: any = (res as any).data || res;
+      if (data?.summary) {
+        console.log("[Driver Trip] Updated summary:", data.summary);
+      }
+    } catch (error: any) {
+      console.error("[Driver Trip] Error checking out student:", error);
+      // Revert UI on error
+      setTrip((prev) => ({
+        ...prev,
+        stops: prev.stops.map((stop) =>
+          stop.id === currentStop.id
+            ? {
+                ...stop,
+                students: stop.students.map((student) =>
+                  student.id === studentId
+                    ? { ...student, status: "picked" }
+                    : student
+                ),
+              }
+            : stop
+        ),
+      }));
+      toast({
+        title: "❌ Lỗi cập nhật",
+        description: error?.message || "Không thể trả học sinh",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleStudentCheckin = async (studentId: string) => {
     // Update UI optimistically
     setTrip((prev) => ({
@@ -1002,51 +1223,60 @@ export default function TripDetailPage() {
       const API_URL =
         process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
 
-      // 1. Load students at this stop
-      try {
-        const studentsResponse = await fetch(
-          `${API_URL}/trips/${tripIdNum}/stops/${stopSequence}/students`,
-          {
-            headers: {
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-          }
-        );
+      // 🔥 Kiểm tra điểm cuối: Chuyến đi (don_sang) không đón học sinh tại điểm cuối
+      const currentStopSequence = (currentStop as any).sequence || trip.currentStop + 1;
+      const maxSequence = Math.max(...trip.stops.map((s: any) => s.sequence || 0));
+      const isCurrentLastStop = currentStopSequence === maxSequence;
 
-        if (studentsResponse.ok) {
-          const studentsData = await studentsResponse.json();
-          const studentsList = studentsData.data?.students || [];
-
-          // Update trip state with students at this stop
-          setTrip((prev) => ({
-            ...prev,
-            stops: prev.stops.map((stop, idx) =>
-              idx === trip.currentStop
-                ? {
-                    ...stop,
-                    students: studentsList.map((s: any) => ({
-                      id: String(s.maHocSinh),
-                      name: s.hoTen || "Học sinh",
-                      status:
-                        s.trangThai === "da_don"
-                          ? "picked"
-                          : s.trangThai === "vang"
-                          ? "absent"
-                          : "pending",
-                      avatar: s.anhDaiDien || "/placeholder.svg?height=40&width=40",
-                      parent: "",
-                    })),
-                  }
-                : stop
-            ),
-          }));
-
-          console.log(
-            `[Driver Trip] Loaded ${studentsList.length} students at stop ${stopSequence}`
+      // 1. Load students at this stop (skip nếu là điểm cuối của chuyến đi)
+      if (!(isCurrentLastStop && tripType === "don_sang")) {
+        try {
+          const studentsResponse = await fetch(
+            `${API_URL}/trips/${tripIdNum}/stops/${stopSequence}/students`,
+            {
+              headers: {
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+              },
+            }
           );
+
+          if (studentsResponse.ok) {
+            const studentsData = await studentsResponse.json();
+            const studentsList = studentsData.data?.students || [];
+
+            // Update trip state with students at this stop
+            setTrip((prev) => ({
+              ...prev,
+              stops: prev.stops.map((stop, idx) =>
+                idx === trip.currentStop
+                  ? {
+                      ...stop,
+                      students: studentsList.map((s: any) => ({
+                        id: String(s.maHocSinh),
+                        name: s.hoTen || "Học sinh",
+                        status:
+                          s.trangThai === "da_don"
+                            ? "picked"
+                            : s.trangThai === "vang"
+                            ? "absent"
+                            : "pending",
+                        avatar: s.anhDaiDien || "/placeholder.svg?height=40&width=40",
+                        parent: "",
+                      })),
+                    }
+                  : stop
+              ),
+            }));
+
+            console.log(
+              `[Driver Trip] Loaded ${studentsList.length} students at stop ${stopSequence}`
+            );
+          }
+        } catch (err) {
+          console.warn("[Driver Trip] Failed to load students:", err);
         }
-      } catch (err) {
-        console.warn("[Driver Trip] Failed to load students:", err);
+      } else {
+        console.log("[Driver Trip] Final stop for morning trip - skipping student load");
       }
 
       // 2. Call API to notify arrival at stop (triggers parent notification)
@@ -1079,10 +1309,17 @@ export default function TripDetailPage() {
       setAtCurrentStop(true);
 
       // Show notification
-      toast({
-        title: "🚏 Đã đến điểm dừng",
-        description: `Xe đã đến ${stopName}. Đã tải danh sách học sinh.`,
-      });
+      if (isCurrentLastStop && tripType === "don_sang") {
+        toast({
+          title: "🏫 Đã đến trường",
+          description: `Xe đã đến điểm cuối (trường học). Nhấn "Đến điểm cuối" để hoàn thành chuyến đi.`,
+        });
+      } else {
+        toast({
+          title: "🚏 Đã đến điểm dừng",
+          description: `Xe đã đến ${stopName}. Đã tải danh sách học sinh.`,
+        });
+      }
     } catch (error) {
       console.error("[Driver Trip] Error arriving at stop:", error);
       toast({
@@ -1100,6 +1337,13 @@ export default function TripDetailPage() {
     if (trip.currentStop < trip.stops.length - 1) {
       try {
         setProcessing(true);
+        
+        // If DEMO mode and simulator is at stop, continue simulation
+        if (locationSource === "demo" && simulatorAtStop) {
+          continueSimulator();
+          console.log("[Driver Trip] Continuing GPS simulator to next stop");
+        }
+        
         const currentStopName =
           currentStop.name || `Điểm dừng ${trip.currentStop + 1}`;
         const stopId = (currentStop as any).id || (currentStop as any).maDiem;
@@ -1187,9 +1431,70 @@ export default function TripDetailPage() {
         (res as any)?.maChuyen ||
         tripIdNum;
 
-      // Start GPS tracking only if REAL mode is selected
+      // 🔥 Load học sinh cho chuyến về (tra_chieu) khi bắt đầu
+      if (tripType === "tra_chieu") {
+        try {
+          const token = localStorage.getItem("ssb_token");
+          const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
+          
+          const studentsResponse = await fetch(
+            `${API_URL}/trips/${tripIdNum}/students-from-morning`,
+            {
+              headers: {
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+              },
+            }
+          );
+
+          if (studentsResponse.ok) {
+            const studentsData = await studentsResponse.json();
+            const morningStudents = studentsData.data?.students || [];
+            
+            console.log(`[Driver Trip] Loaded ${morningStudents.length} students from morning trip`);
+
+            // Map học sinh vào đúng điểm dừng dựa trên thuTuDiemDon
+            setTrip((prev) => ({
+              ...prev,
+              stops: prev.stops.map((stop: any, idx: number) => {
+                const stopSequence = stop.sequence || (idx + 1);
+                const studentsAtStop = morningStudents.filter(
+                  (s: any) => s.thuTuDiemDon === stopSequence
+                );
+
+                return {
+                  ...stop,
+                  students: studentsAtStop.map((s: any) => ({
+                    id: String(s.maHocSinh),
+                    name: s.hoTen || "Học sinh",
+                    status: "picked", // Đã có trên xe từ đầu
+                    avatar: s.anhDaiDien || "/placeholder.svg?height=40&width=40",
+                    parent: "",
+                  })),
+                };
+              }),
+            }));
+          }
+        } catch (err) {
+          console.warn("[Driver Trip] Failed to load students from morning trip:", err);
+        }
+      }
+
+      // Start GPS tracking based on mode
       if (locationSource === "real") {
         startGPS();
+      } else if (locationSource === "demo") {
+        // Start GPS simulator for DEMO mode
+        try {
+          await startSimulator();
+          console.log("[Driver Trip] GPS Simulator started");
+        } catch (err: any) {
+          console.error("[Driver Trip] Failed to start GPS simulator:", err);
+          toast({
+            title: "Lỗi khởi động simulator",
+            description: err?.message || "Không thể khởi động GPS simulator",
+            variant: "destructive",
+          });
+        }
       }
       // 🔥 Reload trip data to get updated status (BẮT BUỘC)
       // Đảm bảo UI sync với backend sau khi start trip
@@ -1336,9 +1641,31 @@ export default function TripDetailPage() {
   const finishTrip = async () => {
     try {
       setProcessing(true);
+      
+      // 🔥 Kiểm tra học sinh chưa được trả (chuyến về)
+      if (tripType === "tra_chieu") {
+        const allStudents = trip.stops.flatMap((stop: any) => stop.students || []);
+        const studentsOnBus = allStudents.filter((s: any) => s.status === "picked" || s.status === "pending");
+        
+        if (studentsOnBus.length > 0) {
+          toast({
+            title: "⚠️ Không thể kết thúc chuyến đi",
+            description: `Còn ${studentsOnBus.length} học sinh chưa được trả. Vui lòng trả tất cả học sinh trước khi kết thúc.`,
+            variant: "destructive",
+            duration: 7000,
+          });
+          setProcessing(false);
+          return;
+        }
+      }
+      
       // Gọi API kết thúc nếu backend có hỗ trợ
       await endTrip(tripIdNum);
       stopGPS();
+      // Stop simulator if running
+      if (simulatorRunning) {
+        stopSimulator();
+      }
       setTripStatus("hoan_thanh");
       toast({
         title: "Hoàn thành chuyến đi",
@@ -1366,6 +1693,10 @@ export default function TripDetailPage() {
       setIsCancelDialogOpen(false);
       await cancelTrip(tripIdNum);
       stopGPS();
+      // Stop simulator if running
+      if (simulatorRunning) {
+        stopSimulator();
+      }
       setTripStatus("huy");
       toast({
         title: "Đã hủy chuyến đi",
@@ -1413,8 +1744,12 @@ export default function TripDetailPage() {
     };
   }, [effectiveTripId, toast, stopGPS]);
 
-  // Một nút duy nhất, thay đổi theo trạng thái
-  const isLastStop = trip.currentStop === trip.stops.length - 1;
+  // 🔥 Tính toán điểm cuối dựa trên sequence (không phải index)
+  const currentStopSequence = (currentStop as any).sequence || trip.currentStop + 1;
+  const maxSequence = trip.stops.length > 0 
+    ? Math.max(...trip.stops.map((s: any) => s.sequence || 0))
+    : trip.stops.length;
+  const isCurrentLastStop = currentStopSequence === maxSequence;
   // 🔥 Single CTA: Chỉ hiện nút "Bắt đầu" nếu trip chưa start
   // Dựa trên cả tripStatus và started state để đảm bảo sync với backend
   const showStart = !gpsRunning && !started && tripStatus !== "dang_chay" && tripStatus !== "hoan_thanh";
@@ -1423,26 +1758,49 @@ export default function TripDetailPage() {
   useEffect(() => {
     if (
       tripStatus === "dang_chay" &&
-      !gpsRunning &&
       effectiveTripId &&
-      locationSource === "real"
+      locationSource === "real" &&
+      !gpsRunning
     ) {
       console.log(
         "[Driver Trip] Auto-starting GPS for running trip",
         effectiveTripId
       );
       startGPS();
+    } else if (
+      tripStatus === "dang_chay" &&
+      effectiveTripId &&
+      locationSource === "demo" &&
+      !simulatorRunning &&
+      routeId
+    ) {
+      console.log(
+        "[Driver Trip] Auto-starting GPS Simulator for running trip",
+        effectiveTripId
+      );
+      startSimulator().catch((err) => {
+        console.error("[Driver Trip] Failed to auto-start simulator:", err);
+      });
     } else if (locationSource === "demo" && gpsRunning) {
       // Stop GPS if switching to DEMO mode
       stopGPS();
+    } else if (locationSource === "real" && simulatorRunning) {
+      // Stop simulator if switching to REAL mode
+      stopSimulator();
     }
-  }, [tripStatus, gpsRunning, effectiveTripId, startGPS, stopGPS, locationSource]);
+  }, [
+    tripStatus,
+    gpsRunning,
+    simulatorRunning,
+    effectiveTripId,
+    routeId,
+    startGPS,
+    stopGPS,
+    startSimulator,
+    stopSimulator,
+    locationSource,
+  ]);
 
-  // Derive UI display for status/speed/time
-  const currentSpeed =
-    typeof (busPosition as any)?.speed === "number"
-      ? Math.round((busPosition as any).speed)
-      : trip.vehicle.speed;
   const lastUpdateISO =
     (busPosition as any)?.timestamp || (busPosition as any)?.time;
   const lastUpdateText = lastUpdateISO
@@ -1464,25 +1822,25 @@ export default function TripDetailPage() {
       }
     : {
         label: !atCurrentStop
-          ? isLastStop
+          ? isCurrentLastStop
             ? "Đến điểm cuối"
             : "Đến điểm dừng"
-          : isLastStop
+          : isCurrentLastStop
           ? "Kết thúc chuyến đi"
           : "Rời điểm dừng",
         onClick: !atCurrentStop
           ? arriveCurrentStop
-          : isLastStop
+          : isCurrentLastStop
           ? finishTrip
           : leaveCurrentStop,
-        icon: !atCurrentStop ? Navigation : isLastStop ? Flag : ArrowRight,
+        icon: !atCurrentStop ? Navigation : isCurrentLastStop ? Flag : ArrowRight,
         variant:
-          atCurrentStop && isLastStop
+          atCurrentStop && isCurrentLastStop
             ? ("destructive" as const)
             : ("default" as const),
         className: !atCurrentStop
           ? "bg-sky-600 hover:bg-sky-700 text-white"
-          : isLastStop
+          : isCurrentLastStop
           ? ""
           : "bg-amber-500 hover:bg-amber-600 text-white",
       };
@@ -1544,18 +1902,50 @@ export default function TripDetailPage() {
               value={locationSource}
               onValueChange={(value) => {
                 setLocationSource(value as "demo" | "real");
-                if (value === "demo" && gpsRunning) {
-                  stopGPS();
-                  toast({
-                    title: "Chuyển sang chế độ DEMO",
-                    description: "Đang chờ script demo gửi vị trí...",
-                  });
-                } else if (value === "real" && tripStatus === "dang_chay" && !gpsRunning) {
-                  startGPS();
-                  toast({
-                    title: "Chuyển sang chế độ REAL",
-                    description: "Đang lấy vị trí GPS từ thiết bị...",
-                  });
+                if (value === "demo") {
+                  if (gpsRunning) {
+                    stopGPS();
+                  }
+                  if (simulatorRunning) {
+                    // Already running, just show message
+                    toast({
+                      title: "Chế độ DEMO",
+                      description: simulatorAtStop 
+                        ? "Đã đến điểm dừng - Đang đợi driver đón học sinh"
+                        : "Đang mô phỏng GPS",
+                    });
+                  } else if (tripStatus === "dang_chay" && routeId) {
+                    // Auto-start simulator if trip is running
+                    startSimulator().catch((err) => {
+                      console.error("[Driver Trip] Failed to start simulator:", err);
+                      toast({
+                        title: "Lỗi khởi động simulator",
+                        description: err?.message || "Không thể khởi động GPS simulator",
+                        variant: "destructive",
+                      });
+                    });
+                  } else {
+                    toast({
+                      title: "Chuyển sang chế độ DEMO",
+                      description: "Simulator sẽ khởi động khi bạn nhấn 'Bắt đầu chuyến đi'",
+                    });
+                  }
+                } else if (value === "real") {
+                  if (simulatorRunning) {
+                    stopSimulator();
+                  }
+                  if (tripStatus === "dang_chay" && !gpsRunning) {
+                    startGPS();
+                    toast({
+                      title: "Chuyển sang chế độ REAL",
+                      description: "Đang lấy vị trí GPS từ thiết bị...",
+                    });
+                  } else {
+                    toast({
+                      title: "Chuyển sang chế độ REAL",
+                      description: "GPS sẽ tự động bật khi bạn nhấn 'Bắt đầu chuyến đi'",
+                    });
+                  }
                 }
               }}
               className="space-y-3"
@@ -1564,9 +1954,9 @@ export default function TripDetailPage() {
                 <RadioGroupItem value="demo" id="demo" />
                 <Label htmlFor="demo" className="cursor-pointer flex-1">
                   <div className="flex flex-col">
-                    <span className="font-medium">DEMO - Script mô phỏng (server)</span>
+                    <span className="font-medium">DEMO - GPS Simulator (tích hợp)</span>
                     <span className="text-sm text-muted-foreground">
-                      Vị trí được gửi từ script backend (npm run ws:demo)
+                      Xe tự động di chuyển theo polyline, dừng tại mỗi điểm dừng
                     </span>
                   </div>
                 </Label>
@@ -1584,13 +1974,95 @@ export default function TripDetailPage() {
               </div>
             </RadioGroup>
             {locationSource === "demo" && (
-              <div className="mt-4 p-3 bg-muted rounded-lg">
-                <p className="text-sm text-muted-foreground">
-                  💡 <strong>Hướng dẫn:</strong> Chạy script demo từ backend:
-                </p>
-                <code className="block mt-2 p-2 bg-background rounded text-xs">
-                  npm run ws:demo -- --tripId={effectiveTripId || 16}
-                </code>
+              <div className="mt-4 space-y-3">
+                {/* Speed Control for DEMO mode */}
+                <div className="p-3 bg-muted/50 rounded-lg border border-border/50">
+                  <div className="flex items-center justify-between mb-2">
+                    <Label htmlFor="demo-speed" className="text-sm font-medium flex items-center gap-2">
+                      <Gauge className="w-4 h-4" />
+                      Tốc độ mô phỏng (km/h)
+                    </Label>
+                    <span className="text-sm font-mono text-muted-foreground">
+                      {demoSpeed} km/h
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Input
+                      id="demo-speed"
+                      type="number"
+                      min={10}
+                      max={120}
+                      step={5}
+                      value={demoSpeed}
+                      onChange={(e) => {
+                        const newSpeed = Math.max(10, Math.min(120, parseInt(e.target.value) || 40));
+                        setDemoSpeed(newSpeed);
+                        if (simulatorRunning) {
+                          // Update speed and restart simulation
+                          updateSimulatorSpeed(newSpeed);
+                          // Restart simulation with new speed
+                          stopSimulator();
+                          setTimeout(() => {
+                            startSimulator().catch((err) => {
+                              console.error("[Driver Trip] Failed to restart simulator:", err);
+                              toast({
+                                title: "Lỗi cập nhật tốc độ",
+                                description: err?.message || "Không thể cập nhật tốc độ",
+                                variant: "destructive",
+                              });
+                            });
+                          }, 200);
+                        }
+                      }}
+                      className="flex-1"
+                      disabled={!simulatorRunning && tripStatus !== "dang_chay"}
+                    />
+                    <div className="text-xs text-muted-foreground whitespace-nowrap">
+                      (10-120)
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    {simulatorRunning 
+                      ? "Thay đổi tốc độ sẽ khởi động lại simulation"
+                      : "Điều chỉnh tốc độ trước khi bắt đầu chuyến đi"}
+                  </p>
+                </div>
+
+                {simulatorError && (
+                  <div className="p-3 bg-red-50 dark:bg-red-950 rounded-lg">
+                    <p className="text-sm text-red-700 dark:text-red-300">
+                      ❌ <strong>Lỗi:</strong> {simulatorError}
+                    </p>
+                  </div>
+                )}
+                {simulatorRunning && !simulatorAtStop && (
+                  <div className="p-3 bg-green-50 dark:bg-green-950 rounded-lg">
+                    <p className="text-sm text-green-700 dark:text-green-300">
+                      ✅ <strong>DEMO Mode:</strong> Đang mô phỏng GPS - Xe đang di chuyển với tốc độ {simulatorCurrentSpeed || demoSpeed} km/h
+                    </p>
+                  </div>
+                )}
+                {simulatorRunning && simulatorAtStop && (
+                  <div className="p-3 bg-amber-50 dark:bg-amber-950 rounded-lg">
+                    <p className="text-sm text-amber-700 dark:text-amber-300">
+                      🚏 <strong>DEMO Mode:</strong> Đã đến điểm dừng - Đang đợi driver đón học sinh
+                    </p>
+                  </div>
+                )}
+                {!simulatorRunning && tripStatus === "dang_chay" && (
+                  <div className="p-3 bg-yellow-50 dark:bg-yellow-950 rounded-lg">
+                    <p className="text-sm text-yellow-700 dark:text-yellow-300">
+                      ⚠️ <strong>DEMO Mode:</strong> Simulator chưa được khởi động. Nhấn "Bắt đầu chuyến đi" để khởi động.
+                    </p>
+                  </div>
+                )}
+                {!simulatorRunning && tripStatus !== "dang_chay" && (
+                  <div className="p-3 bg-muted rounded-lg">
+                    <p className="text-sm text-muted-foreground">
+                      💡 <strong>DEMO Mode:</strong> Simulator sẽ tự động khởi động khi bạn nhấn "Bắt đầu chuyến đi"
+                    </p>
+                  </div>
+                )}
               </div>
             )}
             {locationSource === "real" && gpsRunning && (
@@ -1814,7 +2286,8 @@ export default function TripDetailPage() {
                         polyline={dynamicDirections || routePolyline}
                         height="640px"
                         center={busLocation}
-                        zoom={13}
+                        zoom={mapZoom}
+                        followFirstMarker={tripStatus === "dang_chay"}
                         buses={[
                           {
                             id:
@@ -1860,7 +2333,6 @@ export default function TripDetailPage() {
                           return mappedStops;
                         })()}
                         autoFitOnUpdate={false}
-                        followFirstMarker={true}
                       />
                     </div>
                     {/* Removed route hints to bring students list closer */}
@@ -1869,16 +2341,35 @@ export default function TripDetailPage() {
 
                 {/* 🔥 Students List với nút hành động rõ ràng */}
                 <div className="space-y-3">
-                  <h4 className="font-medium text-foreground">
-                    Danh sách học sinh ({currentStop.students.length})
-                  </h4>
-                  {currentStop.students.length === 0 ? (
-                    <Card className="border-border/50">
-                      <CardContent className="p-4 text-center text-muted-foreground">
-                        Không có học sinh tại điểm dừng này
+                  {/* 🔥 Hiển thị message đặc biệt cho điểm cuối của chuyến đi */}
+                  {isCurrentLastStop && tripType === "don_sang" ? (
+                    <Card className="border-border/50 bg-blue-50 dark:bg-blue-950">
+                      <CardContent className="p-4 text-center">
+                        <p className="font-medium text-blue-700 dark:text-blue-300 mb-2">
+                          🏫 Đã đến trường
+                        </p>
+                        <p className="text-sm text-blue-600 dark:text-blue-400">
+                          Điểm cuối là trường học. Không có học sinh để đón tại đây.
+                          Nhấn "Đến điểm cuối" để hoàn thành chuyến đi.
+                        </p>
                       </CardContent>
                     </Card>
                   ) : (
+                    <>
+                      <h4 className="font-medium text-foreground">
+                        {tripType === "tra_chieu" 
+                          ? `Học sinh trên xe cần trả (${currentStop.students.filter((s: any) => s.status === "picked").length})`
+                          : `Danh sách học sinh (${currentStop.students.length})`}
+                      </h4>
+                      {currentStop.students.length === 0 ? (
+                        <Card className="border-border/50">
+                          <CardContent className="p-4 text-center text-muted-foreground">
+                            {tripType === "tra_chieu" 
+                              ? "Không có học sinh cần trả tại điểm dừng này"
+                              : "Không có học sinh tại điểm dừng này"}
+                          </CardContent>
+                        </Card>
+                      ) : (
                     currentStop.students.map((student) => (
                       <Card key={student.id} className="border-border/50">
                         <CardContent className="p-4">
@@ -1928,7 +2419,20 @@ export default function TripDetailPage() {
                               >
                                 <Phone className="w-4 h-4" />
                               </Button>
-                              {student.status === "pending" && (
+                              {/* 🔥 Chuyến về: Hiển thị button "Trả học sinh" cho học sinh đã lên xe */}
+                              {tripType === "tra_chieu" && student.status === "picked" && (
+                                <Button
+                                  variant="default"
+                                  size="sm"
+                                  onClick={() => handleStudentCheckout(student.id)}
+                                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                                >
+                                  <CheckCircle className="w-4 h-4 mr-1" />
+                                  Trả học sinh
+                                </Button>
+                              )}
+                              {/* Chuyến đi: Hiển thị button "Đã đón" và "Vắng" cho học sinh chờ đón */}
+                              {tripType === "don_sang" && student.status === "pending" && (
                                 <>
                                   <Button
                                     variant="default"
@@ -1955,6 +2459,8 @@ export default function TripDetailPage() {
                         </CardContent>
                       </Card>
                     ))
+                      )}
+                    </>
                   )}
                 </div>
 
@@ -2059,6 +2565,20 @@ export default function TripDetailPage() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Speed Control - Only show in DEMO mode */}
+            {locationSource === "demo" && (
+              <SpeedControlCard
+                currentSpeed={simulatorCurrentSpeed || demoSpeed}
+                onSpeedChange={(newSpeed) => {
+                  setDemoSpeed(newSpeed);
+                  updateSimulatorSpeed(newSpeed);
+                }}
+                min={10}
+                max={120}
+                disabled={!simulatorRunning}
+              />
+            )}
 
             {/* Quick Stats */}
             <Card className="border-border/50">

@@ -5,6 +5,9 @@ import TuyenDuongModel from "../models/TuyenDuongModel.js";
 import LichTrinhModel from "../models/LichTrinhModel.js";
 import MapsService from "../services/MapsService.js";
 import StopSuggestionService from "../services/StopSuggestionService.js";
+import HocSinhModel from "../models/HocSinhModel.js";
+import GeoUtils from "../utils/GeoUtils.js";
+import pool from "../config/db.js";
 import * as response from "../utils/response.js";
 
 class RouteController {
@@ -1164,6 +1167,252 @@ class RouteController {
     } catch (error) {
       console.error("Error in RouteController.getStopSuggestions:", error);
       return response.serverError(res, "Lỗi server khi lấy gợi ý điểm dừng", error);
+    }
+  }
+
+  // Tìm học sinh trong bán kính từ một điểm (dùng khi thêm điểm dừng thủ công)
+  static async findStudentsNearby(req, res) {
+    try {
+      const { lat, lng, radiusMeters = 500 } = req.query;
+
+      if (!lat || !lng) {
+        return response.validationError(res, "Tọa độ là bắt buộc", [
+          { field: "lat", message: "Vĩ độ không được để trống" },
+          { field: "lng", message: "Kinh độ không được để trống" },
+        ]);
+      }
+
+      const centerLat = parseFloat(lat);
+      const centerLng = parseFloat(lng);
+      const radiusKm = parseFloat(radiusMeters) / 1000; // Convert meters to km
+
+      if (isNaN(centerLat) || isNaN(centerLng) || isNaN(radiusKm)) {
+        return response.validationError(res, "Tọa độ và bán kính không hợp lệ", [
+          { field: "lat", message: "Vĩ độ phải là số" },
+          { field: "lng", message: "Kinh độ phải là số" },
+          { field: "radiusMeters", message: "Bán kính phải là số" },
+        ]);
+      }
+
+      // Lấy tất cả học sinh có tọa độ
+      const allStudents = await HocSinhModel.getAll();
+      
+      // Filter học sinh có tọa độ hợp lệ và trong bán kính
+      const nearbyStudents = allStudents
+        .filter((student) => {
+          if (!student.viDo || !student.kinhDo) return false;
+          
+          const studentLat = parseFloat(student.viDo);
+          const studentLng = parseFloat(student.kinhDo);
+          
+          if (isNaN(studentLat) || isNaN(studentLng)) return false;
+          
+          // Tính khoảng cách
+          const distance = GeoUtils.distanceBetweenPoints(
+            centerLat,
+            centerLng,
+            studentLat,
+            studentLng
+          );
+          
+          return distance <= radiusKm;
+        })
+        .map((student) => {
+          const studentLat = parseFloat(student.viDo);
+          const studentLng = parseFloat(student.kinhDo);
+          const distance = GeoUtils.distanceBetweenPoints(
+            centerLat,
+            centerLng,
+            studentLat,
+            studentLng
+          );
+          
+          return {
+            maHocSinh: student.maHocSinh,
+            hoTen: student.hoTen,
+            lop: student.lop,
+            diaChi: student.diaChi,
+            viDo: studentLat,
+            kinhDo: studentLng,
+            distanceMeters: Math.round(distance * 1000), // Convert to meters
+            distanceKm: parseFloat(distance.toFixed(2)),
+          };
+        })
+        .sort((a, b) => a.distanceMeters - b.distanceMeters); // Sắp xếp theo khoảng cách
+
+      return response.ok(res, {
+        center: {
+          lat: centerLat,
+          lng: centerLng,
+        },
+        radiusMeters: parseFloat(radiusMeters),
+        radiusKm: radiusKm,
+        students: nearbyStudents,
+        count: nearbyStudents.length,
+      });
+    } catch (error) {
+      console.error("Error in RouteController.findStudentsNearby:", error);
+      return response.serverError(res, "Lỗi server khi tìm học sinh gần đây", error);
+    }
+  }
+
+  // Thêm học sinh vào điểm dừng (student_stop_suggestions)
+  static async addStudentToStop(req, res) {
+    try {
+      const { id, stopId } = req.params; // route ID và stop ID
+      const { student_id } = req.body;
+
+      if (!id) {
+        return response.validationError(res, "Mã tuyến đường là bắt buộc", [
+          { field: "id", message: "Mã tuyến đường không được để trống" },
+        ]);
+      }
+
+      if (!stopId || !student_id) {
+        return response.validationError(res, "Thiếu thông tin", [
+          { field: "stopId", message: "Mã điểm dừng là bắt buộc" },
+          { field: "student_id", message: "Mã học sinh là bắt buộc" },
+        ]);
+      }
+
+      // Kiểm tra route tồn tại
+      const route = await TuyenDuongModel.getById(id);
+      if (!route) {
+        return response.notFound(res, "Không tìm thấy tuyến đường");
+      }
+
+      // Kiểm tra stop có trong route không
+      const RouteStopModel = (await import("../models/RouteStopModel.js")).default;
+      const routeStops = await RouteStopModel.getByRouteId(id);
+      const stopInRoute = routeStops.find((rs) => rs.maDiem === parseInt(stopId));
+      
+      if (!stopInRoute) {
+        return response.validationError(res, "Điểm dừng không thuộc tuyến đường này", [
+          { field: "stopId", message: "Điểm dừng không tồn tại trong tuyến đường" },
+        ]);
+      }
+
+      // Kiểm tra học sinh tồn tại
+      const student = await HocSinhModel.getById(student_id);
+      if (!student) {
+        return response.notFound(res, "Không tìm thấy học sinh");
+      }
+
+      // Thêm vào student_stop_suggestions
+      const StudentStopSuggestionModel = (await import("../models/StudentStopSuggestionModel.js")).default;
+      await StudentStopSuggestionModel.bulkCreate([
+        {
+          maTuyen: parseInt(id),
+          maDiemDung: parseInt(stopId),
+          maHocSinh: parseInt(student_id),
+        },
+      ]);
+
+      return response.ok(res, {
+        message: "Đã thêm học sinh vào điểm dừng",
+        routeId: parseInt(id),
+        stopId: parseInt(stopId),
+        studentId: parseInt(student_id),
+      });
+    } catch (error) {
+      console.error("Error in RouteController.addStudentToStop:", error);
+      return response.serverError(res, "Lỗi server khi thêm học sinh vào điểm dừng", error);
+    }
+  }
+
+  // Xóa học sinh khỏi điểm dừng
+  static async removeStudentFromStop(req, res) {
+    try {
+      const { id, stopId, studentId } = req.params; // route ID, stop ID, student ID
+
+      if (!id || !stopId || !studentId) {
+        return response.validationError(res, "Thiếu thông tin", [
+          { field: "id", message: "Mã tuyến đường là bắt buộc" },
+          { field: "stopId", message: "Mã điểm dừng là bắt buộc" },
+          { field: "studentId", message: "Mã học sinh là bắt buộc" },
+        ]);
+      }
+
+      // Xóa suggestion
+      const [result] = await pool.query(
+        `DELETE FROM student_stop_suggestions 
+         WHERE maTuyen = ? AND maDiemDung = ? AND maHocSinh = ?`,
+        [id, stopId, studentId]
+      );
+
+      if (result.affectedRows === 0) {
+        return response.notFound(res, "Không tìm thấy gợi ý học sinh - điểm dừng");
+      }
+
+      return response.ok(res, {
+        message: "Đã xóa học sinh khỏi điểm dừng",
+        routeId: parseInt(id),
+        stopId: parseInt(stopId),
+        studentId: parseInt(studentId),
+      });
+    } catch (error) {
+      console.error("Error in RouteController.removeStudentFromStop:", error);
+      return response.serverError(res, "Lỗi server khi xóa học sinh khỏi điểm dừng", error);
+    }
+  }
+
+  // Bulk thêm nhiều học sinh vào điểm dừng
+  static async bulkAddStudentsToStop(req, res) {
+    try {
+      const { id } = req.params; // route ID
+      const { stop_id, student_ids } = req.body;
+
+      if (!id) {
+        return response.validationError(res, "Mã tuyến đường là bắt buộc", [
+          { field: "id", message: "Mã tuyến đường không được để trống" },
+        ]);
+      }
+
+      if (!stop_id || !student_ids || !Array.isArray(student_ids) || student_ids.length === 0) {
+        return response.validationError(res, "Thiếu thông tin", [
+          { field: "stop_id", message: "Mã điểm dừng là bắt buộc" },
+          { field: "student_ids", message: "Danh sách học sinh là bắt buộc và phải là mảng" },
+        ]);
+      }
+
+      // Kiểm tra route tồn tại
+      const route = await TuyenDuongModel.getById(id);
+      if (!route) {
+        return response.notFound(res, "Không tìm thấy tuyến đường");
+      }
+
+      // Kiểm tra stop có trong route không
+      const RouteStopModel = (await import("../models/RouteStopModel.js")).default;
+      const routeStops = await RouteStopModel.getByRouteId(id);
+      const stopInRoute = routeStops.find((rs) => rs.maDiem === parseInt(stop_id));
+      
+      if (!stopInRoute) {
+        return response.validationError(res, "Điểm dừng không thuộc tuyến đường này", [
+          { field: "stop_id", message: "Điểm dừng không tồn tại trong tuyến đường" },
+        ]);
+      }
+
+      // Tạo suggestions
+      const suggestions = student_ids.map((studentId) => ({
+        maTuyen: parseInt(id),
+        maDiemDung: parseInt(stop_id),
+        maHocSinh: parseInt(studentId),
+      }));
+
+      // Lưu vào database
+      const StudentStopSuggestionModel = (await import("../models/StudentStopSuggestionModel.js")).default;
+      const affectedRows = await StudentStopSuggestionModel.bulkCreate(suggestions);
+
+      return response.ok(res, {
+        message: `Đã thêm ${affectedRows} học sinh vào điểm dừng`,
+        routeId: parseInt(id),
+        stopId: parseInt(stop_id),
+        addedCount: affectedRows,
+        totalRequested: student_ids.length,
+      });
+    } catch (error) {
+      console.error("Error in RouteController.bulkAddStudentsToStop:", error);
+      return response.serverError(res, "Lỗi server khi thêm học sinh vào điểm dừng", error);
     }
   }
 }
