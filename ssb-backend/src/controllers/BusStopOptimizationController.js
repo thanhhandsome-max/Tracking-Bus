@@ -211,18 +211,127 @@ class BusStopOptimizationController {
         max_distance_from_school: max_distance_from_school,
       });
 
+      // Tạo routes trong DB với polyline
+      console.log(`[BusStopOptimization] Creating routes in database...`);
+      const depot = {
+        lat: school_location.lat,
+        lng: school_location.lng,
+        name: school_location.name || "Đại học Sài Gòn",
+      };
+
+      // Format vrpResult để tương thích với RouteFromOptimizationService
+      const vrpResult = {
+        routes: clusteringResult.tier2.routes,
+        stats: clusteringResult.tier2.stats,
+      };
+
+      // Tạo routes trong DB
+      const routesResult = await RouteFromOptimizationService.createRoutesFromVRP({
+        vrpResult: vrpResult,
+        depot: depot,
+        capacity: c_bus,
+        routeNamePrefix: "Tuyến Tối Ưu",
+        createReturnRoutes: false, // Chỉ tạo tuyến đi (don_sang)
+      });
+
+      console.log(`[BusStopOptimization] ✅ Created ${routesResult.routes.length} routes in database`);
+
+      // Lấy polyline từ DB cho tất cả routes
+      const TuyenDuongModel = (await import("../models/TuyenDuongModel.js")).default;
+      const routePolylines = await Promise.all(
+        routesResult.routes.map(async (dbRoute) => {
+          try {
+            const route = await TuyenDuongModel.getById(dbRoute.maTuyen);
+            return { maTuyen: dbRoute.maTuyen, polyline: route?.polyline || null };
+          } catch (error) {
+            console.warn(`[BusStopOptimization] ⚠️ Could not fetch polyline for route ${dbRoute.maTuyen}:`, error.message);
+            return { maTuyen: dbRoute.maTuyen, polyline: null };
+          }
+        })
+      );
+      const polylineMap = new Map(routePolylines.map(r => [r.maTuyen, r.polyline]));
+      console.log(`[BusStopOptimization] ✅ Fetched polylines for ${routePolylines.filter(r => r.polyline).length}/${routesResult.routes.length} routes`);
+
+      // Format routes để tương thích với frontend
+      // Frontend expect: { routeId, nodes, totalDemand, stopCount, estimatedDistance, polyline }
+      console.log(`[BusStopOptimization] Formatting routes: ${routesResult.routes.length} DB routes, ${clusteringResult.tier2.routes.length} clustering routes`);
+      
+      const formattedRoutes = routesResult.routes.map((dbRoute, idx) => {
+        // Lấy thông tin từ clustering result (có đầy đủ nodes với viDo, kinhDo, etc.)
+        const originalRoute = clusteringResult.tier2.routes[idx];
+        
+        const routePolyline = polylineMap.get(dbRoute.maTuyen);
+        
+        if (!originalRoute) {
+          console.warn(`[BusStopOptimization] ⚠️ No original route found for index ${idx}, using DB route only`);
+          return {
+            routeId: dbRoute.maTuyen,
+            nodes: [],
+            totalDemand: dbRoute.totalDemand || 0,
+            stopCount: dbRoute.stopCount || 0,
+            estimatedDistance: 0,
+            maTuyen: dbRoute.maTuyen,
+            tenTuyen: dbRoute.tenTuyen,
+            polyline: routePolyline || null, // Polyline từ DB
+          };
+        }
+
+        return {
+          routeId: dbRoute.maTuyen,
+          nodes: originalRoute.nodes || [],
+          totalDemand: dbRoute.totalDemand || originalRoute.totalDemand || 0,
+          stopCount: dbRoute.stopCount || originalRoute.stopCount || 0,
+          estimatedDistance: originalRoute.estimatedDistance || 0,
+          maTuyen: dbRoute.maTuyen,
+          tenTuyen: dbRoute.tenTuyen,
+          polyline: routePolyline || null, // Polyline từ DB (depot → stops → depot)
+        };
+      });
+
+      console.log(`[BusStopOptimization] ✅ Formatted ${formattedRoutes.length} routes for frontend`);
+      console.log(`[BusStopOptimization] Sample route:`, formattedRoutes[0] ? {
+        routeId: formattedRoutes[0].routeId,
+        nodesCount: formattedRoutes[0].nodes?.length || 0,
+        totalDemand: formattedRoutes[0].totalDemand,
+        stopCount: formattedRoutes[0].stopCount,
+      } : 'No routes');
+
+      // Đảm bảo formattedRoutes không rỗng
+      if (formattedRoutes.length === 0) {
+        console.error(`[BusStopOptimization] ⚠️ No formatted routes! Using clustering routes as fallback`);
+        // Fallback: dùng routes từ clustering result nếu formattedRoutes rỗng
+        formattedRoutes.push(...clusteringResult.tier2.routes.map((route, idx) => ({
+          routeId: routesResult.routes[idx]?.maTuyen || route.routeId || (idx + 1),
+          nodes: route.nodes || [],
+          totalDemand: route.totalDemand || 0,
+          stopCount: route.stopCount || 0,
+          estimatedDistance: route.estimatedDistance || 0,
+        })));
+      }
+
       // Format response để tương thích với frontend
       const result = {
         tier1: clusteringResult.tier1,
-        tier2: clusteringResult.tier2,
+        tier2: {
+          ...clusteringResult.tier2,
+          routes: formattedRoutes, // Routes đã format với routeId và nodes
+          stats: {
+            ...clusteringResult.tier2.stats,
+            totalRoutes: formattedRoutes.length, // Đảm bảo totalRoutes khớp với số routes thực tế
+          },
+        },
         summary: {
           totalStops: clusteringResult.tier1.stats.totalStops,
           totalStudents: clusteringResult.tier1.stats.assignedStudents,
-          totalRoutes: clusteringResult.tier2.stats.totalRoutes,
+          totalRoutes: formattedRoutes.length, // Dùng số routes đã format
           averageStudentsPerStop: clusteringResult.tier1.stats.averageStudentsPerStop,
-          averageStopsPerRoute: clusteringResult.tier2.stats.averageStopsPerRoute,
+          averageStopsPerRoute: formattedRoutes.length > 0 
+            ? (formattedRoutes.reduce((sum, r) => sum + (r.stopCount || 0), 0) / formattedRoutes.length).toFixed(2)
+            : clusteringResult.tier2.stats.averageStopsPerRoute,
         },
       };
+
+      console.log(`[BusStopOptimization] ✅ Final result: ${result.tier2.routes.length} routes, ${result.summary.totalRoutes} total routes`);
 
       res.status(200).json({
         success: true,

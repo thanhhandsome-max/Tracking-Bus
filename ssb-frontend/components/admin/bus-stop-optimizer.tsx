@@ -76,6 +76,7 @@ interface VRPResult {
     totalDemand: number;
     stopCount: number;
     estimatedDistance: number;
+    polyline?: string | null; // Polyline từ DB (depot → stops → depot)
   }>;
   stats: {
     totalStops: number;
@@ -141,74 +142,104 @@ export function BusStopOptimizer() {
     loadStats();
   }, []);
 
-  // Tự động fetch polyline cho tất cả các tuyến khi tier2Result được set
+  // Tự động tạo polyline array từ routes khi tier2Result được set
   useEffect(() => {
-    const fetchAllRoutePolylines = async () => {
+    const prepareRoutePolylines = () => {
       const vrpResult = tier2Result || fullResult?.tier2;
       if (!vrpResult || !vrpResult.routes || vrpResult.routes.length === 0) {
         setAllRoutePolylines([]);
         return;
       }
 
-      setIsLoadingAllPolylines(true);
       const COLORS = ["#EF4444", "#3B82F6", "#10B981", "#F97316", "#8B5CF6", "#EC4899", "#14B8A6", "#F59E0B"];
       
-      try {
-        const polylinePromises = vrpResult.routes.map(async (route, index) => {
-          const nodes = route.nodes;
-          if (nodes.length === 0) {
-            return null;
+      // Ưu tiên dùng polyline từ response (đã có từ DB)
+      const polylinesFromResponse = vrpResult.routes
+        .map((route: any, index: number) => {
+          if (route.polyline && typeof route.polyline === "string" && route.polyline.trim().length > 0) {
+            console.log(`[BusStopOptimizer] ✅ Using polyline from response for route ${route.routeId} (${route.polyline.length} chars)`);
+            return {
+              routeId: route.routeId,
+              routeName: `Tuyến ${route.routeId}`,
+              polyline: route.polyline,
+              color: COLORS[index % COLORS.length],
+            };
           }
+          return null;
+        })
+        .filter((r): r is NonNullable<typeof r> => r !== null);
 
-          try {
-            // Origin = điểm dừng đầu tiên
-            const origin = `${nodes[0].viDo},${nodes[0].kinhDo}`;
-            // Destination = trường học (depot)
-            const destination = `${params.school_location.lat},${params.school_location.lng}`;
-            // Waypoints = các điểm dừng còn lại
-            const waypoints = nodes.slice(1).map((node) => ({
-              location: `${node.viDo},${node.kinhDo}`,
-            }));
-
-            const response = await apiClient.getDirections({
-              origin,
-              destination,
-              waypoints: waypoints.length > 0 ? waypoints : undefined,
-              mode: "driving",
-              vehicleType: "bus",
-            });
-
-            if (response.success && response.data) {
-              const polyline = (response.data as any).polyline;
-              if (polyline && typeof polyline === "string") {
-                return {
-                  routeId: route.routeId,
-                  routeName: `Tuyến ${route.routeId}`,
-                  polyline: polyline,
-                  color: COLORS[index % COLORS.length],
-                };
-              }
-            }
-            return null;
-          } catch (error) {
-            console.error(`[BusStopOptimizer] Error fetching polyline for route ${route.routeId}:`, error);
-            return null;
-          }
-        });
-
-        const results = await Promise.all(polylinePromises);
-        const validPolylines = results.filter((r): r is NonNullable<typeof r> => r !== null);
-        setAllRoutePolylines(validPolylines);
-        console.log(`[BusStopOptimizer] Fetched ${validPolylines.length} route polylines`);
-      } catch (error) {
-        console.error("[BusStopOptimizer] Error fetching all route polylines:", error);
-        setAllRoutePolylines([]);
-      } finally {
-        setIsLoadingAllPolylines(false);
+      if (polylinesFromResponse.length > 0) {
+        console.log(`[BusStopOptimizer] ✅ Using ${polylinesFromResponse.length} polylines from response`);
+        setAllRoutePolylines(polylinesFromResponse);
+        return;
       }
+
+      // Fallback: Tự fetch polyline nếu không có trong response
+      console.log(`[BusStopOptimizer] ⚠️ No polylines in response, fetching from API...`);
+      setIsLoadingAllPolylines(true);
+      
+      const fetchPolylines = async () => {
+        try {
+          const polylinePromises = vrpResult.routes.map(async (route: any, index: number) => {
+            const nodes = route.nodes;
+            if (nodes.length === 0) {
+              return null;
+            }
+
+            try {
+              // Origin = depot (trường học)
+              const origin = `${params.school_location.lat},${params.school_location.lng}`;
+              // Destination = điểm dừng cuối cùng
+              const lastNode = nodes[nodes.length - 1];
+              const destination = `${lastNode.viDo},${lastNode.kinhDo}`;
+              // Waypoints = các điểm dừng trừ điểm cuối
+              const waypoints = nodes.slice(0, -1).map((node: any) => ({
+                location: `${node.viDo},${node.kinhDo}`,
+              }));
+
+              const response = await apiClient.getDirections({
+                origin,
+                destination,
+                waypoints: waypoints.length > 0 ? waypoints : undefined,
+                mode: "driving",
+                vehicleType: "bus",
+              });
+
+              if (response.success && response.data) {
+                const polyline = (response.data as any).polyline;
+                if (polyline && typeof polyline === "string") {
+                  return {
+                    routeId: route.routeId,
+                    routeName: `Tuyến ${route.routeId}`,
+                    polyline: polyline,
+                    color: COLORS[index % COLORS.length],
+                  };
+                }
+              }
+              return null;
+            } catch (error) {
+              console.error(`[BusStopOptimizer] Error fetching polyline for route ${route.routeId}:`, error);
+              return null;
+            }
+          });
+
+          const results = await Promise.all(polylinePromises);
+          const validPolylines = results.filter((r): r is NonNullable<typeof r> => r !== null);
+          setAllRoutePolylines(validPolylines);
+          console.log(`[BusStopOptimizer] Fetched ${validPolylines.length} route polylines from API`);
+        } catch (error) {
+          console.error("[BusStopOptimizer] Error fetching all route polylines:", error);
+          setAllRoutePolylines([]);
+        } finally {
+          setIsLoadingAllPolylines(false);
+        }
+      };
+
+      fetchPolylines();
     };
 
-    fetchAllRoutePolylines();
+    prepareRoutePolylines();
   }, [tier2Result, fullResult?.tier2, params.school_location]);
 
   const loadStats = async () => {
@@ -907,7 +938,7 @@ export function BusStopOptimizer() {
                                 }))
                             : undefined
                         }
-                        disableDirections={true}
+                        disableDirections={false}
                         height="100%"
                       />
                       {isLoadingAllPolylines && (
@@ -1090,7 +1121,7 @@ export function BusStopOptimizer() {
                                 }))
                             : undefined
                         }
-                        disableDirections={true}
+                        disableDirections={false}
                         height="100%"
                       />
                       {isLoadingAllPolylines && (
