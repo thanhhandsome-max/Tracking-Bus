@@ -9,7 +9,13 @@ import { Server } from "socket.io";
 import cors from "cors";
 import dotenv from "dotenv";
 import os from "os";
+import path from "path";
+import { fileURLToPath } from "url";
+import { dirname } from "path";
 import { verifyWsJWT } from "./middlewares/socketAuth.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 import config from "./config/env.js";
 import {
@@ -102,6 +108,11 @@ app.use(compression());
 // Body parsing middleware (express.json) - should be before routes
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+
+// Static file serving for images
+const imagesPath = path.join(__dirname, "..", "images");
+app.use("/images", express.static(imagesPath));
+console.log(`[Server] Serving static images from: ${imagesPath}`);
 
 // Health check endpoint
 app.get(`${API_PREFIX}/health`, (_req, res) => {
