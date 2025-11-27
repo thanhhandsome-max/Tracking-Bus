@@ -968,7 +968,8 @@ export default function TripDetailPage() {
         });
 
         // 🔥 Chuyến về: tất cả học sinh đã ở trên xe ngay từ đầu -> chuyển pending -> picked
-        const tripTypeValue = data?.schedule?.loaiChuyen || data?.loaiChuyen || null;
+        const tripTypeValue =
+          data?.schedule?.loaiChuyen || data?.loaiChuyen || null;
         if (tripTypeValue === "tra_chieu") {
           mappedStops = mappedStops.map((stop: any) => ({
             ...stop,
@@ -1013,9 +1014,6 @@ export default function TripDetailPage() {
         const currentStopSequence =
           mappedStops[currentStopIndex]?.sequence || currentStopIndex + 1;
         const isLastStopValue = currentStopSequence === maxSequence;
-
-        // Lấy tripType từ schedule (already declared at line 971)
-        // Reuse tripTypeValue from line 971
 
         setIsLastStop(isLastStopValue);
         setTripType(tripTypeValue as "don_sang" | "tra_chieu" | null);
@@ -1994,24 +1992,37 @@ export default function TripDetailPage() {
       if (!evtTripId || Number(evtTripId) !== effectiveTripId) return;
       const studentId = String(data?.studentId || data?.student_id);
       const newStatusRaw = data?.status;
-      const mappedStatus = newStatusRaw === "onboard" ? "picked" : newStatusRaw === "dropped" ? "dropped" : undefined;
+      const mappedStatus =
+        newStatusRaw === "onboard"
+          ? "picked"
+          : newStatusRaw === "dropped"
+          ? "dropped"
+          : undefined;
       if (!mappedStatus) return;
-      setTrip(prev => ({
+      setTrip((prev) => ({
         ...prev,
-        stops: prev.stops.map(stop => ({
+        stops: prev.stops.map((stop) => ({
           ...stop,
-          students: stop.students.map(st => st.id === studentId ? { ...st, status: mappedStatus } : st)
-        }))
+          students: stop.students.map((st) =>
+            st.id === studentId ? { ...st, status: mappedStatus } : st
+          ),
+        })),
       }));
       if (mappedStatus === "dropped") {
         toast({
           title: "✅ Đã trả học sinh",
-          description: data?.studentName ? `${data.studentName} đã xuống xe an toàn` : "Học sinh đã xuống xe",
+          description: data?.studentName
+            ? `${data.studentName} đã xuống xe an toàn`
+            : "Học sinh đã xuống xe",
         });
       }
     };
     window.addEventListener("pickupStatusUpdate", handler as EventListener);
-    return () => window.removeEventListener("pickupStatusUpdate", handler as EventListener);
+    return () =>
+      window.removeEventListener(
+        "pickupStatusUpdate",
+        handler as EventListener
+      );
   }, [effectiveTripId, toast]);
 
   // P1 Fix: Cancel Trip handler
@@ -2856,7 +2867,10 @@ export default function TripDetailPage() {
                                         </Badge>
                                       )}
                                       {student.status === "dropped" && (
-                                        <Badge variant="outline" className="bg-blue-600/10 text-blue-700 dark:text-blue-300 border-blue-600/30">
+                                        <Badge
+                                          variant="outline"
+                                          className="bg-blue-600/10 text-blue-700 dark:text-blue-300 border-blue-600/30"
+                                        >
                                           <CheckCircle className="w-3 h-3 mr-1" />
                                           Đã trả
                                         </Badge>
@@ -2874,21 +2888,22 @@ export default function TripDetailPage() {
                                     <Phone className="w-4 h-4" />
                                   </Button>
                                   {/* 🔥 Chuyến về: Nút "Trả học sinh" luôn hiển thị; disable nếu học sinh chưa ở trên xe */}
-                                  {tripType === "tra_chieu" && student.status !== "dropped" && (
-                                    <Button
-                                      variant="default"
-                                      size="sm"
-                                      onClick={() => {
-                                        // Cho phép trả trực tiếp (đã convert pending -> picked khi load)
-                                        handleStudentCheckout(student.id);
-                                      }}
-                                      title="Xác nhận đã trả học sinh"
-                                      className="text-white bg-blue-600 hover:bg-blue-700"
-                                    >
-                                      <CheckCircle className="w-4 h-4 mr-1" />
-                                      Trả học sinh
-                                    </Button>
-                                  )}
+                                  {tripType === "tra_chieu" &&
+                                    student.status !== "dropped" && (
+                                      <Button
+                                        variant="default"
+                                        size="sm"
+                                        onClick={() => {
+                                          // Cho phép trả trực tiếp (đã convert pending -> picked khi load)
+                                          handleStudentCheckout(student.id);
+                                        }}
+                                        title="Xác nhận đã trả học sinh"
+                                        className="text-white bg-blue-600 hover:bg-blue-700"
+                                      >
+                                        <CheckCircle className="w-4 h-4 mr-1" />
+                                        Trả học sinh
+                                      </Button>
+                                    )}
                                   {/* Chuyến đi: Hiển thị button "Đã đón" và "Vắng" cho học sinh chờ đón */}
                                   {/* 🔥 CHỈ hiển thị khi: trip đang chạy + đã đến điểm dừng */}
                                   {tripType === "don_sang" &&

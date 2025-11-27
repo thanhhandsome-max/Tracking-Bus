@@ -97,8 +97,8 @@ export default function AdminDashboard() {
       try {
         setLoading(true)
         const params: any = {
-          from: format(dateFrom, "yyyy-MM-dd"),
-          to: format(dateTo, "yyyy-MM-dd"),
+          from: format(dateFrom!, "yyyy-MM-dd"),
+          to: format(dateTo!, "yyyy-MM-dd"),
         }
         if (routeId) params.routeId = parseInt(routeId)
         if (driverId) params.driverId = parseInt(driverId)
