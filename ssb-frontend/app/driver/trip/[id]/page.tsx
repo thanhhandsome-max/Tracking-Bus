@@ -2581,12 +2581,20 @@ export default function TripDetailPage() {
             waitingCount = trip.summary.waitingCount || 0;
           } else {
             // Fallback: Calculate from trip.stops
+            // 🔥 FIX: Count both "picked" and "dropped" as picked for display
             trip.stops.forEach((stop: any) => {
               stop.students?.forEach((student: any) => {
                 totalStudents++;
-                if (student.status === "picked") pickedCount++;
-                else if (student.status === "absent") absentCount++;
-                else waitingCount++;
+                if (
+                  student.status === "picked" ||
+                  student.status === "dropped"
+                ) {
+                  pickedCount++;
+                } else if (student.status === "absent") {
+                  absentCount++;
+                } else {
+                  waitingCount++;
+                }
               });
             });
           }
