@@ -572,26 +572,28 @@ class TelemetryService {
 
               if (parentIds.length > 0) {
                 const route = await TuyenDuongModel.getById(schedule.maTuyen);
+                const XeBuytModel = (await import("../models/XeBuytModel.js")).default;
+                const bus = await XeBuytModel.getById(schedule.maXe);
 
                 await ThongBaoModel.createMultiple({
                   danhSachNguoiNhan: parentIds,
-                  tieuDe: "🚏 Xe sắp đến!",
-                  noiDung: `🚏 XE SẮP ĐẾN!\n\n📍 Điểm dừng: ${
+                  tieuDe: "🚏 Xe sắp đến điểm dừng",
+                  noiDung: `🚏 XE GẦN TỚI ĐIỂM DỪNG!\n\n📍 Điểm dừng: ${
                     stop.tenDiem
-                  }\n📏 Cách: ${Math.round(distance)}m\n🚌 Tuyến: ${route?.tenTuyen || "N/A"}\n\n⏰ Con bạn sẽ được đón trong giây lát. Vui lòng chuẩn bị!`,
-                  loaiThongBao: "approach_stop",
+                  }\n📏 Còn cách: ${Math.round(distance)}m\n🚌 Xe: ${bus?.bienSoXe || "N/A"} - Tuyến: ${route?.tenTuyen || "N/A"}\n\n⏰ Con bạn sẽ được đón trong giây lát. Vui lòng chuẩn bị!`,
+                  loaiThongBao: "chuyen_di",
                 });
 
                 // Emit notification:new event to each parent
                 for (const parentId of parentIds) {
                   io.to(`user-${parentId}`).emit("notification:new", {
                     maNguoiNhan: parentId,
-                    tieuDe: "🚏 Xe đến gần điểm dừng",
-                    noiDung: `Xe buýt tuyến ${
-                      route?.tenTuyen || "N/A"
-                    } đang đến gần ${stop.tenDiem} (cách ${Math.round(
+                    tieuDe: "🚏 Xe gần tới điểm dừng",
+                    noiDung: `Xe buýt ${
+                      bus?.bienSoXe || "N/A"
+                    } gần tới ${stop.tenDiem}, còn cách ${Math.round(
                       distance
-                    )}m). Con bạn sẽ được đón trong giây lát.`,
+                    )}m. Con bạn sẽ được đón trong giây lát.`,
                     loaiThongBao: "chuyen_di",
                     tripId: tripId,
                     stopId: stop.maDiem,

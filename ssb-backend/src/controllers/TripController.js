@@ -143,22 +143,32 @@ class TripController {
       const sortDir = sortOrder.toLowerCase() === "asc" ? "ASC" : "DESC";
 
       // 🔥 FIX: Tự động tạo ChuyenDi từ LichTrinh nếu chưa có khi driver xem lịch trình hôm nay
+      console.log('🔍 [TripController.getTrips] Query params:', { ngayChay, maTaiXe, trangThai, page, pageSize });
+      
       if (ngayChay && maTaiXe) {
         try {
+          console.log('🔍 [Auto-create] Checking if need to auto-create trips for driver:', maTaiXe, 'date:', ngayChay);
+          
           const today = new Date();
           today.setHours(0, 0, 0, 0);
           const queryDate = new Date(ngayChay);
           queryDate.setHours(0, 0, 0, 0);
           
+          console.log('🔍 [Auto-create] Date comparison - today:', today.toISOString(), 'queryDate:', queryDate.toISOString());
+          
           // Chỉ tự động tạo nếu ngày query là hôm nay hoặc tương lai
           if (queryDate >= today) {
             // Lấy tất cả LichTrinh của driver cho ngày này
             const schedules = await LichTrinhModel.getByDriver(maTaiXe);
+            console.log('🔍 [Auto-create] Found schedules for driver:', schedules.length);
+            
             const schedulesForDate = schedules.filter(s => {
               const scheduleDate = new Date(s.ngayChay);
               scheduleDate.setHours(0, 0, 0, 0);
               return scheduleDate.getTime() === queryDate.getTime() && s.dangApDung;
             });
+            
+            console.log('🔍 [Auto-create] Schedules matching date:', schedulesForDate.length);
             
             // Tạo ChuyenDi cho mỗi LichTrinh chưa có ChuyenDi
             for (const schedule of schedulesForDate) {
@@ -185,6 +195,8 @@ class TripController {
           // Log lỗi nhưng không fail request
           console.error(`⚠️ [Auto-create] Lỗi khi tự động tạo ChuyenDi:`, autoCreateError.message);
         }
+      } else {
+        console.log('⚠️ [Auto-create] Skipping auto-create - missing params:', { hasNgayChay: !!ngayChay, hasMaTaiXe: !!maTaiXe });
       }
 
       // Dùng SQL-level filter
@@ -196,6 +208,8 @@ class TripController {
         maTaiXe,
         search, // Thêm search nếu cần
       };
+      
+      console.log('🔍 [TripController.getTrips] Querying with filters:', filters);
 
       // Use service if available, otherwise fallback to model
       let result;
@@ -275,6 +289,9 @@ class TripController {
         }
       }
 
+      console.log('✅ [TripController.getTrips] Final result - trips count:', result.data.length);
+      console.log('✅ [TripController.getTrips] Trip IDs:', result.data.map(t => t.maChuyen));
+      
       return response.ok(res, result.data, {
         page: pageNum,
         pageSize: limit,
@@ -285,7 +302,7 @@ class TripController {
         q: search || null,
       });
     } catch (error) {
-      console.error("Error in TripController.getAll:", error);
+      console.error("❌ [TripController.getTrips] Error:", error);
       return response.serverError(
         res,
         "Lỗi server khi lấy danh sách chuyến đi",

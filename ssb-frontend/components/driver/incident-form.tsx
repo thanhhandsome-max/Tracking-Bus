@@ -26,6 +26,7 @@ import {
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import apiClient from "@/lib/api"
 import { Checkbox } from "@/components/ui/checkbox"
+import { useAuth } from "@/lib/auth-context"
 
 interface IncidentFormProps {
   onClose: () => void
@@ -87,6 +88,12 @@ const quickTemplates = [
 ]
 
 export function IncidentForm({ onClose, tripId, currentLocation, gpsLastPoint }: IncidentFormProps) {
+  const { user } = useAuth()
+  
+  console.log('🚀 [IncidentForm] Component mounted/rendered')
+  console.log('🚀 [IncidentForm] Props:', { tripId, hasCurrentLocation: !!currentLocation, hasGpsLastPoint: !!gpsLastPoint })
+  console.log('🚀 [IncidentForm] User from auth:', user)
+  
   // 🔥 NEW: State for trip selection
   const [selectedTripId, setSelectedTripId] = useState<string | number | undefined>(tripId)
   const [availableTrips, setAvailableTrips] = useState<any[]>([])
@@ -308,20 +315,42 @@ export function IncidentForm({ onClose, tripId, currentLocation, gpsLastPoint }:
     }
   }, [])
 
-  // 🔥 NEW: Load danh sách chuyến đi nếu không có tripId
+  // 🔥 FIX: Load tất cả chuyến đi hôm nay (kể cả chưa bắt đầu) để báo cáo sự cố trước khi đi
+  // Truyền maTaiXe để backend tự động tạo ChuyenDi từ LichTrinh
   useEffect(() => {
-    if (!tripId) {
+    if (!tripId && user?.id) {
+      console.log('🔍 [IncidentForm] Starting to load trips...')
+      console.log('🔍 [IncidentForm] User ID:', user.id)
+      console.log('🔍 [IncidentForm] User object:', user)
+      
       setLoadingTrips(true)
-      apiClient.getTrips({ page: 1, limit: 50, trangThai: 'dang_chay' })
+      const today = new Date().toISOString().split('T')[0]
+      const params = { 
+        page: 1, 
+        limit: 50, 
+        ngayChay: today,
+        maTaiXe: Number(user.id)
+      }
+      
+      console.log('🔍 [IncidentForm] API params:', params)
+      
+      apiClient.getTrips(params)
         .then((res: any) => {
-          const trips = res?.data?.trips || []
+          console.log('✅ [IncidentForm] API response:', res)
+          // Backend returns: { success: true, data: [...trips...], meta: {...} }
+          // So trips are directly in res.data (not res.data.trips)
+          const trips = Array.isArray(res?.data) ? res.data : []
+          console.log('✅ [IncidentForm] Trips count:', trips.length)
+          console.log('✅ [IncidentForm] Trips data:', trips)
+          
           setAvailableTrips(trips)
           if (trips.length > 0 && !selectedTripId) {
             setSelectedTripId(trips[0].maChuyen)
           }
         })
         .catch((err) => {
-          console.error('[IncidentForm] Failed to load trips:', err)
+          console.error('❌ [IncidentForm] Failed to load trips:', err)
+          console.error('❌ [IncidentForm] Error details:', err.response?.data || err.message)
           toast({
             title: '❌ Không tải được danh sách chuyến',
             description: 'Vui lòng thử lại sau',
@@ -329,8 +358,10 @@ export function IncidentForm({ onClose, tripId, currentLocation, gpsLastPoint }:
           })
         })
         .finally(() => setLoadingTrips(false))
+    } else {
+      console.log('⚠️ [IncidentForm] Skipping load trips:', { tripId, hasUser: !!user?.id })
     }
-  }, [tripId, toast])
+  }, [tripId, user?.id, toast, selectedTripId])
 
   // 🔥 FIX: Load danh sách học sinh từ trip
   useEffect(() => {
@@ -494,15 +525,30 @@ export function IncidentForm({ onClose, tripId, currentLocation, gpsLastPoint }:
             {loadingTrips ? (
               <option value="">Đang tải...</option>
             ) : availableTrips.length === 0 ? (
-              <option value="">Không có chuyến đang chạy</option>
+              <option value="">Không có chuyến trong lịch trình hôm nay</option>
             ) : (
               <>
                 <option value="">Vui lòng chọn chuyến đi</option>
-                {availableTrips.map((trip: any) => (
-                  <option key={trip.maChuyen} value={trip.maChuyen}>
-                    Chuyến #{trip.maChuyen} - {trip.maTuyen || 'N/A'} ({trip.trangThai})
-                  </option>
-                ))}
+                {availableTrips.map((trip: any) => {
+                  const statusMap: Record<string, string> = {
+                    'chua_khoi_hanh': 'Chưa khởi hành',
+                    'dang_chay': 'Đang chạy',
+                    'hoan_thanh': 'Hoàn thành',
+                    'huy': 'Đã hủy'
+                  }
+                  const typeMap: Record<string, string> = {
+                    'don_sang': 'Đón sáng',
+                    'tra_chieu': 'Trả chiều'
+                  }
+                  const status = statusMap[trip.trangThai] || trip.trangThai
+                  const type = typeMap[trip.loaiChuyen] || trip.loaiChuyen || ''
+                  const routeName = trip.tenTuyen || `Tuyến ${trip.maTuyen}` || 'N/A'
+                  return (
+                    <option key={trip.maChuyen} value={trip.maChuyen}>
+                      #{trip.maChuyen} - {routeName} ({type}) - {status}
+                    </option>
+                  )
+                })}
               </>
             )}
           </select>
