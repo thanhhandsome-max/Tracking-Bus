@@ -736,6 +736,31 @@ class ApiClient {
     return this.request(`/trips/history${q ? `?${q}` : ""}`);
   }
 
+  // Driver schedules
+  async getDriverSchedules(driverId: string | number, params?: {
+    date?: string;
+    dateRange?: 'today' | 'thisWeek' | 'custom';
+    fromDate?: string;
+    toDate?: string;
+    tripStatus?: 'chua_khoi_hanh' | 'dang_chay' | 'hoan_thanh' | 'huy';
+    status?: string;
+  }) {
+    const queryParams = new URLSearchParams();
+    if (params?.date) queryParams.append("date", params.date);
+    if (params?.dateRange) queryParams.append("dateRange", params.dateRange);
+    if (params?.fromDate) queryParams.append("fromDate", params.fromDate);
+    if (params?.toDate) queryParams.append("toDate", params.toDate);
+    if (params?.tripStatus) queryParams.append("tripStatus", params.tripStatus);
+    if (params?.status) queryParams.append("status", params.status);
+
+    const query = queryParams.toString();
+    return this.request(`/drivers/${driverId}/schedules${query ? `?${query}` : ""}`);
+  }
+
+  async getDriverScheduleDetail(driverId: string | number, scheduleId: string | number) {
+    return this.request(`/drivers/${driverId}/schedules/${scheduleId}`);
+  }
+
   // Driver history
   async getDriverHistory(driverId: string | number, params?: { from?: string; to?: string; trangThai?: string; limit?: number; offset?: number }) {
     const queryParams = new URLSearchParams();
