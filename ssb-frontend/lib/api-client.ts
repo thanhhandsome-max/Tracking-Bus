@@ -500,6 +500,8 @@ class ApiClient {
     max_stops?: number | null;
     use_roads_api?: boolean;
     use_places_api?: boolean;
+    school_location?: { lat: number; lng: number };
+    max_distance_from_school?: number;
   }) {
     return this.request({ method: 'post', url: '/bus-stops/optimize', data });
   }
@@ -521,6 +523,7 @@ class ApiClient {
     use_roads_api?: boolean;
     use_places_api?: boolean;
     split_virtual_nodes?: boolean;
+    max_distance_from_school?: number;
   }) {
     return this.request({ method: 'post', url: '/bus-stops/optimize-full', data });
   }

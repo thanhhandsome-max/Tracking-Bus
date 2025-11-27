@@ -18,6 +18,38 @@ import StopSuggestionService from "./StopSuggestionService.js";
  * 4. Lưu vào DB: DiemDung và HocSinh_DiemDung
  */
 class BusStopOptimizationService {
+
+  static async _findOrCreateStop({ tenDiem, viDo, kinhDo, diaChiChiTiet }) {
+    // Tạo điểm dừng nếu chưa có, nếu trùng unique key thì lấy lại record cũ
+    const lat = Number(viDo);
+    const lng = Number(kinhDo);
+
+    // 1. Thử tìm theo (tên + toạ độ)
+    const existing = await DiemDungModel.findByNameAndCoords(tenDiem, lat, lng);
+    if (existing) {
+      return existing.maDiem; // trả về ID
+    }
+
+    try {
+      // 2. Nếu chưa có thì tạo mới
+      const id = await DiemDungModel.create({
+        tenDiem,
+        viDo: lat,
+        kinhDo: lng,
+        address: diaChiChiTiet || null,
+      });
+      return id;
+    } catch (err) {
+      // 3. Nếu vẫn bị ER_DUP_ENTRY (race condition) => tìm lại
+      if (err.code === "ER_DUP_ENTRY") {
+        const again = await DiemDungModel.findByNameAndCoords(tenDiem, lat, lng);
+        if (again) return again.maDiem;
+      }
+      throw err;
+    }
+  }
+
+
   /**
    * Tính khoảng cách giữa 2 điểm (mét) - wrapper cho Haversine
    */
@@ -69,6 +101,11 @@ class BusStopOptimizationService {
     
     console.log(`[BusStopOptimization] Students with valid coordinates: ${filtered.length}`);
     
+    // Code snippet removed - this was orphaned code that's not part of any function
+
+
+
+
     // Log thống kê về học sinh không có tọa độ
     const withoutCoords = allStudents.filter((s) => {
       return !s.viDo || 
@@ -204,8 +241,8 @@ class BusStopOptimizationService {
    *   R_walk: Number (mét, default: 500),
    *   S_max: Number (default: 25),
    *   MAX_STOPS: Number (optional),
-   *   useRoadsAPI: Boolean (default: true),
-   *   usePlacesAPI: Boolean (default: true)
+   *   use_roads_api: Boolean (default: false),
+   *   use_places_api: Boolean (default: false)
    * }
    * @returns {Promise<Object>} {stops, assignments, stats}
    */
@@ -215,12 +252,17 @@ class BusStopOptimizationService {
       R_walk = 500, // meters
       S_max = 25,
       MAX_STOPS = null,
-      useRoadsAPI = true,
-      usePlacesAPI = true,
+      use_roads_api = false,
+      use_places_api = false,
+      school_location = null, // {lat, lng} - vị trí trường học
+      max_distance_from_school = 15000, // meters - khoảng cách tối đa từ trường (15km)
     } = options;
 
     console.log(`[BusStopOptimization] Starting Greedy Maximum Coverage`);
     console.log(`[BusStopOptimization] Parameters: R_walk=${R_walk}m, S_max=${S_max}, MAX_STOPS=${MAX_STOPS || "unlimited"}`);
+    if (school_location) {
+      console.log(`[BusStopOptimization] School location: (${school_location.lat}, ${school_location.lng}), max_distance=${max_distance_from_school}m`);
+    }
 
     // Lấy học sinh
     let allStudents = students;
@@ -270,13 +312,70 @@ class BusStopOptimizationService {
       console.log(`[BusStopOptimization] Iteration ${iteration}: ${U.length} unassigned students, ${STOP_SET.length} stops created`);
 
       // Tìm ứng viên tốt nhất
+      // Ràng buộc: khoảng cách tối thiểu giữa các điểm dừng = 200m (để tránh quá gần)
+      const MIN_STOP_DISTANCE = 200; // meters
       let bestCandidate = null;
       let bestCoverage = [];
       let bestCoverageSize = 0;
+      let bestScore = 0; // Score có trọng số (coverage + khoảng cách đến trường)
 
       for (const candidate of C) {
+        // Kiểm tra khoảng cách với các điểm dừng đã tạo
+        let tooClose = false;
+        for (const existingStop of STOP_SET) {
+          const distance = this.calculateDistanceMeters(
+            candidate.lat,
+            candidate.lng,
+            existingStop.viDo,
+            existingStop.kinhDo
+          );
+          if (distance < MIN_STOP_DISTANCE) {
+            tooClose = true;
+            break;
+          }
+        }
+        
+        // Bỏ qua ứng viên quá gần với điểm dừng đã tạo
+        if (tooClose) {
+          continue;
+        }
+
+        // Kiểm tra khoảng cách đến trường học (nếu có)
+        if (school_location) {
+          const distanceToSchool = this.calculateDistanceMeters(
+            candidate.lat,
+            candidate.lng,
+            school_location.lat,
+            school_location.lng
+          );
+          
+          // Bỏ qua ứng viên quá xa trường học
+          if (distanceToSchool > max_distance_from_school) {
+            continue;
+          }
+        }
+
         const coverage = this.calculateCoverage(candidate, U, R_walk);
-        if (coverage.length > bestCoverageSize) {
+        
+        // Tính score có trọng số: coverage + khoảng cách đến trường
+        let score = coverage.length;
+        if (school_location && coverage.length > 0) {
+          const distanceToSchool = this.calculateDistanceMeters(
+            candidate.lat,
+            candidate.lng,
+            school_location.lat,
+            school_location.lng
+          );
+          // Công thức: score = coverage * (1 - distancePenalty)
+          // distancePenalty = (distanceToSchool / max_distance_from_school) * 0.3
+          // Trọng số 0.3 = 30% cho khoảng cách đến trường
+          const distancePenalty = (distanceToSchool / max_distance_from_school) * 0.3;
+          score = coverage.length * (1 - distancePenalty);
+        }
+        
+        // Chọn ứng viên có score cao nhất
+        if (score > bestScore) {
+          bestScore = score;
           bestCoverageSize = coverage.length;
           bestCandidate = candidate;
           bestCoverage = coverage;
@@ -287,25 +386,23 @@ class BusStopOptimizationService {
       if (!bestCandidate || bestCoverageSize === 0) {
         console.log(`[BusStopOptimization] No candidate can cover more students. Creating individual stops for remaining ${U.length} students`);
         
-        // Tạo điểm dừng riêng cho từng học sinh còn lại
+          // Tạo điểm dừng riêng cho từng học sinh còn lại
         for (const student of U) {
-          const stopCoords = useRoadsAPI
+          const stopCoords = use_roads_api
             ? await this.snapToRoad(student.viDo, student.kinhDo)
             : { lat: student.viDo, lng: student.kinhDo };
 
-          const placeInfo = usePlacesAPI
+          const placeInfo = use_places_api
             ? await this.findNearbyPlace(stopCoords.lat, stopCoords.lng)
             : {
                 name: `Điểm dừng ${student.hoTen}`,
                 address: student.diaChi || null,
-              };
-
-          // Tạo điểm dừng
-          const stopId = await DiemDungModel.create({
+              };          // Tạo điểm dừng
+          const stopId = await this._findOrCreateStop({
             tenDiem: placeInfo.name,
             viDo: stopCoords.lat,
             kinhDo: stopCoords.lng,
-            address: placeInfo.address,
+            diaChiChiTiet: placeInfo.address,
           });
 
           STOP_SET.push({
@@ -330,12 +427,12 @@ class BusStopOptimizationService {
       const assignedStudentIds = assignedStudents.map((item) => item.student.maHocSinh);
 
       // Snap điểm dừng lên đường
-      const stopCoords = useRoadsAPI
+      const stopCoords = use_roads_api
         ? await this.snapToRoad(bestCandidate.lat, bestCandidate.lng)
         : { lat: bestCandidate.lat, lng: bestCandidate.lng };
 
       // Tìm địa điểm gần nhất
-      const placeInfo = usePlacesAPI
+      const placeInfo = use_places_api
         ? await this.findNearbyPlace(stopCoords.lat, stopCoords.lng)
         : {
             name: `Điểm dừng ${stopCoords.lat.toFixed(6)}, ${stopCoords.lng.toFixed(6)}`,
@@ -343,12 +440,26 @@ class BusStopOptimizationService {
           };
 
       // Tạo điểm dừng
-      const stopId = await DiemDungModel.create({
+      const stopId = await this._findOrCreateStop({
         tenDiem: placeInfo.name,
         viDo: stopCoords.lat,
         kinhDo: stopCoords.lng,
-        address: placeInfo.address,
+        diaChiChiTiet: placeInfo.address,
       });
+
+      // Tính khoảng cách đến trường học (nếu có) để logging
+      let distanceToSchool = null;
+      if (school_location) {
+        distanceToSchool = this.calculateDistanceMeters(
+          stopCoords.lat,
+          stopCoords.lng,
+          school_location.lat,
+          school_location.lng
+        );
+        console.log(`[BusStopOptimization] Created stop: ${placeInfo.name}, distance to school: ${(distanceToSchool / 1000).toFixed(2)}km, students: ${assignedStudents.length}`);
+      } else {
+        console.log(`[BusStopOptimization] Created stop: ${placeInfo.name}, students: ${assignedStudents.length}`);
+      }
 
       STOP_SET.push({
         maDiem: stopId,
@@ -357,6 +468,7 @@ class BusStopOptimizationService {
         kinhDo: stopCoords.lng,
         address: placeInfo.address,
         studentCount: assignedStudents.length,
+        distanceToSchool: distanceToSchool, // Thêm thông tin khoảng cách đến trường
       });
 
       // Gán học sinh cho điểm dừng

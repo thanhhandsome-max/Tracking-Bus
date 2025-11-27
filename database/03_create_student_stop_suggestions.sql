@@ -7,7 +7,6 @@ USE school_bus_system;
 -- Drop table if exists (for clean migration)
 DROP TABLE IF EXISTS student_stop_suggestions;
 
--- Create student_stop_suggestions table
 CREATE TABLE student_stop_suggestions (
     id INT AUTO_INCREMENT PRIMARY KEY,
     maTuyen INT NOT NULL,
@@ -18,13 +17,13 @@ CREATE TABLE student_stop_suggestions (
     ngayCapNhat TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     
     -- Foreign keys
-    CONSTRAINT fk_sss_route
+    CONSTRAINT fk_sss_route_sss
         FOREIGN KEY (maTuyen) REFERENCES TuyenDuong(maTuyen) 
         ON DELETE CASCADE,
-    CONSTRAINT fk_sss_stop
+    CONSTRAINT fk_sss_stop_sss
         FOREIGN KEY (maDiemDung) REFERENCES DiemDung(maDiem) 
         ON DELETE CASCADE,
-    CONSTRAINT fk_sss_student
+    CONSTRAINT fk_sss_student_sss
         FOREIGN KEY (maHocSinh) REFERENCES HocSinh(maHocSinh) 
         ON DELETE CASCADE,
     
@@ -32,7 +31,7 @@ CREATE TABLE student_stop_suggestions (
     INDEX idx_route (maTuyen),
     INDEX idx_stop (maDiemDung),
     INDEX idx_student (maHocSinh),
-    INDEX idx_route_stop (maTuyen, maDiemDung),
+    INDEX idx_route_stop (maTuyen, maDiemDung)
     
     -- Mỗi học sinh chỉ được gợi ý 1 lần cho mỗi route (có thể ở nhiều stop khác nhau trong các route khác)
     -- Nhưng trong 1 route, 1 học sinh có thể được gợi ý ở nhiều stop (để admin chọn)
@@ -40,8 +39,9 @@ CREATE TABLE student_stop_suggestions (
     -- Admin sẽ chọn stop cuối cùng khi tạo schedule
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Add comment
-ALTER TABLE student_stop_suggestions COMMENT = 'Lưu mapping gợi ý học sinh - điểm dừng cho route (tự động tạo khi tạo route auto)';
+ALTER TABLE student_stop_suggestions 
+  COMMENT = 'Lưu mapping gợi ý học sinh - điểm dừng cho route (tự động tạo khi tạo route auto)';
+
 
 SELECT 'Table student_stop_suggestions created successfully!' as message;
 

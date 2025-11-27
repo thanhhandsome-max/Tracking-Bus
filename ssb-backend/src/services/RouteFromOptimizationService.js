@@ -15,6 +15,7 @@ import DiemDungModel from "../models/DiemDungModel.js";
 import RouteStopModel from "../models/RouteStopModel.js";
 import MapsService from "./MapsService.js";
 import VehicleRoutingService from "./VehicleRoutingService.js";
+import GeoUtils from "../utils/GeoUtils.js";
 import pool from "../config/db.js";
 
 class RouteFromOptimizationService {
@@ -129,45 +130,86 @@ class RouteFromOptimizationService {
       throw new Error("Route has no stops");
     }
 
-    // Origin = điểm dừng đầu tiên (xa depot nhất)
-    const origin = nodes[0];
-    // Destination = depot (trường học)
-    const destination = depot;
+    // Origin = depot (trường học) - bắt đầu từ trường
+    const origin = depot;
+    // Destination = stop cuối cùng (để tạo polyline từ depot → stops)
+    const lastStop = nodes[nodes.length - 1];
+    const destination = {
+      lat: parseFloat(lastStop.viDo),
+      lng: parseFloat(lastStop.kinhDo),
+    };
 
     // Tên tuyến
     const tenTuyen = `${routeNamePrefix} ${routeIndex} - Đi`;
 
-    // Tạo polyline từ origin → stops → destination
-    const waypoints = nodes.map((node) => ({
+    // Tạo polyline từ depot → stops (destination = stop cuối cùng)
+    const waypoints = nodes.slice(0, -1).map((node) => ({
       location: `${node.viDo},${node.kinhDo}`,
     }));
 
     console.log(`[RouteFromOptimization] Getting directions for route: ${tenTuyen}`);
-    console.log(`[RouteFromOptimization] Origin: (${origin.viDo}, ${origin.kinhDo})`);
-    console.log(`[RouteFromOptimization] Destination: (${destination.lat}, ${destination.lng})`);
-    console.log(`[RouteFromOptimization] Waypoints: ${waypoints.length}`);
+    console.log(`[RouteFromOptimization] Origin (depot): (${origin.lat}, ${origin.lng})`);
+    console.log(`[RouteFromOptimization] Destination (last stop): (${destination.lat}, ${destination.lng})`);
+    console.log(`[RouteFromOptimization] Waypoints (stops): ${waypoints.length}`);
 
-    // Lấy directions từ Google Maps API
+    // Lấy directions từ Google Maps API: depot → stops (destination = stop cuối cùng)
     const directionsResult = await MapsService.getDirections({
-      origin: `${origin.viDo},${origin.kinhDo}`,
+      origin: `${origin.lat},${origin.lng}`,
       destination: `${destination.lat},${destination.lng}`,
-      waypoints: waypoints.slice(1), // Bỏ origin (đã là origin)
+      waypoints: waypoints, // Tất cả các điểm dừng trừ stop cuối (đã là destination)
       mode: "driving",
       vehicleType: "bus",
       optimizeWaypoints: false, // Giữ nguyên thứ tự từ VRP
     });
 
-    const polyline = directionsResult.polyline;
-    const estimatedTime = Math.round(directionsResult.duration / 60); // minutes
+    // Lấy polyline từ depot → stop cuối cùng
+    let polyline = directionsResult.polyline;
+    let estimatedTime = Math.round(directionsResult.duration / 60); // minutes
+
+    // Tạo polyline từ stop cuối → depot và nối vào polyline chính
+    try {
+      const returnDirectionsResult = await MapsService.getDirections({
+        origin: `${destination.lat},${destination.lng}`,
+        destination: `${origin.lat},${origin.lng}`,
+        mode: "driving",
+        vehicleType: "bus",
+      });
+
+      // Nối 2 polyline lại (decode, merge, encode)
+      // Sử dụng @mapbox/polyline để encode (decode đã có trong GeoUtils)
+      const path1 = GeoUtils.decodePolyline(polyline);
+      const path2 = GeoUtils.decodePolyline(returnDirectionsResult.polyline);
+      
+      // Merge paths (bỏ điểm cuối của path1 vì trùng với điểm đầu của path2)
+      const mergedPath = [...path1, ...path2.slice(1)];
+      
+      // Encode lại polyline (sử dụng @mapbox/polyline - tương thích với Google Maps encoding)
+      try {
+        const polylineLib = await import("@mapbox/polyline");
+        // @mapbox/polyline.encode() nhận mảng [lat, lng]
+        polyline = polylineLib.encode(mergedPath.map(p => [p.lat, p.lng]));
+        estimatedTime += Math.round(returnDirectionsResult.duration / 60);
+        console.log(`[RouteFromOptimization] ✅ Combined polyline: depot → stops → depot (${mergedPath.length} points)`);
+      } catch (encodeError) {
+        console.warn(`[RouteFromOptimization] ⚠️ Failed to encode merged polyline, using forward polyline only:`, encodeError.message);
+        // Nếu không encode được, chỉ dùng polyline đi (depot → stops)
+      }
+    } catch (error) {
+      console.warn(`[RouteFromOptimization] ⚠️ Failed to create return polyline, using one-way only:`, error.message);
+      // Nếu không tạo được return polyline, vẫn dùng polyline một chiều
+    }
+
+    // Tạo điểm dừng depot nếu chưa có (cần cho route_stops)
+    let depotStopId = await this.findOrCreateDepotStop(depot);
 
     // Tạo route trong DB
     const routeId = await TuyenDuongModel.create({
       tenTuyen,
-      diemBatDau: origin.tenDiem || `Điểm dừng ${origin.maDiem}`,
+      diemBatDau: origin.name || "Đại học Sài Gòn",
       diemKetThuc: destination.name || "Đại học Sài Gòn",
       thoiGianUocTinh: estimatedTime,
-      origin_lat: origin.viDo,
-      origin_lng: origin.kinhDo,
+      origin_lat: origin.lat,
+      origin_lng: origin.lng,
       dest_lat: destination.lat,
       dest_lng: destination.lng,
       polyline,
@@ -177,7 +219,10 @@ class RouteFromOptimizationService {
 
     console.log(`[RouteFromOptimization] ✅ Created route ${routeId}: ${tenTuyen}`);
 
-    // Gán các điểm dừng vào tuyến
+    // Thêm depot như điểm dừng đầu tiên (sequence 1)
+    await RouteStopModel.addStop(routeId, depotStopId, 1, 0);
+
+    // Gán các điểm dừng vào tuyến (bắt đầu từ sequence 2)
     const stops = [];
     for (let i = 0; i < nodes.length; i++) {
       const node = nodes[i];
@@ -189,33 +234,30 @@ class RouteFromOptimizationService {
         continue;
       }
 
-      // Tạo route_stop
-      await RouteStopModel.addStop(routeId, node.maDiem, i + 1, 30);
+      // Tạo route_stop (sequence = i + 2 vì depot là sequence 1)
+      await RouteStopModel.addStop(routeId, node.maDiem, i + 2, 30);
 
       stops.push({
         maDiem: node.maDiem,
         tenDiem: node.tenDiem,
         viDo: node.viDo,
         kinhDo: node.kinhDo,
-        sequence: i + 1,
+        sequence: i + 2,
       });
     }
 
-    // Thêm depot như điểm dừng cuối cùng
-    // Tạo điểm dừng depot nếu chưa có
-    let depotStopId = await this.findOrCreateDepotStop(depot);
-    
-    await RouteStopModel.addStop(routeId, depotStopId, nodes.length + 1, 0);
+    // Thêm depot như điểm dừng cuối cùng (sequence = nodes.length + 2)
+    await RouteStopModel.addStop(routeId, depotStopId, nodes.length + 2, 0);
 
-    console.log(`[RouteFromOptimization] ✅ Assigned ${stops.length + 1} stops to route ${routeId}`);
+    console.log(`[RouteFromOptimization] ✅ Assigned ${stops.length + 2} stops to route ${routeId} (depot at start and end)`);
 
     return {
       maTuyen: routeId,
       tenTuyen,
-      diemBatDau: origin.tenDiem || `Điểm dừng ${origin.maDiem}`,
+      diemBatDau: origin.name || "Đại học Sài Gòn",
       diemKetThuc: destination.name || "Đại học Sài Gòn",
       thoiGianUocTinh: estimatedTime,
-      stopCount: stops.length + 1,
+      stopCount: stops.length + 2, // +2 vì có depot ở đầu và cuối
       totalDemand: vrpRoute.totalDemand || 0,
       stops,
     };

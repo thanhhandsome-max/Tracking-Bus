@@ -1,6 +1,7 @@
 # Bỏ qua các file bí mật
 ssb-backend/.env
-ssb-backend/src/config/serviceAccountKey.json
+ssb-backend/dist
+ssb-backend/dist/**
 
 # Bỏ qua các thư viện (RẤT QUAN TRỌNG)
 /node_modules
