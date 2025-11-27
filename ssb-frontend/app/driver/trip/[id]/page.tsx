@@ -1014,9 +1014,8 @@ export default function TripDetailPage() {
           mappedStops[currentStopIndex]?.sequence || currentStopIndex + 1;
         const isLastStopValue = currentStopSequence === maxSequence;
 
-        // Lấy tripType từ schedule
-        const tripTypeValue =
-          data?.schedule?.loaiChuyen || data?.loaiChuyen || null;
+        // Lấy tripType từ schedule (already declared at line 971)
+        // Reuse tripTypeValue from line 971
 
         setIsLastStop(isLastStopValue);
         setTripType(tripTypeValue as "don_sang" | "tra_chieu" | null);
