@@ -2544,10 +2544,7 @@ class TripController {
       }
 
       // M4-M6: Cannot cancel completed trips
-      if (
-        trip.trangThai === "hoan_thanh" ||
-        trip.trangThai === "hoan_thanh"
-      ) {
+      if (trip.trangThai === "hoan_thanh") {
         return response.error(
           res,
           "INVALID_TRIP_STATUS",
@@ -2815,35 +2812,6 @@ class TripController {
               studentId: student.maHocSinh,
               studentName: student.hoTen,
               tripId: id,
-            });
-
-            console.log(
-              `✅ [Checkin Student] Sent notification to parent ${student.maPhuHuynh} for student ${student.hoTen}`
-            await ThongBaoModel.createMultiple({
-              danhSachNguoiNhan: [student.maPhuHuynh],
-              tieuDe: "✅ Con đã lên xe",
-              noiDung: `✅ ĐÃ ĐÓN\n\n${student.hoTen} đã LÊN XE thành công lúc ${new Date().toLocaleTimeString('vi-VN')}.\n\n🚌 Xe: ${
-                bus?.bienSoXe || "N/A"
-              }\n🛣️ Tuyến: ${route?.tenTuyen || "N/A"}`,
-              loaiThongBao: "chuyen_di"
-            });
-
-            // Emit notification:new event to parent
-            const roomName = `user-${student.maPhuHuynh}`;
-            console.log(`🔔 [CHECKIN DEBUG] Emitting student_pickup notification`);
-            console.log(`   Student: ${student.hoTen} (ID: ${studentId})`);
-            console.log(`   Parent ID: ${student.maPhuHuynh}`);
-            console.log(`   Room: ${roomName}`);
-            console.log(`   Trip: #${id}`);
-            console.log(`   Bus: ${bus?.bienSoXe || 'N/A'}`);
-            
-            io.to(roomName).emit("notification:new", {
-              tieuDe: "Con đã lên xe",
-              noiDung: `${student.hoTen} đã được đón lên xe buýt ${
-                bus?.bienSoXe || "N/A"
-              } tuyến ${route?.tenTuyen || "N/A"}`,
-              loaiThongBao: "chuyen_di",
-              thoiGianTao: new Date().toISOString(),
             });
 
             console.log(

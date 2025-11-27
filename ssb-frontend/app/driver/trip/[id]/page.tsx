@@ -2848,93 +2848,16 @@ export default function TripDetailPage() {
                                           Chờ đón
                                         </Badge>
                                       )}
+                                      {student.status === "dropped" && (
+                                        <Badge variant="outline" className="bg-blue-600/10 text-blue-700 dark:text-blue-300 border-blue-600/30">
+                                          <CheckCircle className="w-3 h-3 mr-1" />
+                                          Đã trả
+                                        </Badge>
+                                      )}
                                     </div>
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-2">
-                    currentStop.students.map((student) => (
-                      <Card key={student.id} className="border-border/50">
-                        <CardContent className="p-4">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <Avatar className="w-10 h-10">
-                                <AvatarImage
-                                  src={student.avatar || "/placeholder.svg"}
-                                  alt={student.name}
-                                />
-                                <AvatarFallback>
-                                  {student.name.charAt(0)}
-                                </AvatarFallback>
-                              </Avatar>
-                              <div>
-                                <p className="font-medium text-foreground">
-                                  {student.name}
-                                </p>
-                                <div className="flex items-center gap-2">
-                                  {student.status === "picked" && (
-                                    <Badge variant="default" className="bg-green-600">
-                                      <CheckCircle className="w-3 h-3 mr-1" />
-                                      Đã đón
-                                    </Badge>
-                                  )}
-                                  {student.status === "absent" && (
-                                    <Badge variant="destructive">
-                                      <XCircle className="w-3 h-3 mr-1" />
-                                      Vắng
-                                    </Badge>
-                                  )}
-                                  {student.status === "pending" && (
-                                    <Badge variant="outline">
-                                      <Clock className="w-3 h-3 mr-1" />
-                                      Chờ đón
-                                    </Badge>
-                                  )}
-                                  {student.status === "dropped" && (
-                                    <Badge variant="outline" className="bg-blue-600/10 text-blue-700 dark:text-blue-300 border-blue-600/30">
-                                      <CheckCircle className="w-3 h-3 mr-1" />
-                                      Đã trả
-                                    </Badge>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="bg-transparent"
-                                title="Liên hệ phụ huynh"
-                              >
-                                <Phone className="w-4 h-4" />
-                              </Button>
-                              {/* 🔥 Chuyến về: Nút "Trả học sinh" luôn hiển thị; disable nếu học sinh chưa ở trên xe */}
-                              {tripType === "tra_chieu" && student.status !== "dropped" && (
-                                <Button
-                                  variant="default"
-                                  size="sm"
-                                  onClick={() => {
-                                    // Cho phép trả trực tiếp (đã convert pending -> picked khi load)
-                                    handleStudentCheckout(student.id);
-                                  }}
-                                  title="Xác nhận đã trả học sinh"
-                                  className="text-white bg-blue-600 hover:bg-blue-700"
-                                >
-                                  <CheckCircle className="w-4 h-4 mr-1" />
-                                  Trả học sinh
-                                </Button>
-                              )}
-                              {/* Chuyến đi: Hiển thị button "Đã đón" và "Vắng" cho học sinh chờ đón */}
-                              {tripType === "don_sang" && student.status === "pending" && (
-                                <>
-                                  <Button
-                                    variant="default"
-                                    size="sm"
-                                    onClick={() => handleStudentCheckin(student.id)}
-                                    className="bg-green-600 hover:bg-green-700 text-white"
-                                  >
-                                    <CheckCircle className="w-4 h-4 mr-1" />
-                                    Đã đón
-                                  </Button>
                                   <Button
                                     variant="outline"
                                     size="sm"
@@ -2943,21 +2866,22 @@ export default function TripDetailPage() {
                                   >
                                     <Phone className="w-4 h-4" />
                                   </Button>
-                                  {/* 🔥 Chuyến về: Hiển thị button "Trả học sinh" cho học sinh đã lên xe */}
-                                  {tripType === "tra_chieu" &&
-                                    student.status === "picked" && (
-                                      <Button
-                                        variant="default"
-                                        size="sm"
-                                        onClick={() =>
-                                          handleStudentCheckout(student.id)
-                                        }
-                                        className="bg-blue-600 hover:bg-blue-700 text-white"
-                                      >
-                                        <CheckCircle className="w-4 h-4 mr-1" />
-                                        Trả học sinh
-                                      </Button>
-                                    )}
+                                  {/* 🔥 Chuyến về: Nút "Trả học sinh" luôn hiển thị; disable nếu học sinh chưa ở trên xe */}
+                                  {tripType === "tra_chieu" && student.status !== "dropped" && (
+                                    <Button
+                                      variant="default"
+                                      size="sm"
+                                      onClick={() => {
+                                        // Cho phép trả trực tiếp (đã convert pending -> picked khi load)
+                                        handleStudentCheckout(student.id);
+                                      }}
+                                      title="Xác nhận đã trả học sinh"
+                                      className="text-white bg-blue-600 hover:bg-blue-700"
+                                    >
+                                      <CheckCircle className="w-4 h-4 mr-1" />
+                                      Trả học sinh
+                                    </Button>
+                                  )}
                                   {/* Chuyến đi: Hiển thị button "Đã đón" và "Vắng" cho học sinh chờ đón */}
                                   {/* 🔥 CHỈ hiển thị khi: trip đang chạy + đã đến điểm dừng */}
                                   {tripType === "don_sang" &&
