@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { useLanguage } from "@/lib/language-context"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { AdminSidebar } from "@/components/admin/admin-sidebar"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -40,6 +41,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 
 export default function ReportsPage() {
+  const { t } = useLanguage()
   const [dateRange, setDateRange] = useState("7days")
   const [reportType, setReportType] = useState("overview")
   const [loading, setLoading] = useState(true)
@@ -104,7 +106,7 @@ export default function ReportsPage() {
         if (mounted) setStats(derived)
       } catch (e: any) {
         console.warn("Failed to load reports overview", e)
-        toast({ title: "Không tải được báo cáo", description: e?.message || "Vui lòng thử lại", variant: "destructive" })
+        toast({ title: t("common.error"), description: e?.message || t("common.tryAgain"), variant: "destructive" })
         if (mounted) setStats(null)
       } finally {
         if (mounted) setLoading(false)
@@ -170,8 +172,8 @@ export default function ReportsPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-foreground">Báo cáo & Thống kê</h1>
-            <p className="text-muted-foreground mt-1">Phân tích dữ liệu và tạo báo cáo chi tiết</p>
+            <h1 className="text-3xl font-bold text-foreground">{t("reports.title")}</h1>
+            <p className="text-muted-foreground mt-1">{t("reports.description")}</p>
           </div>
           <div className="flex items-center gap-3">
             <Select value={dateRange} onValueChange={setDateRange}>
@@ -179,10 +181,10 @@ export default function ReportsPage() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="7days">7 ngày qua</SelectItem>
-                <SelectItem value="30days">30 ngày qua</SelectItem>
-                <SelectItem value="90days">90 ngày qua</SelectItem>
-                <SelectItem value="custom">Tùy chỉnh</SelectItem>
+                <SelectItem value="7days">{t("reports.last7Days")}</SelectItem>
+                <SelectItem value="30days">30 days ago</SelectItem>
+                <SelectItem value="90days">90 days ago</SelectItem>
+                <SelectItem value="custom">Custom</SelectItem>
               </SelectContent>
             </Select>
             <Button 
@@ -198,14 +200,14 @@ export default function ReportsPage() {
                   a.click()
                   window.URL.revokeObjectURL(url)
                   document.body.removeChild(a)
-                  toast({ title: "Thành công", description: "Đã xuất báo cáo thành công" })
+                  toast({ title: t("common.success"), description: t("reports.exportReport") })
                 } catch (e) {
-                  toast({ title: "Lỗi", description: "Không thể xuất báo cáo", variant: "destructive" })
+                  toast({ title: t("common.error"), description: t("reports.exportReport"), variant: "destructive" })
                 }
               }}
             >
               <Download className="w-4 h-4" />
-              Xuất báo cáo
+              {t("reports.exportReport")}
             </Button>
           </div>
         </div>
@@ -216,7 +218,7 @@ export default function ReportsPage() {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Tổng chuyến đi</p>
+                  <p className="text-sm text-muted-foreground">{t("reports.totalTrips")}</p>
                   <p className="text-2xl font-bold text-foreground mt-1">{uiStats.totalTrips}</p>
                   <div className="flex items-center gap-1 mt-2">
                     <TrendingUp className="w-3 h-3 text-green-500" />
@@ -234,7 +236,7 @@ export default function ReportsPage() {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Tỷ lệ đúng giờ</p>
+                  <p className="text-sm text-muted-foreground">{t("reports.onTimeRate")}</p>
                   <p className="text-2xl font-bold text-green-500 mt-1">{uiStats.onTimeRate}%</p>
                   <div className="flex items-center gap-1 mt-2">
                     <TrendingUp className="w-3 h-3 text-green-500" />
@@ -252,7 +254,7 @@ export default function ReportsPage() {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Học sinh</p>
+                  <p className="text-sm text-muted-foreground">{t("reports.students")}</p>
                   <p className="text-2xl font-bold text-foreground mt-1">{uiStats.totalStudents}</p>
                   <div className="flex items-center gap-1 mt-2">
                     <TrendingUp className="w-3 h-3 text-green-500" />
@@ -270,7 +272,7 @@ export default function ReportsPage() {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Trễ TB</p>
+                  <p className="text-sm text-muted-foreground">{t("reports.avgDelay")}</p>
                   <p className="text-2xl font-bold text-orange-500 mt-1">{uiStats.avgDelay}m</p>
                   <div className="flex items-center gap-1 mt-2">
                     <TrendingDown className="w-3 h-3 text-green-500" />
@@ -288,7 +290,7 @@ export default function ReportsPage() {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Sự cố</p>
+                  <p className="text-sm text-muted-foreground">{t("reports.incidents")}</p>
                   <p className="text-2xl font-bold text-foreground mt-1">{uiStats.incidents}</p>
                   <div className="flex items-center gap-1 mt-2">
                     <TrendingDown className="w-3 h-3 text-green-500" />
