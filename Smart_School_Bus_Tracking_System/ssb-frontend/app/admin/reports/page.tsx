@@ -251,18 +251,34 @@ export default function ReportsPage() {
         const res = await apiClient.getReportView({ type: 'trips', from, to })
         const d: any = (res as any)?.data || {}
         const trend = Array.isArray(d.trend) ? d.trend : []
-        if (mounted) setTripTrendData(trend.map((it: any) => ({
-          date: it.date || it.day || '',
-          trips: Number(it.total || 0),
-          onTime: Number(it.onTime || 0),
-          late: Number(it.late || 0),
-        })))
+        if (mounted) setTripTrendData(trend.map((it: any) => {
+          const rawDate = it.date || it.day || ''
+          let label = rawDate
+          try {
+            if (rawDate) {
+              const dObj = new Date(rawDate + 'T00:00:00')
+              if (!isNaN(dObj.getTime())) {
+                label = dObj.toLocaleDateString('vi-VN', { day:'2-digit', month:'2-digit' })
+              }
+            }
+          } catch {}
+          return {
+            date: rawDate, // full date for tooltip
+            dayLabel: label, // compact label for axis
+            trips: Number(it.total || 0),
+            onTime: Number(it.onTime || 0),
+            late: Number(it.late || 0),
+          }
+        }))
 
         const buses = Array.isArray(d.busUtilization) ? d.busUtilization : []
         if (mounted) setBusUtilizationData(buses.map((b: any) => ({
           name: b.plateNumber || b.bienSoXe || '',
           trips: Number(b.trips || 0),
-          utilization: Number(b.utilization || 0),
+          utilization: Number(b.utilization || 0), // %
+          scheduledTrips: Number(b.scheduledTrips || 0),
+          activeDays: Number(b.activeDays || 0),
+          onTimeRate: Number(b.onTimeRate || 0),
         })))
 
         const drivers = Array.isArray(d.driverPerformance) ? d.driverPerformance : []
@@ -522,9 +538,17 @@ export default function ReportsPage() {
                   <ResponsiveContainer width="100%" height={300}>
                     <LineChart data={tripTrendData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                      <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" />
+                      <XAxis dataKey="dayLabel" stroke="hsl(var(--muted-foreground))" />
                       <YAxis stroke="hsl(var(--muted-foreground))" />
                       <Tooltip
+                        formatter={(value: any, name: string, props: any) => {
+                          return [value, name]
+                        }}
+                        labelFormatter={(label: string) => {
+                          // Tìm đối tượng theo dayLabel để lấy full date
+                          const found = tripTrendData.find(d => d.dayLabel === label)
+                          return found ? `Ngày: ${found.date}` : label
+                        }}
                         contentStyle={{
                           backgroundColor: "hsl(var(--background))",
                           border: "1px solid hsl(var(--border))",
@@ -607,8 +631,17 @@ export default function ReportsPage() {
                     <BarChart data={busUtilizationData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                       <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" />
-                      <YAxis stroke="hsl(var(--muted-foreground))" />
+                      <YAxis stroke="hsl(var(--muted-foreground))" tickFormatter={(v)=> v + '%'} />
                       <Tooltip
+                        formatter={(value: any, name: string, props: any) => {
+                          if (name === 'utilization') return [value + '%', 'Sử dụng'];
+                          return [value, name];
+                        }}
+                        labelFormatter={(label: string) => {
+                          const found = busUtilizationData.find(b => b.name === label)
+                          if (!found) return label
+                          return `${label} | ${found.trips}/${found.scheduledTrips} chuyến thực tế / tối đa | On-time: ${found.onTimeRate}%`
+                        }}
                         contentStyle={{
                           backgroundColor: "hsl(var(--background))",
                           border: "1px solid hsl(var(--border))",

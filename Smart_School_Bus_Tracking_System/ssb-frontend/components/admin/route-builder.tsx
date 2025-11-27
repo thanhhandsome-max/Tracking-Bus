@@ -3899,6 +3899,7 @@ export function RouteBuilder({
                     variant="outline"
                     size="sm"
                     onClick={async () => {
+                      console.log('🔍 Scan button clicked - originStop:', originStop, 'destinationStop:', destinationStop);
                       if (originStop && destinationStop && originStop.lat && originStop.lng && destinationStop.lat && destinationStop.lng) {
                         await scanStudentsAlongRoute();
                       } else {
@@ -3909,7 +3910,7 @@ export function RouteBuilder({
                         });
                       }
                     }}
-                    disabled={loadingAllStudents || !originStop || !destinationStop}
+                    disabled={loadingAllStudents}
                     className="border-green-300 text-green-700 hover:bg-green-50 dark:border-green-700 dark:text-green-400 dark:hover:bg-green-950/30"
                   >
                     {loadingAllStudents ? (
