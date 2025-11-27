@@ -243,12 +243,35 @@ class SocketService {
       );
     });
 
-    // Generic notification event
+    // Generic notification event (from TripController, NotificationController)
     this.socket.on("notification:new", (data) => {
-      console.log("Notification new:", data);
+      console.log("🔔 [SOCKET] Received notification:new event:", data);
+      console.log("🔍 [SOCKET] notification:new details:", {
+        maThongBao: data.maThongBao,
+        loaiThongBao: data.loaiThongBao,
+        tieuDe: data.tieuDe,
+        noiDung: data.noiDung
+      });
       window.dispatchEvent(
         new CustomEvent("notificationNew", { detail: data })
       );
+      console.log("✅ [SOCKET] Dispatched notificationNew custom event");
+    });
+
+    // Notification event (from IncidentController - uses 'notification' not 'notification:new')
+    this.socket.on("notification", (data) => {
+      console.log("🔔 [SOCKET] Received notification event:", data);
+      console.log("🔍 [SOCKET] notification details:", {
+        maThongBao: data.maThongBao,
+        loaiThongBao: data.loaiThongBao,
+        tieuDe: data.tieuDe,
+        noiDung: data.noiDung
+      });
+      // Bridge to same event as notification:new for consistency
+      window.dispatchEvent(
+        new CustomEvent("notificationNew", { detail: data })
+      );
+      console.log("✅ [SOCKET] Dispatched notificationNew custom event (from notification)");
     });
 
     // Day 4: stop proximity and delay alerts
@@ -361,3 +384,25 @@ class SocketService {
 // Create singleton instance
 export const socketService = new SocketService();
 export default socketService;
+
+// Export socket instance for direct access (for event listeners)
+export const socket = {
+  on: (event: string, callback: (...args: any[]) => void) => {
+    const socketInstance = socketService.getSocket();
+    if (socketInstance) {
+      socketInstance.on(event, callback);
+    }
+  },
+  off: (event: string, callback?: (...args: any[]) => void) => {
+    const socketInstance = socketService.getSocket();
+    if (socketInstance) {
+      socketInstance.off(event, callback);
+    }
+  },
+  emit: (event: string, ...args: any[]) => {
+    const socketInstance = socketService.getSocket();
+    if (socketInstance) {
+      socketInstance.emit(event, ...args);
+    }
+  },
+};

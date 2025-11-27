@@ -580,6 +580,7 @@ class ApiClient {
     units?: string;
     vehicleType?: string; // "bus", "car", "motorcycle" - để tối ưu routing cho xe buýt
     _t?: number; // Timestamp to bypass cache
+    alternatives?: boolean; // Yêu cầu alternative routes từ Google Maps
   }) {
     // Log the request data for debugging
     console.log("[api-client] getDirections request data:");
@@ -703,6 +704,57 @@ class ApiClient {
 
   async getBusStopStats() {
     return this.request({ method: "get", url: "/bus-stops/stats" });
+  }
+
+  // Statistics APIs
+  async getStatsOverview(params?: {
+    from?: string;
+    to?: string;
+    routeId?: number;
+    driverId?: number;
+    busId?: number;
+  }) {
+    return this.request({ method: 'get', url: '/stats/overview', params });
+  }
+
+  async getStatsTripsByDay(params?: {
+    from?: string;
+    to?: string;
+    routeId?: number;
+    driverId?: number;
+    busId?: number;
+  }) {
+    return this.request({ method: 'get', url: '/stats/trips-by-day', params });
+  }
+
+  async getStatsDriverPerformance(params?: {
+    from?: string;
+    to?: string;
+    routeId?: number;
+    driverId?: number;
+    busId?: number;
+  }) {
+    return this.request({ method: 'get', url: '/stats/driver-performance', params });
+  }
+
+  async getStatsBusUtilization(params?: {
+    from?: string;
+    to?: string;
+    routeId?: number;
+    driverId?: number;
+    busId?: number;
+  }) {
+    return this.request({ method: 'get', url: '/stats/bus-utilization', params });
+  }
+
+  async getStatsRoutePunctuality(params?: {
+    from?: string;
+    to?: string;
+    routeId?: number;
+    driverId?: number;
+    busId?: number;
+  }) {
+    return this.request({ method: 'get', url: '/stats/route-punctuality', params });
   }
 }
 

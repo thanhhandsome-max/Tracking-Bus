@@ -661,22 +661,22 @@ class ApiClient {
     trangThai?: string;
     hocSinhLienQuan?: number[];
     affectedStudents?: number[];
+    thoiGianBao?: string;
   }) {
-    // 🔥 FIX: Gửi đến endpoint /trips/:id/incident thay vì /incidents nếu có maChuyen
-    if (payload.maChuyen) {
-      return this.request(`/trips/${payload.maChuyen}/incident`, { 
-        method: "POST", 
-        body: JSON.stringify({
-          loaiSuCo: payload.loaiSuCo || "other",
-          moTa: payload.moTa,
-          mucDo: payload.mucDo,
-          viTri: payload.viTri,
-          hocSinhLienQuan: payload.hocSinhLienQuan || payload.affectedStudents,
-        })
-      });
-    }
-    // Fallback: Gửi đến /incidents nếu không có maChuyen
-    return this.request("/incidents", { method: "POST", body: JSON.stringify(payload) });
+    // Send to /incidents endpoint with all fields
+    return this.request("/incidents", { 
+      method: "POST", 
+      body: JSON.stringify({
+        maChuyen: payload.maChuyen,
+        loaiSuCo: payload.loaiSuCo || "other",
+        moTa: payload.moTa,
+        mucDo: payload.mucDo,
+        viTri: payload.viTri,
+        trangThai: payload.trangThai,
+        hocSinhLienQuan: payload.hocSinhLienQuan || payload.affectedStudents,
+        thoiGianBao: payload.thoiGianBao || new Date().toISOString(),
+      })
+    });
   }
 
   async updateIncident(id: number, payload: { moTa?: string; mucDo?: string; trangThai?: string }) {
@@ -727,6 +727,15 @@ class ApiClient {
     return this.request(`/reports/overview${q ? `?${q}` : ""}`);
   }
 
+  async getReportView(params?: { type?: string; from?: string; to?: string }) {
+    const queryParams = new URLSearchParams();
+    if (params?.type) queryParams.append("type", params.type);
+    if (params?.from) queryParams.append("from", params.from);
+    if (params?.to) queryParams.append("to", params.to);
+    const q = queryParams.toString();
+    return this.request(`/reports/view${q ? `?${q}` : ""}`);
+  }
+
   // Trip history for parent
   async getTripHistory(params?: { from?: string; to?: string; page?: number; limit?: number }) {
     const queryParams = new URLSearchParams();
@@ -736,6 +745,31 @@ class ApiClient {
     if (params?.limit) queryParams.append("limit", String(params.limit));
     const q = queryParams.toString();
     return this.request(`/trips/history${q ? `?${q}` : ""}`);
+  }
+
+  // Driver schedules
+  async getDriverSchedules(driverId: string | number, params?: {
+    date?: string;
+    dateRange?: 'today' | 'thisWeek' | 'custom';
+    fromDate?: string;
+    toDate?: string;
+    tripStatus?: 'chua_khoi_hanh' | 'dang_chay' | 'hoan_thanh' | 'huy';
+    status?: string;
+  }) {
+    const queryParams = new URLSearchParams();
+    if (params?.date) queryParams.append("date", params.date);
+    if (params?.dateRange) queryParams.append("dateRange", params.dateRange);
+    if (params?.fromDate) queryParams.append("fromDate", params.fromDate);
+    if (params?.toDate) queryParams.append("toDate", params.toDate);
+    if (params?.tripStatus) queryParams.append("tripStatus", params.tripStatus);
+    if (params?.status) queryParams.append("status", params.status);
+
+    const query = queryParams.toString();
+    return this.request(`/drivers/${driverId}/schedules${query ? `?${query}` : ""}`);
+  }
+
+  async getDriverScheduleDetail(driverId: string | number, scheduleId: string | number) {
+    return this.request(`/drivers/${driverId}/schedules/${scheduleId}`);
   }
 
   // Driver history
@@ -760,7 +794,7 @@ class ApiClient {
     const q = queryParams.toString();
     // Return blob for file download
     const url = `${this.baseURL}/reports/export${q ? `?${q}` : ""}`;
-    const headers: HeadersInit = { "Content-Type": "application/json" };
+    const headers: HeadersInit = { "Content-Type": "application/json", "Accept": "application/octet-stream" };
     if (this.token) {
       (headers as Record<string, string>).Authorization = `Bearer ${this.token}`;
     }

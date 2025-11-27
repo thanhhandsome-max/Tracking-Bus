@@ -303,21 +303,37 @@ export default function RouteDetailPage() {
 
   // Show RouteBuilder in edit mode
   if (isEditMode) {
+    // 🔥 Đảm bảo stops có đầy đủ thông tin (tenDiem, diaChi, etc.)
+    const stopsWithFullInfo = sortedStops.map((stop: StopDTO) => ({
+      ...stop,
+      tenDiem: stop.tenDiem || stop.name || '',
+      diaChi: stop.address || '',
+      viDo: stop.viDo,
+      kinhDo: stop.kinhDo,
+      latitude: stop.viDo, // Alias for compatibility
+      longitude: stop.kinhDo, // Alias for compatibility
+      thuTu: stop.sequence,
+      thoiGianDung: stop.dwell_seconds || 0,
+    }));
+    
     return (
       <DashboardLayout sidebar={<AdminSidebar />}>
         <RouteBuilder
+          key={`edit-${routeId}`} // 🔥 Force re-mount khi routeId thay đổi
           mode="edit"
           initialRoute={{
             id: routeId,
             name: route.tenTuyen,
             diemBatDau: route.diemBatDau,
             diemKetThuc: route.diemKetThuc,
-            stops: sortedStops,
+            stops: stopsWithFullInfo,
           }}
           onClose={() => setIsEditMode(false)}
           onSaved={() => {
             setIsEditMode(false);
             toast.success('Đã cập nhật tuyến đường');
+            // Invalidate queries để refresh data
+            queryClient.invalidateQueries({ queryKey: routeKeys.detail(routeId) });
           }}
         />
       </DashboardLayout>

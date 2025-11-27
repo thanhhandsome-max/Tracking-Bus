@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { CalendarIcon, AlertTriangle, Users, MapPin, X, Zap } from "lucide-react"
+import { CalendarIcon, AlertTriangle, Users, MapPin } from "lucide-react"
 import { format } from "date-fns"
 import { vi } from "date-fns/locale"
 import { cn } from "@/lib/utils"
@@ -17,8 +17,14 @@ import { useToast } from "@/hooks/use-toast"
 import { apiClient } from "@/lib/api"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
 interface ScheduleFormProps {
   onClose: () => void
@@ -34,15 +40,14 @@ export function ScheduleForm({ onClose, onSaved, mode = "create", initialSchedul
   const [driver, setDriver] = useState("")
   const [tripType, setTripType] = useState("")
   const [startTime, setStartTime] = useState("")
+  const [tripTypeAutoFilled, setTripTypeAutoFilled] = useState(false) // Track if tripType was auto-filled
   const [routes, setRoutes] = useState<any[]>([])
   const [buses, setBuses] = useState<any[]>([])
   const [drivers, setDrivers] = useState<any[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [routeStops, setRouteStops] = useState<any[]>([])
-  const [availableStudents, setAvailableStudents] = useState<any[]>([])
-  const [selectedStudents, setSelectedStudents] = useState<Record<number, { maHocSinh: number; thuTuDiem: number; maDiem: number; source: 'suggestion' | 'manual' }>>({})
+  const [routeStudentsByStop, setRouteStudentsByStop] = useState<Record<string, Array<{ maHocSinh: number; hoTen: string; lop?: string; diaChi?: string }>>>({})
   const [loadingStops, setLoadingStops] = useState(false)
-  const [loadingStudents, setLoadingStudents] = useState(false)
   const [conflictError, setConflictError] = useState<{
     message: string
     conflicts: Array<{
@@ -54,6 +59,8 @@ export function ScheduleForm({ onClose, onSaved, mode = "create", initialSchedul
       date: string
     }>
   } | null>(null)
+  const [hasChanges, setHasChanges] = useState(false)
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -85,6 +92,42 @@ export function ScheduleForm({ onClose, onSaved, mode = "create", initialSchedul
     if (route) {
       setLoadingStops(true)
       
+      // Load route details first to get routeType
+      const loadRouteDetails = apiClient.getRouteById(parseInt(route))
+        .then((res: any) => {
+          const routeData = (res as any).data || res || {}
+          
+          // Tự động điền loại chuyến dựa vào routeType
+          // Chỉ điền khi chưa có tripType (user chưa chọn thủ công)
+          if (routeData.routeType && !tripType) {
+            if (routeData.routeType === 'di') {
+              setTripType('don_sang')
+              setTripTypeAutoFilled(true)
+              console.log("[ScheduleForm] Auto-filled tripType: don_sang (from routeType: di)")
+              toast({
+                title: "Đã tự động điền",
+                description: "Loại chuyến: Đón sáng (từ tuyến đường)",
+                variant: "default",
+              })
+            } else if (routeData.routeType === 've') {
+              setTripType('tra_chieu')
+              setTripTypeAutoFilled(true)
+              console.log("[ScheduleForm] Auto-filled tripType: tra_chieu (from routeType: ve)")
+              toast({
+                title: "Đã tự động điền",
+                description: "Loại chuyến: Trả chiều (từ tuyến đường)",
+                variant: "default",
+              })
+            }
+          }
+          
+          return routeData
+        })
+        .catch((err: any) => {
+          console.warn("Failed to load route details:", err)
+          return {}
+        })
+      
       // Load route stops
       const loadStops = apiClient.getRouteStops(parseInt(route))
         .then((res: any) => {
@@ -99,228 +142,100 @@ export function ScheduleForm({ onClose, onSaved, mode = "create", initialSchedul
           return []
         })
 
-      // Load stop suggestions (if available)
-      const loadSuggestions = apiClient.getRouteStopSuggestions(parseInt(route))
+      // Load students assigned to stops from route (từ student_stop_suggestions hoặc schedule_student_stops)
+      const loadRouteStudents = apiClient.getRouteStopSuggestions(parseInt(route))
         .then((res: any) => {
           const data = (res as any).data || {}
-          const stopsWithSuggestions = data.stops || []
+          const stopsWithStudents = data.stops || []
           
-          console.log("[ScheduleForm] Loaded stop suggestions:", {
-            totalStops: stopsWithSuggestions.length,
+          console.log("[ScheduleForm] Loaded students from route:", {
+            totalStops: stopsWithStudents.length,
             totalStudents: data.totalStudents || 0,
           })
 
-          // Auto-populate selectedStudents từ suggestions nếu chưa có assignments
-          // Sử dụng functional update để tránh dependency issue
-          setSelectedStudents((current) => {
-            if (stopsWithSuggestions.length > 0 && Object.keys(current).length === 0) {
-            const suggestions: Record<number, { maHocSinh: number; thuTuDiem: number; maDiem: number; source: 'suggestion' | 'manual' }> = {}
-            
-            stopsWithSuggestions.forEach((stop: any) => {
-              if (stop.students && Array.isArray(stop.students) && stop.students.length > 0) {
-                stop.students.forEach((student: any) => {
-                  suggestions[student.maHocSinh] = {
-                    maHocSinh: student.maHocSinh,
-                    thuTuDiem: stop.sequence,
-                    maDiem: stop.maDiem,
-                    source: 'suggestion', // Đánh dấu là từ suggestion
-                  }
-                })
-              }
-            })
-
-              if (Object.keys(suggestions).length > 0) {
-                console.log("[ScheduleForm] Auto-populating from suggestions:", Object.keys(suggestions).length, "students")
-                
-                toast({
-                  title: "Đã tải gợi ý",
-                  description: `Đã tự động gán ${Object.keys(suggestions).length} học sinh từ gợi ý. Bạn có thể chỉnh sửa trước khi lưu.`,
-                })
-                
-                return suggestions
-              }
+          // Tổ chức học sinh theo stop (key: `${sequence}_${maDiem}`)
+          const studentsByStop: Record<string, Array<{ maHocSinh: number; hoTen: string; lop?: string; diaChi?: string }>> = {}
+          
+          stopsWithStudents.forEach((stop: any) => {
+            if (stop.students && Array.isArray(stop.students) && stop.students.length > 0) {
+              const stopKey = `${stop.sequence}_${stop.maDiem}`
+              studentsByStop[stopKey] = stop.students.map((s: any) => ({
+                maHocSinh: s.maHocSinh,
+                hoTen: s.hoTen || s.name,
+                lop: s.lop,
+                diaChi: s.diaChi || s.address,
+              }))
             }
-            return current
           })
 
-          return stopsWithSuggestions
+          setRouteStudentsByStop(studentsByStop)
+          
+          const totalStudents = Object.values(studentsByStop).reduce((sum, students) => sum + students.length, 0)
+          if (totalStudents > 0) {
+            toast({
+              title: "Đã tải học sinh",
+              description: `Đã tải ${totalStudents} học sinh từ tuyến đường`,
+              variant: "default",
+            })
+          }
+
+          return stopsWithStudents
         })
         .catch((err: any) => {
-          // Không bắt buộc phải có suggestions, chỉ log warning
-          console.warn("[ScheduleForm] No stop suggestions available (this is OK if route was created manually):", err)
+          // Không bắt buộc phải có students, chỉ log warning
+          console.warn("[ScheduleForm] No students assigned to route stops:", err)
+          setRouteStudentsByStop({})
           return []
         })
 
-      // Wait for both to complete
-      Promise.all([loadStops, loadSuggestions])
+      // Wait for all to complete
+      Promise.all([loadRouteDetails, loadStops, loadRouteStudents])
         .finally(() => setLoadingStops(false))
     } else {
       setRouteStops([])
+      // Reset tripType when route is cleared (chỉ khi đã được auto-fill)
+      if (mode === 'create' && tripTypeAutoFilled) {
+        setTripType('')
+        setTripTypeAutoFilled(false)
+      }
     }
-  }, [route])
+  }, [route, mode])
 
-  // Load available students
-  useEffect(() => {
-    setLoadingStudents(true)
-    // Backend giới hạn limit từ 1-100, nên dùng 100 và có thể cần gọi nhiều lần nếu có > 100 học sinh
-    apiClient.getStudents({ limit: 100 })
-      .then((res: any) => {
-        const data = (res as any).data || []
-        const items = Array.isArray(data) ? data : data?.data || []
-        setAvailableStudents(items)
-        // TODO: Nếu có pagination và cần load thêm, có thể gọi thêm các page tiếp theo
-      })
-      .catch((err: any) => {
-        console.error("Failed to load students:", err)
-        setAvailableStudents([])
-      })
-      .finally(() => setLoadingStudents(false))
-  }, [])
-
-  // Load existing students when editing
+  // Load existing students when editing (từ schedule_student_stops)
   useEffect(() => {
     if (mode === "edit" && initialSchedule?.id) {
       apiClient.getScheduleStudents(initialSchedule.id)
         .then((res: any) => {
           const data = (res as any).data || {}
           const studentsByStop = data.studentsByStop || []
-          const existing: Record<number, { maHocSinh: number; thuTuDiem: number; maDiem: number; source: 'suggestion' | 'manual' }> = {}
+          const studentsByStopMap: Record<string, Array<{ maHocSinh: number; hoTen: string; lop?: string; diaChi?: string }>> = {}
+          
           studentsByStop.forEach((stop: any) => {
-            stop.students.forEach((student: any) => {
-              existing[student.maHocSinh] = {
-                maHocSinh: student.maHocSinh,
-                thuTuDiem: stop.thuTuDiem,
-                maDiem: stop.maDiem,
-                source: 'manual', // Khi edit, coi như manual (không biết được source gốc)
-              }
-            })
+            const stopKey = `${stop.thuTuDiem}_${stop.maDiem}`
+            studentsByStopMap[stopKey] = stop.students.map((s: any) => ({
+              maHocSinh: s.maHocSinh,
+              hoTen: s.hoTen || s.name,
+              lop: s.lop,
+              diaChi: s.diaChi || s.address,
+            }))
           })
-          setSelectedStudents(existing)
+          
+          setRouteStudentsByStop(studentsByStopMap)
+          
+          const totalStudents = Object.values(studentsByStopMap).reduce((sum, students) => sum + students.length, 0)
+          if (totalStudents > 0) {
+            console.log(`[ScheduleForm] Loaded ${totalStudents} students from existing schedule`)
+          }
         })
         .catch((err: any) => {
           console.error("Failed to load schedule students:", err)
+          // Nếu không load được từ schedule, thử load từ route
+          if (route) {
+            console.log("[ScheduleForm] Falling back to load students from route")
+          }
         })
     }
-  }, [mode, initialSchedule])
-
-  // Tính khoảng cách giữa 2 điểm (Haversine formula)
-  const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number) => {
-    const R = 6371 // Radius of Earth in km
-    const dLat = ((lat2 - lat1) * Math.PI) / 180
-    const dLng = ((lng2 - lng1) * Math.PI) / 180
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos((lat1 * Math.PI) / 180) *
-        Math.cos((lat2 * Math.PI) / 180) *
-        Math.sin(dLng / 2) *
-        Math.sin(dLng / 2)
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-    return R * c // Distance in km
-  }
-
-  // Tính điểm matching địa chỉ (fallback khi không có tọa độ)
-  const calculateAddressMatch = (studentAddr: string, stopName: string, stopAddr: string) => {
-    if (!studentAddr || !stopName) return Infinity
-    
-    // Tách các từ khóa từ tên trạm (ví dụ: "Trạm Nguyễn Văn Linh" -> ["Nguyễn", "Văn", "Linh"])
-    const stopKeywords = stopName.replace("Trạm", "").replace("Điểm", "").trim().split(/\s+/).filter(k => k.length > 2)
-    
-    // Kiểm tra xem địa chỉ học sinh có chứa từ khóa nào không
-    let matchCount = 0
-    stopKeywords.forEach(keyword => {
-      if (keyword.length > 2 && studentAddr.toLowerCase().includes(keyword.toLowerCase())) {
-        matchCount++
-      }
-    })
-    
-    // Trả về điểm (càng thấp càng tốt, 0 = không match)
-    return matchCount > 0 ? 1 / matchCount : Infinity
-  }
-
-  // Tự động gán học sinh vào điểm dừng gần nhất (chỉ trong vòng 3km)
-  const handleAutoAssign = () => {
-    if (!route || routeStops.length === 0 || availableStudents.length === 0) {
-      toast({
-        title: "Thông báo",
-        description: "Vui lòng chọn tuyến đường và đảm bảo có học sinh",
-        variant: "default",
-      })
-      return
-    }
-
-    const MAX_DISTANCE_KM = 3 // 🔥 Giới hạn khoảng cách tối đa (giống backend)
-    const newAssignments: Record<number, { maHocSinh: number; thuTuDiem: number; maDiem: number; source: 'suggestion' | 'manual' }> = {}
-    
-    // Lọc học sinh chưa được gán
-    const unassignedStudents = availableStudents.filter(
-      (s: any) => !selectedStudents[s.maHocSinh || s.id]
-    )
-
-    let assignedCount = 0
-    let skippedCount = 0
-
-    unassignedStudents.forEach((student: any) => {
-      const studentAddress = student.diaChi || ""
-      const studentLat = student.viDo || student.lat
-      const studentLng = student.kinhDo || student.lng
-      
-      // 🔥 Bỏ qua học sinh không có tọa độ (không thể tính khoảng cách chính xác)
-      if (!studentLat || !studentLng || isNaN(studentLat) || isNaN(studentLng)) {
-        skippedCount++
-        return
-      }
-      
-      // Tìm điểm dừng gần nhất trong vòng MAX_DISTANCE_KM
-      let nearestStop: any = null
-      let minDistance = Infinity
-
-      routeStops.forEach((stop: any) => {
-        const stopLat = stop.viDo || stop.lat
-        const stopLng = stop.kinhDo || stop.lng
-        
-        // 🔥 CHỈ tính khoảng cách nếu có tọa độ cả học sinh và điểm dừng
-        if (stopLat && stopLng && !isNaN(stopLat) && !isNaN(stopLng)) {
-          const distance = calculateDistance(
-            studentLat,
-            studentLng,
-            stopLat,
-            stopLng
-          )
-          
-          // 🔥 CHỈ gán nếu khoảng cách <= MAX_DISTANCE_KM và là điểm dừng gần nhất
-          if (distance <= MAX_DISTANCE_KM && distance < minDistance) {
-            minDistance = distance
-            nearestStop = stop
-          }
-        }
-      })
-
-      // 🔥 CHỈ gán nếu tìm thấy điểm dừng trong vòng MAX_DISTANCE_KM
-      if (nearestStop && minDistance <= MAX_DISTANCE_KM) {
-        const studentId = student.maHocSinh || student.id
-        newAssignments[studentId] = {
-          maHocSinh: studentId,
-          thuTuDiem: nearestStop.sequence,
-          maDiem: nearestStop.maDiem || nearestStop.id,
-          source: 'manual', // Auto-assign từ FE cũng coi là manual
-        }
-        assignedCount++
-      } else {
-        skippedCount++
-      }
-    })
-
-    // Merge với assignments hiện tại (ưu tiên assignments cũ)
-    setSelectedStudents({
-      ...selectedStudents,
-      ...newAssignments,
-    })
-
-    toast({
-      title: "Thành công",
-      description: `Đã tự động gán ${assignedCount} học sinh vào điểm dừng (trong vòng ${MAX_DISTANCE_KM}km). ${skippedCount > 0 ? `${skippedCount} học sinh bị bỏ qua (quá xa hoặc không có tọa độ).` : ''}`,
-    })
-  }
+  }, [mode, initialSchedule?.id])
 
   // Populate form when editing or when routeId is provided (wizard mode)
   useEffect(() => {
@@ -333,7 +248,12 @@ export function ScheduleForm({ onClose, onSaved, mode = "create", initialSchedul
       setRoute(routeId)
       setBus(String(initialSchedule.busId || initialSchedule.raw?.maXe || ''))
       setDriver(String(initialSchedule.driverId || initialSchedule.raw?.maTaiXe || ''))
-      setTripType(initialSchedule.tripType || initialSchedule.raw?.loaiChuyen || '')
+      const initialTripType = initialSchedule.tripType || initialSchedule.raw?.loaiChuyen || ''
+      setTripType(initialTripType)
+      // Nếu đã có tripType từ initialSchedule, không tự động điền nữa
+      if (initialTripType) {
+        setTripTypeAutoFilled(true)
+      }
       setStartTime(initialSchedule.startTime || initialSchedule.raw?.gioKhoiHanh || '')
       
       // Ensure route stops are loaded when editing (route might already be set)
@@ -351,11 +271,64 @@ export function ScheduleForm({ onClose, onSaved, mode = "create", initialSchedul
           })
           .finally(() => setLoadingStops(false))
       }
-    } else if (mode === "create" && initialSchedule?.routeId) {
-      // Pre-fill routeId in wizard mode
-      setRoute(String(initialSchedule.routeId || initialSchedule.maTuyen || ''))
+    } else if (mode === "create" && initialSchedule) {
+      // Pre-fill from copy schedule or wizard mode
+      if (initialSchedule.routeId || initialSchedule.raw?.maTuyen || initialSchedule.maTuyen) {
+        const routeId = String(initialSchedule.routeId || initialSchedule.raw?.maTuyen || initialSchedule.maTuyen || '')
+        setRoute(routeId)
+      }
+      if (initialSchedule.busId || initialSchedule.raw?.maXe) {
+        setBus(String(initialSchedule.busId || initialSchedule.raw?.maXe || ''))
+      }
+      if (initialSchedule.driverId || initialSchedule.raw?.maTaiXe) {
+        setDriver(String(initialSchedule.driverId || initialSchedule.raw?.maTaiXe || ''))
+      }
+      if (initialSchedule.tripType || initialSchedule.raw?.loaiChuyen) {
+        const initialTripType = initialSchedule.tripType || initialSchedule.raw?.loaiChuyen || ''
+        setTripType(initialTripType)
+        if (initialTripType) {
+          setTripTypeAutoFilled(true)
+        }
+      }
+      if (initialSchedule.startTime || initialSchedule.raw?.gioKhoiHanh) {
+        setStartTime(initialSchedule.startTime || initialSchedule.raw?.gioKhoiHanh || '')
+      }
+      // Date will be set to today when copying (not copied from original schedule)
+      // User can choose a different date if needed
+      if (initialSchedule.date) {
+        // Only set date if it's in edit mode (not copy mode)
+        // For copy mode, date should be today (set in handleCopyConfirm)
+        if (mode === "edit") {
+          const [year, month, day] = initialSchedule.date.split('-')
+          setDate(new Date(parseInt(year), parseInt(month) - 1, parseInt(day)))
+        } else {
+          // Copy mode: set to today
+          setDate(new Date())
+        }
+      } else if (mode === "create" && initialSchedule) {
+        // Copy mode without date: set to today
+        setDate(new Date())
+      }
     }
   }, [mode, initialSchedule])
+
+  // Track form changes for cancel confirmation
+  useEffect(() => {
+    if (date || route || bus || driver || tripType || startTime) {
+      setHasChanges(true)
+    } else {
+      setHasChanges(false)
+    }
+  }, [date, route, bus, driver, tripType, startTime])
+
+  // Handle cancel with confirmation
+  const handleCancel = () => {
+    if (hasChanges) {
+      setShowCancelConfirm(true)
+    } else {
+      onClose()
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -379,22 +352,26 @@ export function ScheduleForm({ onClose, onSaved, mode = "create", initialSchedul
       const dd = `${date.getDate()}`.padStart(2, '0')
       const ngayChay = `${yyyy}-${mm}-${dd}`
       
-      // Build students array from selectedStudents (loại bỏ source, chỉ gửi maHocSinh, thuTuDiem, maDiem)
-      const studentsArray = Object.values(selectedStudents).map(s => ({
-        maHocSinh: s.maHocSinh,
-        thuTuDiem: s.thuTuDiem,
-        maDiem: s.maDiem,
-      }))
+      // Build students array from routeStudentsByStop (học sinh đã được gán từ route)
+      const studentsArray: Array<{ maHocSinh: number; thuTuDiem: number; maDiem: number }> = []
       
-      console.log("[ScheduleForm] Submitting schedule with students:", {
-        studentsCount: studentsArray.length,
-        students: studentsArray.slice(0, 3),
-        selectedStudentsKeys: Object.keys(selectedStudents).length,
-        suggestionsCount: Object.values(selectedStudents).filter(s => s.source === 'suggestion').length,
-        manualCount: Object.values(selectedStudents).filter(s => s.source === 'manual').length,
+      Object.entries(routeStudentsByStop).forEach(([stopKey, students]) => {
+        const [sequence, maDiem] = stopKey.split('_').map(Number)
+        students.forEach(student => {
+          studentsArray.push({
+            maHocSinh: student.maHocSinh,
+            thuTuDiem: sequence,
+            maDiem: maDiem,
+          })
+        })
       })
       
-      // 🔥 TASK 3: Luôn gửi students[] (kể cả rỗng) để backend không phải auto-assign
+      console.log("[ScheduleForm] Submitting schedule with students from route:", {
+        studentsCount: studentsArray.length,
+        students: studentsArray.slice(0, 3),
+      })
+      
+      // Gửi students[] từ route (đã được gán khi tạo route)
       const payload = {
         maTuyen: parseInt(route),
         maXe: parseInt(bus),
@@ -403,7 +380,7 @@ export function ScheduleForm({ onClose, onSaved, mode = "create", initialSchedul
         gioKhoiHanh: startTime,
         ngayChay: ngayChay,
         dangApDung: true,
-        students: studentsArray, // Luôn gửi, kể cả rỗng
+        students: studentsArray, // Học sinh đã được gán từ route
       }
       
       console.log("[ScheduleForm] Payload:", {
@@ -485,15 +462,36 @@ export function ScheduleForm({ onClose, onSaved, mode = "create", initialSchedul
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      {/* M1-M3: Conflict Error Banner */}
+    <>
+      {/* Cancel confirmation dialog */}
+      <Dialog open={showCancelConfirm} onOpenChange={setShowCancelConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Xác nhận hủy</DialogTitle>
+            <DialogDescription>
+              Bạn có chắc muốn hủy? Dữ liệu đã nhập sẽ bị mất.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" onClick={() => setShowCancelConfirm(false)}>
+              Không
+            </Button>
+            <Button variant="destructive" onClick={onClose}>
+              Có, hủy
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {/* M1-M3: Conflict Error Banner */}
       {conflictError && conflictError.conflicts.length > 0 && (
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
           <AlertTitle>Xung đột lịch trình</AlertTitle>
           <AlertDescription className="mt-2">
             <p className="mb-2">{conflictError.message}</p>
-            <ul className="list-disc list-inside space-y-1 text-sm">
+            <ul className="list-disc list-inside space-y-1 text-sm mb-4">
               {conflictError.conflicts.map((conflict, idx) => (
                 <li key={idx}>
                   {conflict.conflictType === 'bus' && (
@@ -508,6 +506,29 @@ export function ScheduleForm({ onClose, onSaved, mode = "create", initialSchedul
                 </li>
               ))}
             </ul>
+            
+            {/* Action buttons */}
+            <div className="flex gap-2 mt-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setConflictError(null);
+                }}
+              >
+                Quay lại chỉnh sửa
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => {
+                  setConflictError(null);
+                  onClose();
+                }}
+              >
+                Hủy tạo lịch trình
+              </Button>
+            </div>
           </AlertDescription>
         </Alert>
       )}
@@ -525,7 +546,17 @@ export function ScheduleForm({ onClose, onSaved, mode = "create", initialSchedul
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0">
-            <Calendar mode="single" selected={date} onSelect={setDate} initialFocus />
+            <Calendar 
+              mode="single" 
+              selected={date} 
+              onSelect={setDate} 
+              initialFocus
+              disabled={(date) => {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                return date < today;
+              }}
+            />
           </PopoverContent>
         </Popover>
       </div>
@@ -582,15 +613,27 @@ export function ScheduleForm({ onClose, onSaved, mode = "create", initialSchedul
 
       <div className="space-y-2">
         <Label htmlFor="tripType">Loại chuyến *</Label>
-        <Select value={tripType} onValueChange={setTripType}>
+        <Select 
+          value={tripType} 
+          onValueChange={(value) => {
+            setTripType(value)
+            // Khi user chọn thủ công, đánh dấu là không phải auto-fill nữa
+            setTripTypeAutoFilled(false)
+          }}
+        >
           <SelectTrigger id="tripType">
-            <SelectValue placeholder="Chọn loại chuyến" />
+            <SelectValue placeholder="Chọn loại chuyến (sẽ tự động điền khi chọn tuyến đường)" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="don_sang">Đón sáng</SelectItem>
             <SelectItem value="tra_chieu">Trả chiều</SelectItem>
           </SelectContent>
         </Select>
+        {tripTypeAutoFilled && tripType && (
+          <p className="text-xs text-muted-foreground">
+            ℹ️ Đã tự động điền từ tuyến đường. Bạn có thể thay đổi nếu cần.
+          </p>
+        )}
       </div>
 
       <div className="space-y-2">
@@ -598,157 +641,120 @@ export function ScheduleForm({ onClose, onSaved, mode = "create", initialSchedul
         <Input id="startTime" type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
       </div>
 
-      {/* Student Assignment Section */}
+      {/* Hiển thị học sinh đã được gán từ tuyến đường */}
       {route && routeStops.length > 0 && (
         <Card className="border-border/50">
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Users className="w-5 h-5" />
-                Phân công học sinh vào điểm dừng
-              </CardTitle>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleAutoAssign}
-                disabled={loadingStops || loadingStudents || availableStudents.length === 0}
-              >
-                <Zap className="w-4 h-4 mr-2" />
-                Tự động gán
-              </Button>
-            </div>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Users className="w-5 h-5" />
+              Học sinh đã được gán từ tuyến đường
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {loadingStops ? (
-              <p className="text-sm text-muted-foreground">Đang tải danh sách điểm dừng...</p>
+              <p className="text-sm text-muted-foreground">Đang tải danh sách điểm dừng và học sinh...</p>
             ) : (
-              routeStops.map((stop: any) => {
-                const stopStudents = Object.values(selectedStudents).filter(
-                  (s) => s.thuTuDiem === stop.sequence && s.maDiem === stop.maDiem
-                )
-                const availableForStop = availableStudents.filter(
-                  (student: any) => !selectedStudents[student.maHocSinh || student.id]
-                )
+              <>
+                {routeStops.map((stop: any) => {
+                  const stopKey = `${stop.sequence}_${stop.maDiem}`
+                  const students = routeStudentsByStop[stopKey] || []
 
-                return (
-                  <div key={`${stop.sequence}_${stop.maDiem}`} className="border rounded-lg p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <MapPin className="w-4 h-4 text-primary" />
-                        <div>
-                          <p className="font-medium">
-                            Điểm {stop.sequence}: {stop.tenDiem || stop.name}
-                          </p>
-                          {stop.address && (
-                            <p className="text-xs text-muted-foreground">{stop.address}</p>
-                          )}
+                  return (
+                    <div key={`${stop.sequence}_${stop.maDiem}`} className="border rounded-lg p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <MapPin className="w-4 h-4 text-primary" />
+                          <div>
+                            <p className="font-medium">
+                              Điểm {stop.sequence}: {stop.tenDiem || stop.name}
+                            </p>
+                            {stop.address && (
+                              <p className="text-xs text-muted-foreground">{stop.address}</p>
+                            )}
+                          </div>
                         </div>
+                        <Badge variant="outline">
+                          {students.length} học sinh
+                        </Badge>
                       </div>
-                      <Badge variant="outline">
-                        {stopStudents.length} học sinh
-                      </Badge>
-                    </div>
 
-                    {/* Selected students for this stop */}
-                    {stopStudents.length > 0 && (
-                      <div className="space-y-2">
-                        <Label className="text-sm">Học sinh đã chọn:</Label>
-                        <div className="flex flex-wrap gap-2">
-                          {stopStudents.map((selected) => {
-                            const student = availableStudents.find(
-                              (s: any) => (s.maHocSinh || s.id) === selected.maHocSinh
-                            )
-                            if (!student) return null
-                            return (
+                      {/* Hiển thị học sinh đã được gán */}
+                      {students.length > 0 ? (
+                        <div className="space-y-2">
+                          <Label className="text-sm">Học sinh:</Label>
+                          <div className="flex flex-wrap gap-2">
+                            {students.map((student) => (
                               <Badge
-                                key={selected.maHocSinh}
+                                key={student.maHocSinh}
                                 variant="secondary"
                                 className="flex items-center gap-1"
                               >
-                                {student.hoTen || student.name}
-                                {/* 🔥 TASK 3: Hiển thị badge phân biệt suggestion vs manual */}
-                                {selected.source === 'suggestion' && (
-                                  <Badge variant="outline" className="ml-1 text-xs px-1 py-0 bg-blue-50 text-blue-700 border-blue-200">
-                                    Gợi ý
-                                  </Badge>
+                                {student.hoTen}
+                                {student.lop && (
+                                  <span className="text-xs text-muted-foreground">({student.lop})</span>
                                 )}
-                                {selected.source === 'manual' && (
-                                  <Badge variant="outline" className="ml-1 text-xs px-1 py-0 bg-green-50 text-green-700 border-green-200">
-                                    Thêm tay
-                                  </Badge>
-                                )}
-                                <X
-                                  className="w-3 h-3 cursor-pointer ml-1"
-                                  onClick={() => {
-                                    const newSelected = { ...selectedStudents }
-                                    delete newSelected[selected.maHocSinh]
-                                    setSelectedStudents(newSelected)
-                                  }}
-                                />
                               </Badge>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Add student dropdown */}
-                    {availableForStop.length > 0 && (
-                      <div className="space-y-2">
-                        <Label className="text-sm">Thêm học sinh:</Label>
-                        <Select
-                          onValueChange={(value) => {
-                            const studentId = parseInt(value)
-                            const student = availableStudents.find(
-                              (s: any) => (s.maHocSinh || s.id) === studentId
-                            )
-                            if (student) {
-                              setSelectedStudents({
-                                ...selectedStudents,
-                                [studentId]: {
-                                  maHocSinh: studentId,
-                                  thuTuDiem: stop.sequence,
-                                  maDiem: stop.maDiem,
-                                  source: 'manual', // Đánh dấu là thêm tay
-                                },
-                              })
-                            }
-                          }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Chọn học sinh..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {availableForStop.map((student: any) => (
-                              <SelectItem
-                                key={student.maHocSinh || student.id}
-                                value={String(student.maHocSinh || student.id)}
-                              >
-                                {student.hoTen || student.name} {student.lop ? `(${student.lop})` : ''}
-                              </SelectItem>
                             ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">Chưa có học sinh được gán cho điểm dừng này</p>
+                      )}
+                    </div>
+                  )
+                })}
+                {Object.values(routeStudentsByStop).reduce((sum, students) => sum + students.length, 0) > 0 && (
+                  <div className="pt-2 border-t">
+                    <p className="text-sm text-muted-foreground">
+                      Tổng cộng: <strong>{Object.values(routeStudentsByStop).reduce((sum, students) => sum + students.length, 0)}</strong> học sinh đã được gán từ tuyến đường
+                    </p>
                   </div>
-                )
-              })
-            )}
-            {Object.keys(selectedStudents).length > 0 && (
-              <div className="pt-2 border-t">
-                <p className="text-sm text-muted-foreground">
-                  Tổng cộng: <strong>{Object.keys(selectedStudents).length}</strong> học sinh đã được phân công
-                </p>
-              </div>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
       )}
 
+      {/* Preview Schedule Section */}
+      {date && route && bus && driver && tripType && startTime && (
+        <Card className="border-primary/20 bg-primary/5">
+          <CardHeader>
+            <CardTitle className="text-sm">Xem trước lịch trình</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Ngày chạy:</span>
+              <span className="font-medium">{format(date, "PPP", { locale: vi })}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Giờ khởi hành:</span>
+              <span className="font-medium">{startTime}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Tuyến đường:</span>
+              <span className="font-medium">{routes.find(r => String(r.maTuyen || r.id) === route)?.tenTuyen || route}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Xe buýt:</span>
+              <span className="font-medium">{buses.find(b => String(b.maXe || b.id) === bus)?.bienSoXe || bus}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Tài xế:</span>
+              <span className="font-medium">{drivers.find(d => String(d.maTaiXe || d.id) === driver)?.hoTen || driver}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Loại chuyến:</span>
+              <Badge variant="outline">
+                {tripType === 'don_sang' ? 'Đón sáng' : 'Trả chiều'}
+              </Badge>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="flex justify-end gap-3 pt-4">
-        <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
+        <Button type="button" variant="outline" onClick={handleCancel} disabled={submitting}>
           Hủy
         </Button>
         <Button type="submit" className="bg-primary hover:bg-primary/90" disabled={submitting}>
@@ -760,5 +766,6 @@ export function ScheduleForm({ onClose, onSaved, mode = "create", initialSchedul
         </Button>
       </div>
     </form>
+    </>
   )
 }

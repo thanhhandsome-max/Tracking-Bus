@@ -89,12 +89,32 @@ class ScheduleService {
     if (!VALID_LOAI_CHUYEN.includes(loaiChuyen))
       throw new Error("INVALID_TRIP_TYPE");
 
+    // Validate ngày chạy không được là quá khứ
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const scheduleDate = new Date(ngayChay);
+    scheduleDate.setHours(0, 0, 0, 0);
+    
+    if (scheduleDate < today) {
+      throw new Error("INVALID_DATE_PAST");
+    }
+
     const route = await TuyenDuongModel.getById(maTuyen);
     if (!route) throw new Error("ROUTE_NOT_FOUND");
     const bus = await XeBuytModel.getById(maXe);
     if (!bus) throw new Error("BUS_NOT_FOUND");
     const driver = await TaiXeModel.getById(maTaiXe);
     if (!driver) throw new Error("DRIVER_NOT_FOUND");
+
+    // Validate bus đang hoạt động
+    if (bus.trangThai !== "hoat_dong") {
+      throw new Error("BUS_NOT_ACTIVE");
+    }
+
+    // Validate driver đang hoạt động
+    if (driver.trangThai !== "hoat_dong") {
+      throw new Error("DRIVER_NOT_ACTIVE");
+    }
 
     const conflicts = await LichTrinhModel.checkConflict(
       maXe,
@@ -240,10 +260,13 @@ class ScheduleService {
             console.log(`[ScheduleService] Assigned ${autoAssignedStudents.length} students from HocSinh_DiemDung`);
           }
           
-          // BƯỚC 2: Fallback - Thử load suggestions từ student_stop_suggestions cho học sinh chưa được gán
+          // BƯỚC 2: Load suggestions từ student_stop_suggestions (ƯU TIÊN - chỉ dùng từ đây)
           const StudentStopSuggestionModel = (await import("../models/StudentStopSuggestionModel.js")).default;
           const suggestions = await StudentStopSuggestionModel.getByRouteId(maTuyen);
-          console.log(`[ScheduleService] Loaded ${suggestions.length} suggestions from student_stop_suggestions`);
+          console.log(`[ScheduleService] Loaded ${suggestions.length} suggestions from student_stop_suggestions for route ${maTuyen}`);
+          
+          // Track học sinh đã được gán từ suggestions
+          const studentsFromSuggestions = new Set();
           
           if (suggestions.length > 0) {
             // Group suggestions theo maHocSinh (một học sinh có thể có nhiều suggestions)
@@ -315,70 +338,24 @@ class ScheduleService {
                   maDiem: selectedSuggestion.maDiemDung,
                 });
                 studentsFromSuggestions.add(maHocSinh);
+                assignedStudentIds.add(maHocSinh); // Track để tránh duplicate
                 console.log(`[ScheduleService] ✅ Assigned student ${maHocSinh} from suggestion to stop ${selectedSuggestion.maDiemDung} (sequence ${stopInfo.sequence})`);
               }
             }
             
-            console.log(`[ScheduleService] ✅ Auto-assigned ${autoAssignedStudents.length} students from suggestions`);
+            console.log(`[ScheduleService] ✅ Auto-assigned ${autoAssignedStudents.length} students from student_stop_suggestions`);
+          } else {
+            console.warn(`[ScheduleService] ⚠️ No suggestions found in student_stop_suggestions for route ${maTuyen}. Students will not be auto-assigned.`);
           }
           
-          // BƯỚC 2: Fallback distance-based cho học sinh không có suggestions
-          const HocSinhModel = (await import("../models/HocSinhModel.js")).default;
-          let allStudents = await HocSinhModel.getAll();
-          allStudents = allStudents.filter(s => 
-            s.viDo && s.kinhDo && 
-            !isNaN(s.viDo) && !isNaN(s.kinhDo) && 
-            s.trangThai &&
-            !studentsFromSuggestions.has(s.maHocSinh) // Chỉ xử lý học sinh chưa có suggestion
-          );
-          
-          console.log(`[ScheduleService] Found ${allStudents.length} students without suggestions, using distance-based fallback`);
-          
-          if (allStudents.length > 0) {
-            const StopSuggestionService = (await import("./StopSuggestionService.js")).default;
-            let fallbackCount = 0;
-            
-            for (const student of allStudents) {
-              let nearestStop = null;
-              let minDistance = Infinity;
-              
-              for (const stop of routeStops) {
-                if (!stop.viDo || !stop.kinhDo || isNaN(stop.viDo) || isNaN(stop.kinhDo)) {
-                  continue;
-                }
-                
-                const distance = StopSuggestionService.calculateDistance(
-                  student.viDo,
-                  student.kinhDo,
-                  stop.viDo,
-                  stop.kinhDo
-                );
-                
-                if (distance < minDistance && distance <= 2.0) {
-                  minDistance = distance;
-                  nearestStop = stop;
-                }
-              }
-              
-              if (nearestStop) {
-                autoAssignedStudents.push({
-                  maHocSinh: student.maHocSinh,
-                  thuTuDiem: nearestStop.sequence,
-                  maDiem: nearestStop.maDiem,
-                });
-                fallbackCount++;
-                console.log(`[ScheduleService] ✅ Fallback: Assigned student ${student.maHocSinh} (${student.hoTen}) to stop ${nearestStop.maDiem} (sequence ${nearestStop.sequence}), distance: ${minDistance.toFixed(2)}km`);
-              }
-            }
-            
-            console.log(`[ScheduleService] ✅ Fallback distance-based: Assigned ${fallbackCount} additional students`);
-          }
+          // 🔥 BỎ HOÀN TOÀN FALLBACK DISTANCE-BASED - Chỉ sử dụng student_stop_suggestions
+          // Nếu không có suggestions, không gán học sinh nào cả (để admin tự gán thủ công)
           
           if (autoAssignedStudents.length > 0) {
             finalStudents = autoAssignedStudents;
-            console.log(`[ScheduleService] ✅ Total auto-assigned ${autoAssignedStudents.length} students to schedule ${id} (${studentsFromSuggestions.size} from suggestions, ${autoAssignedStudents.length - studentsFromSuggestions.size} from fallback)`);
+            console.log(`[ScheduleService] ✅ Total auto-assigned ${autoAssignedStudents.length} students to schedule ${id} from student_stop_suggestions`);
           } else {
-            console.warn(`[ScheduleService] ⚠️ No students found for schedule ${id} (suggestions: ${suggestions.length}, fallback candidates: ${allStudents.length})`);
+            console.warn(`[ScheduleService] ⚠️ No students found for schedule ${id} (suggestions: ${suggestions.length}). Please assign students manually or ensure student_stop_suggestions are created for this route.`);
           }
         }
       } catch (autoAssignError) {

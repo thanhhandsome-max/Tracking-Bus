@@ -3,6 +3,89 @@ import DiemDungModel from "../models/DiemDungModel.js";
 import RouteStopModel from "../models/RouteStopModel.js";
 import pool from "../config/db.js";
 
+/**
+ * Tính khoảng cách giữa 2 điểm (Haversine formula) - trả về km
+ */
+function calculateDistance(lat1, lng1, lat2, lng2) {
+  const R = 6371; // Radius of Earth in km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c; // Distance in km
+}
+
+/**
+ * Validate stops order for "di" route - đảm bảo các điểm dừng theo thứ tự từ điểm bắt đầu đến điểm kết thúc
+ * @param {Object} route - Route object với origin_lat, origin_lng, routeType
+ * @param {Array} stops - Array of stops với viDo, kinhDo, sequence
+ * @returns {Object} { valid: boolean, error: string|null }
+ */
+function validateStopsOrder(route, stops) {
+  // Chỉ validate cho tuyến "đi"
+  if (!route.routeType || route.routeType !== 'di') {
+    return { valid: true, error: null };
+  }
+
+  // Cần có origin coordinates để validate
+  if (!route.origin_lat || !route.origin_lng) {
+    console.warn('[RouteService] validateStopsOrder: No origin coordinates, skipping validation');
+    return { valid: true, error: null };
+  }
+
+  // Sắp xếp stops theo sequence
+  const sortedStops = [...stops].sort((a, b) => (a.sequence || 0) - (b.sequence || 0));
+
+  // Tính khoảng cách từ origin đến từng stop
+  const stopDistances = sortedStops.map((stop, index) => {
+    if (!stop.viDo || !stop.kinhDo) {
+      return { stop, index, distance: null, error: 'Missing coordinates' };
+    }
+    const distance = calculateDistance(
+      route.origin_lat,
+      route.origin_lng,
+      stop.viDo,
+      stop.kinhDo
+    );
+    return { stop, index, distance, error: null };
+  });
+
+  // Kiểm tra nếu có stop nào thiếu coordinates
+  const missingCoords = stopDistances.find(s => s.error);
+  if (missingCoords) {
+    return {
+      valid: false,
+      error: `Điểm dừng "${missingCoords.stop.tenDiem || `thứ ${missingCoords.index + 1}`}" thiếu tọa độ`
+    };
+  }
+
+  // Kiểm tra thứ tự: khoảng cách phải tăng dần (cho phép sai số nhỏ)
+  const MAX_BACKWARD_DISTANCE_KM = 0.2; // Cho phép quay lại tối đa 200m (để xử lý đường cong)
+  
+  for (let i = 1; i < stopDistances.length; i++) {
+    const prevDistance = stopDistances[i - 1].distance;
+    const currDistance = stopDistances[i].distance;
+    const backwardDistance = prevDistance - currDistance;
+
+    // Nếu điểm hiện tại gần origin hơn điểm trước đó quá nhiều (> 200m), báo lỗi
+    if (backwardDistance > MAX_BACKWARD_DISTANCE_KM) {
+      const prevStop = stopDistances[i - 1].stop;
+      const currStop = stopDistances[i].stop;
+      return {
+        valid: false,
+        error: `Điểm dừng "${currStop.tenDiem || `thứ ${i + 1}`}" nằm quay lại về phía điểm bắt đầu so với điểm dừng trước đó "${prevStop.tenDiem || `thứ ${i}`}". Tuyến "đi" không cho phép quay lại.`
+      };
+    }
+  }
+
+  return { valid: true, error: null };
+}
+
 class RouteService {
   static async list(options = {}) {
     const { page = 1, limit = 10, routeType } = options;
@@ -50,6 +133,31 @@ class RouteService {
     // Thêm stops vào tuyến đi nếu có trong payload
     if (payload.stops && Array.isArray(payload.stops) && payload.stops.length > 0) {
       console.log(`[RouteService] Adding ${payload.stops.length} stops to route ${routeId}`);
+      
+      // 🔥 Validate stops order cho tuyến "đi" - đảm bảo không quay lại
+      const routeInfo = {
+        routeType: routeType || 'di',
+        origin_lat: payload.origin_lat,
+        origin_lng: payload.origin_lng,
+      };
+      const stopsForValidation = payload.stops.map((stop, i) => ({
+        tenDiem: stop.tenDiem || stop.name,
+        viDo: stop.viDo || stop.lat,
+        kinhDo: stop.kinhDo || stop.lng,
+        sequence: stop.sequence || i + 1,
+      }));
+      
+      const validation = validateStopsOrder(routeInfo, stopsForValidation);
+      if (!validation.valid) {
+        // Xóa route đã tạo nếu validation fail
+        try {
+          await TuyenDuongModel.delete(routeId);
+        } catch (deleteError) {
+          console.warn(`[RouteService] Failed to delete route ${routeId} after validation failure:`, deleteError);
+        }
+        throw new Error(validation.error || 'INVALID_STOPS_ORDER');
+      }
+      
       for (let i = 0; i < payload.stops.length; i++) {
         const stop = payload.stops[i];
         try {
@@ -64,6 +172,18 @@ class RouteService {
         } catch (stopError) {
           console.warn(`[RouteService] Failed to add stop ${i + 1} to route ${routeId}:`, stopError);
         }
+      }
+      
+      // 🔥 Tự động gán học sinh vào student_stop_suggestions sau khi thêm stops
+      try {
+        const routeStops = await RouteStopModel.getByRouteId(routeId);
+        if (routeStops.length > 0) {
+          const assignedCount = await this.assignStudentsToStops(routeId, routeStops);
+          console.log(`[RouteService] ✅ Auto-assigned ${assignedCount} students to route ${routeId} stops`);
+        }
+      } catch (assignError) {
+        console.warn(`[RouteService] ⚠️ Failed to auto-assign students to route ${routeId}:`, assignError);
+        // Không throw error - route đã được tạo thành công
       }
       
       // Rebuild polyline cho tuyến đi
@@ -120,6 +240,18 @@ class RouteService {
           } catch (stopError) {
             console.warn(`[RouteService] Failed to add stop ${i + 1} to return route:`, stopError);
           }
+        }
+        
+        // 🔥 Tự động gán học sinh vào student_stop_suggestions cho tuyến về
+        try {
+          const returnRouteStops = await RouteStopModel.getByRouteId(returnRouteId);
+          if (returnRouteStops.length > 0) {
+            const assignedCount = await this.assignStudentsToStops(returnRouteId, returnRouteStops);
+            console.log(`[RouteService] ✅ Auto-assigned ${assignedCount} students to return route ${returnRouteId} stops`);
+          }
+        } catch (assignError) {
+          console.warn(`[RouteService] ⚠️ Failed to auto-assign students to return route ${returnRouteId}:`, assignError);
+          // Không throw error - route đã được tạo thành công
         }
         
         // Rebuild polyline cho tuyến về
@@ -182,6 +314,27 @@ class RouteService {
             throw new Error(`Route ${routeIndex}: INSUFFICIENT_STOPS - Tuyến phải có ít nhất 2 điểm dừng (hiện tại: ${stops.length})`);
           }
 
+          // 🔥 Validate stops order cho tuyến "đi" - đảm bảo không quay lại
+          const routeType = payload.routeType || 'di';
+          if (routeType === 'di' && payload.origin_lat && payload.origin_lng) {
+            const routeInfo = {
+              routeType: routeType,
+              origin_lat: payload.origin_lat,
+              origin_lng: payload.origin_lng,
+            };
+            const stopsForValidation = stops.map((stop, j) => ({
+              tenDiem: stop.tenDiem || stop.name || `Điểm dừng ${j + 1}`,
+              viDo: stop.viDo !== undefined ? stop.viDo : stop.lat,
+              kinhDo: stop.kinhDo !== undefined ? stop.kinhDo : stop.lng,
+              sequence: stop.sequence || j + 1,
+            }));
+            
+            const validation = validateStopsOrder(routeInfo, stopsForValidation);
+            if (!validation.valid) {
+              throw new Error(`Route ${routeIndex}: ${validation.error || 'INVALID_STOPS_ORDER'}`);
+            }
+          }
+
           // Kiểm tra duplicate tên tuyến trong batch
           const duplicateInBatch = routesPayload.slice(0, i).find(r => r.tenTuyen === payload.tenTuyen);
           if (duplicateInBatch) {
@@ -198,7 +351,6 @@ class RouteService {
           }
 
           // Tạo tuyến đường (sử dụng connection trong transaction)
-          const routeType = payload.routeType || 'di';
           const finalTrangThai = payload.trangThai !== undefined 
             ? (payload.trangThai === true || payload.trangThai === 1 || payload.trangThai === 'true' || payload.trangThai === '1')
             : true;
@@ -361,6 +513,37 @@ class RouteService {
     const route = await TuyenDuongModel.getById(routeId);
     if (!route) throw new Error("ROUTE_NOT_FOUND");
 
+    // 🔥 Validate stops order cho tuyến "đi" khi thêm stop mới
+    if (route.routeType === 'di' && route.origin_lat && route.origin_lng) {
+      // Lấy tất cả stops hiện tại của route
+      const existingStops = await RouteStopModel.getByRouteId(routeId);
+      
+      // Tạo danh sách stops bao gồm stop mới
+      const allStops = existingStops.map(s => ({
+        tenDiem: s.tenDiem,
+        viDo: s.viDo,
+        kinhDo: s.kinhDo,
+        sequence: s.sequence,
+      }));
+      
+      // Thêm stop mới vào danh sách
+      if (stopData.viDo !== undefined && stopData.kinhDo !== undefined) {
+        allStops.push({
+          tenDiem: stopData.tenDiem || stopData.name || 'Điểm dừng mới',
+          viDo: stopData.viDo,
+          kinhDo: stopData.kinhDo,
+          sequence: stopData.sequence || existingStops.length + 1,
+        });
+      }
+      
+      // Validate thứ tự
+      const validation = validateStopsOrder(route, allStops);
+      if (!validation.valid) {
+        throw new Error(validation.error || 'INVALID_STOPS_ORDER');
+      }
+    }
+    if (!route) throw new Error("ROUTE_NOT_FOUND");
+
     let stopId = stopData.stop_id;
 
     // Nếu không có stop_id, kiểm tra xem điểm dừng đã tồn tại chưa (theo unique constraint)
@@ -455,6 +638,42 @@ class RouteService {
     const route = await TuyenDuongModel.getById(routeId);
     if (!route) throw new Error("ROUTE_NOT_FOUND");
 
+    // 🔥 Validate stops order cho tuyến "đi" khi cập nhật sequence hoặc tọa độ
+    if (route.routeType === 'di' && route.origin_lat && route.origin_lng) {
+      if (updateData.sequence !== undefined || updateData.viDo !== undefined || updateData.kinhDo !== undefined) {
+        // Lấy tất cả stops hiện tại
+        const existingStops = await RouteStopModel.getByRouteId(routeId);
+        
+        // Tìm stop đang được cập nhật
+        const stopToUpdate = existingStops.find(s => s.maDiem === stopId);
+        if (!stopToUpdate) throw new Error("STOP_NOT_IN_ROUTE");
+        
+        // Tạo danh sách stops với dữ liệu cập nhật
+        const allStops = existingStops.map(s => {
+          if (s.maDiem === stopId) {
+            return {
+              tenDiem: s.tenDiem,
+              viDo: updateData.viDo !== undefined ? updateData.viDo : s.viDo,
+              kinhDo: updateData.kinhDo !== undefined ? updateData.kinhDo : s.kinhDo,
+              sequence: updateData.sequence !== undefined ? updateData.sequence : s.sequence,
+            };
+          }
+          return {
+            tenDiem: s.tenDiem,
+            viDo: s.viDo,
+            kinhDo: s.kinhDo,
+            sequence: s.sequence,
+          };
+        });
+        
+        // Validate thứ tự
+        const validation = validateStopsOrder(route, allStops);
+        if (!validation.valid) {
+          throw new Error(validation.error || 'INVALID_STOPS_ORDER');
+        }
+      }
+    }
+
     // Kiểm tra stop có trong route không
     const routeStop = await RouteStopModel.getByRouteAndStop(routeId, stopId);
     if (!routeStop) throw new Error("STOP_NOT_IN_ROUTE");
@@ -546,6 +765,222 @@ class RouteService {
       dest_lat: destStop.viDo,
       dest_lng: destStop.kinhDo,
     });
+  }
+
+  /**
+   * Tự động gán học sinh vào student_stop_suggestions dựa trên khoảng cách
+   * @param {number} routeId - Mã tuyến đường
+   * @param {Array} routeStops - Danh sách stops của route (từ RouteStopModel.getByRouteId)
+   * @returns {Promise<number>} Số lượng suggestions đã tạo
+   */
+  static async assignStudentsToStops(routeId, routeStops) {
+    if (!routeStops || routeStops.length === 0) {
+      console.log(`[RouteService] assignStudentsToStops: No stops provided for route ${routeId}`);
+      return 0;
+    }
+
+    console.log(`[RouteService] assignStudentsToStops: Starting assignment for route ${routeId} with ${routeStops.length} stops`);
+
+    try {
+      // Lấy tất cả học sinh có tọa độ và đang hoạt động
+      const HocSinhModel = (await import("../models/HocSinhModel.js")).default;
+      const allStudents = await HocSinhModel.getAll();
+      
+      // Filter học sinh có tọa độ hợp lệ
+      const studentsWithCoords = allStudents.filter(
+        (s) => s.viDo && s.kinhDo && 
+               !isNaN(s.viDo) && !isNaN(s.kinhDo) && 
+               s.trangThai
+      );
+
+      console.log(`[RouteService] assignStudentsToStops: Found ${studentsWithCoords.length} students with valid coordinates`);
+
+      if (studentsWithCoords.length === 0) {
+        console.warn(`[RouteService] assignStudentsToStops: No students with coordinates found`);
+        return 0;
+      }
+
+      // Maximum distance from stop to student (1km - giảm từ 2km để tránh gán quá nhiều)
+      const MAX_DISTANCE_KM = 1.0;
+      // Maximum students per stop (giống BusStopOptimizationService S_max = 25)
+      const MAX_STUDENTS_PER_STOP = 25;
+
+      // Tạo suggestions: với mỗi stop, tìm học sinh trong bán kính và giới hạn số lượng
+      const suggestions = [];
+      const assignedStudentIds = new Set(); // Track để tránh duplicate
+
+      for (const stop of routeStops) {
+        if (!stop.viDo || !stop.kinhDo || isNaN(stop.viDo) || isNaN(stop.kinhDo)) {
+          console.warn(`[RouteService] assignStudentsToStops: Stop ${stop.maDiem} has invalid coordinates, skipping`);
+          continue;
+        }
+
+        // Tìm học sinh gần stop này (trong bán kính MAX_DISTANCE_KM)
+        const nearbyStudents = [];
+        for (const student of studentsWithCoords) {
+          const distance = calculateDistance(
+            student.viDo,
+            student.kinhDo,
+            stop.viDo,
+            stop.kinhDo
+          );
+
+          if (distance <= MAX_DISTANCE_KM) {
+            nearbyStudents.push({
+              student,
+              distance,
+            });
+          }
+        }
+
+        // Sắp xếp theo khoảng cách (gần nhất trước)
+        nearbyStudents.sort((a, b) => a.distance - b.distance);
+
+        // 🔥 GIỚI HẠN: Chỉ lấy top MAX_STUDENTS_PER_STOP học sinh gần nhất
+        const topStudents = nearbyStudents.slice(0, MAX_STUDENTS_PER_STOP);
+
+        // Thêm suggestions cho học sinh gần stop này (chỉ top students)
+        for (const { student, distance } of topStudents) {
+          // Một học sinh có thể được gán vào nhiều stops (để admin chọn sau)
+          // Nhưng tránh duplicate exact (maTuyen, maHocSinh, maDiemDung)
+          const suggestionKey = `${routeId}_${student.maHocSinh}_${stop.maDiem}`;
+          if (!assignedStudentIds.has(suggestionKey)) {
+            suggestions.push({
+              maTuyen: routeId,
+              maDiemDung: stop.maDiem,
+              maHocSinh: student.maHocSinh,
+            });
+            assignedStudentIds.add(suggestionKey);
+          }
+        }
+
+        console.log(`[RouteService] assignStudentsToStops: Stop ${stop.maDiem} (${stop.tenDiem}): ${nearbyStudents.length} nearby students, assigned ${topStudents.length} (max ${MAX_STUDENTS_PER_STOP})`);
+      }
+
+      if (suggestions.length === 0) {
+        console.warn(`[RouteService] assignStudentsToStops: No students found within ${MAX_DISTANCE_KM}km of any stop`);
+        return 0;
+      }
+
+      // Lưu suggestions vào DB
+      const StudentStopSuggestionModel = (await import("../models/StudentStopSuggestionModel.js")).default;
+      const affectedRows = await StudentStopSuggestionModel.bulkCreate(suggestions);
+
+      console.log(`[RouteService] assignStudentsToStops: ✅ Created ${affectedRows} suggestions for route ${routeId} (${suggestions.length} unique suggestions)`);
+
+      // 🔥 Lưu vào HocSinh_DiemDung (mapping độc lập) - mỗi học sinh chỉ gán vào 1 điểm dừng gần nhất
+      try {
+        // Lấy assignments hiện tại từ HocSinh_DiemDung
+        const BusStopOptimizationService = (await import("./BusStopOptimizationService.js")).default;
+        const existingAssignments = await BusStopOptimizationService.getAssignments();
+        const existingAssignmentsMap = new Map();
+        existingAssignments.forEach(a => {
+          existingAssignmentsMap.set(a.maHocSinh, {
+            maDiemDung: a.maDiemDung,
+            khoangCachMet: a.khoangCachMet || 0,
+          });
+        });
+
+        // Group suggestions theo học sinh để tìm điểm dừng gần nhất cho mỗi học sinh
+        const suggestionsByStudent = new Map();
+        for (const suggestion of suggestions) {
+          const { maHocSinh, maDiemDung } = suggestion;
+          
+          if (!suggestionsByStudent.has(maHocSinh)) {
+            suggestionsByStudent.set(maHocSinh, []);
+          }
+          suggestionsByStudent.get(maHocSinh).push(suggestion);
+        }
+
+        // Tạo assignments mới cho HocSinh_DiemDung - mỗi học sinh chỉ gán vào điểm dừng gần nhất
+        const hocSinhDiemDungAssignments = [];
+
+        for (const [maHocSinh, studentSuggestions] of suggestionsByStudent.entries()) {
+          const student = studentsWithCoords.find(s => s.maHocSinh === maHocSinh);
+          if (!student) continue;
+
+          // Tìm điểm dừng gần nhất cho học sinh này
+          let nearestSuggestion = null;
+          let minDistanceMeters = Infinity;
+
+          for (const suggestion of studentSuggestions) {
+            const stop = routeStops.find(s => s.maDiem === suggestion.maDiemDung);
+            if (!stop || !stop.viDo || !stop.kinhDo) continue;
+
+            // Tính khoảng cách (mét)
+            const distanceKm = calculateDistance(
+              student.viDo,
+              student.kinhDo,
+              stop.viDo,
+              stop.kinhDo
+            );
+            const distanceMeters = Math.round(distanceKm * 1000);
+
+            if (distanceMeters < minDistanceMeters) {
+              minDistanceMeters = distanceMeters;
+              nearestSuggestion = {
+                maHocSinh,
+                maDiemDung: suggestion.maDiemDung,
+                khoangCachMet: distanceMeters,
+              };
+            }
+          }
+
+          if (!nearestSuggestion) continue;
+
+          // Kiểm tra xem học sinh đã có assignment trong HocSinh_DiemDung chưa
+          const existingAssignment = existingAssignmentsMap.get(maHocSinh);
+          
+          if (!existingAssignment) {
+            // Học sinh chưa có assignment → lưu vào
+            hocSinhDiemDungAssignments.push(nearestSuggestion);
+          } else {
+            // Học sinh đã có assignment → chỉ update nếu khoảng cách mới gần hơn
+            if (minDistanceMeters < existingAssignment.khoangCachMet) {
+              hocSinhDiemDungAssignments.push(nearestSuggestion);
+            }
+          }
+        }
+
+        // Lưu vào HocSinh_DiemDung
+        // Lưu ý: Mỗi học sinh chỉ nên có 1 assignment trong HocSinh_DiemDung (điểm dừng gần nhất)
+        // Nếu học sinh đã có assignment với điểm dừng khác, cần xóa assignment cũ trước
+        if (hocSinhDiemDungAssignments.length > 0) {
+          const studentIds = hocSinhDiemDungAssignments.map(a => a.maHocSinh);
+          
+          // Xóa assignments cũ của các học sinh này (nếu có)
+          await pool.query(
+            `DELETE FROM HocSinh_DiemDung WHERE maHocSinh IN (${studentIds.map(() => "?").join(",")})`,
+            studentIds
+          );
+
+          // Insert assignments mới
+          const values = hocSinhDiemDungAssignments.map(a => 
+            `(${a.maHocSinh}, ${a.maDiemDung}, ${a.khoangCachMet})`
+          );
+          
+          const query = `
+            INSERT INTO HocSinh_DiemDung (maHocSinh, maDiemDung, khoangCachMet)
+            VALUES ${values.join(", ")}
+          `;
+
+          const [result] = await pool.query(query);
+          console.log(`[RouteService] assignStudentsToStops: ✅ Saved ${result.affectedRows} assignments to HocSinh_DiemDung (${hocSinhDiemDungAssignments.length} students)`);
+        } else {
+          console.log(`[RouteService] assignStudentsToStops: No new assignments for HocSinh_DiemDung (all students already have closer assignments)`);
+        }
+      } catch (hocSinhDiemDungError) {
+        console.warn(`[RouteService] assignStudentsToStops: ⚠️ Failed to save to HocSinh_DiemDung:`, hocSinhDiemDungError);
+        // Không throw error - suggestions đã được lưu thành công
+      }
+
+      return affectedRows;
+    } catch (error) {
+      console.error(`[RouteService] assignStudentsToStops: ❌ Error assigning students to stops:`, error);
+      console.error(`[RouteService] assignStudentsToStops: Error stack:`, error.stack);
+      // Không throw error - route đã được tạo thành công, chỉ log warning
+      return 0;
+    }
   }
 
   /**

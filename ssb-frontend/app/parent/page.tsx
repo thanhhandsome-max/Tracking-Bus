@@ -60,6 +60,7 @@ export default function ParentDashboard() {
   // M5: Realtime notifications state
   const [recentNotifications, setRecentNotifications] = useState<
     Array<{
+      id: number; // ← FIX: Thêm id field vào type
       type: "success" | "info" | "warning";
       title: string;
       time: string;
@@ -228,22 +229,36 @@ export default function ParentDashboard() {
         notifType = "success";
       }
 
-      // Show toast
+      // 🔥 NEW: Show toast with larger, more visible format
       toast({
         title: title,
         description: content,
         variant: notifType === "warning" ? "destructive" : "default",
+        duration: notifType === "warning" ? 10000 : 7000, // Warnings stay longer
+        className: notifType === "warning" 
+          ? "text-lg font-bold border-2 border-red-500" 
+          : "text-lg font-semibold",
       });
 
       // Add to recent notifications list (max 10 items)
       setRecentNotifications((prev) => {
+        console.log('📋 [PARENT DASH] Adding notification to recent list:', {
+          maThongBao: data.maThongBao,
+          loaiThongBao: data.loaiThongBao,
+          tieuDe: data.tieuDe,
+          title: title,
+          calculatedType: notifType
+        })
+        
         const newNotif = {
+          id: data.maThongBao || Date.now(), // ← FIX: Thêm ID từ payload
           type: notifType,
           title: title,
           time: "Vừa xong",
           timestamp: Date.now(),
         };
         const updated = [newNotif, ...prev].slice(0, 10);
+        console.log('✅ [PARENT DASH] Updated recent notifications:', updated.length, updated)
         return updated;
       });
 
@@ -455,6 +470,7 @@ export default function ParentDashboard() {
       // Add to notifications
       setRecentNotifications((prev) => {
         const newNotif = {
+          id: data.id || Date.now(), // ← FIX: Thêm ID
           type: "warning" as const,
           title: `⚠️ Sự cố: ${data.incidentType || "Khẩn cấp"}`,
           time: "Vừa xong",
@@ -544,6 +560,7 @@ export default function ParentDashboard() {
           const notifications = Array.isArray(res?.data) ? res.data : [];
           if (notifications.length > 0) {
             const mapped = notifications.map((n: any) => ({
+              id: n.maThongBao, // ← FIX: Thêm ID để tránh duplicate trong React
               type: n.loaiThongBao === "trip_incident" ? "warning" : "success",
               title: n.tieuDe || "Thông báo",
               time: "Vừa xong",
@@ -868,6 +885,7 @@ export default function ParentDashboard() {
           }
 
           return {
+            id: notif.maThongBao, // ← FIX: Thêm ID
             type,
             title,
             time: timeStr,
@@ -1222,13 +1240,13 @@ export default function ParentDashboard() {
               </CardContent>
             </Card>
 
-            {/* Recent Notifications */}
-            <Card className="border-border/50">
-              <CardHeader>
-                <CardTitle className="text-base flex items-center justify-between">
-                  <span>Thông báo gần đây</span>
+            {/* 🔥 NEW: Enhanced Recent Notifications with larger, more visible cards */}
+            <Card className="border-border/50 shadow-lg">
+              <CardHeader className="bg-gradient-to-r from-primary/5 to-primary/10">
+                <CardTitle className="text-lg flex items-center justify-between">
+                  <span className="font-bold">📢 Thông báo gần đây</span>
                   {unreadCount > 0 && (
-                    <Badge variant="secondary" className="text-xs">
+                    <Badge variant="destructive" className="text-sm font-bold animate-pulse">
                       {unreadCount} mới
                     </Badge>
                   )}
@@ -1240,7 +1258,7 @@ export default function ParentDashboard() {
                     Chưa có thông báo nào
                   </div>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     {recentNotifications.map((notification, index) => {
                       const Icon =
                         notification.type === "success"
@@ -1250,36 +1268,42 @@ export default function ParentDashboard() {
                           : MapPin;
                       return (
                         <div
-                          key={`${notification.timestamp}-${index}`}
-                          className="flex items-start gap-3 p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer"
+                          key={notification.id || `${notification.timestamp}-${index}`}
+                          className={`flex items-start gap-4 p-4 rounded-lg transition-all cursor-pointer border-2 ${
+                            notification.type === "warning"
+                              ? "bg-orange-50 dark:bg-orange-950/20 border-orange-500 hover:bg-orange-100 dark:hover:bg-orange-900/30"
+                              : notification.type === "success"
+                              ? "bg-green-50 dark:bg-green-950/20 border-green-500 hover:bg-green-100 dark:hover:bg-green-900/30"
+                              : "bg-blue-50 dark:bg-blue-950/20 border-blue-500 hover:bg-blue-100 dark:hover:bg-blue-900/30"
+                          }`}
                           onClick={() =>
                             setUnreadCount((prev) => Math.max(0, prev - 1))
                           }
                         >
                           <div
-                            className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                            className={`w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0 ${
                               notification.type === "success"
-                                ? "bg-green-500/10"
+                                ? "bg-green-500/20"
                                 : notification.type === "warning"
-                                ? "bg-orange-500/10"
-                                : "bg-primary/10"
+                                ? "bg-orange-500/20"
+                                : "bg-primary/20"
                             }`}
                           >
                             <Icon
-                              className={`w-4 h-4 ${
+                              className={`w-6 h-6 ${
                                 notification.type === "success"
-                                  ? "text-green-500"
+                                  ? "text-green-600 dark:text-green-400"
                                   : notification.type === "warning"
-                                  ? "text-orange-500"
+                                  ? "text-orange-600 dark:text-orange-400"
                                   : "text-primary"
                               }`}
                             />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-foreground">
+                            <p className="text-base font-bold text-foreground leading-snug">
                               {notification.title}
                             </p>
-                            <p className="text-xs text-muted-foreground mt-1">
+                            <p className="text-sm text-muted-foreground mt-1">
                               {notification.time}
                             </p>
                           </div>

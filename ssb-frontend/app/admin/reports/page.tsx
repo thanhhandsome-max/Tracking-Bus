@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { useLanguage } from "@/lib/language-context"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { AdminSidebar } from "@/components/admin/admin-sidebar"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -40,9 +41,14 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 
 export default function ReportsPage() {
+  const { t } = useLanguage()
   const [dateRange, setDateRange] = useState("7days")
-  const [reportType, setReportType] = useState("overview")
+  // Đồng bộ loại báo cáo với tab đang chọn
+  const [activeTab, setActiveTab] = useState<string>("trips")
+  const reportType = activeTab // map trực tiếp: trips|buses|drivers|students|incidents
   const [loading, setLoading] = useState(true)
+  const [tableLoading, setTableLoading] = useState(false)
+  const [reportData, setReportData] = useState<any>(null)
   const { toast } = useToast()
 
   // Backend stats
@@ -104,7 +110,7 @@ export default function ReportsPage() {
         if (mounted) setStats(derived)
       } catch (e: any) {
         console.warn("Failed to load reports overview", e)
-        toast({ title: "Không tải được báo cáo", description: e?.message || "Vui lòng thử lại", variant: "destructive" })
+        toast({ title: t("common.error"), description: e?.message || t("common.tryAgain"), variant: "destructive" })
         if (mounted) setStats(null)
       } finally {
         if (mounted) setLoading(false)
@@ -113,6 +119,119 @@ export default function ReportsPage() {
     load()
     return () => { mounted = false }
   }, [from, to, toast])
+
+  // Load table data for current tab/type
+  useEffect(() => {
+    let mounted = true
+    async function loadReport() {
+      try {
+        setTableLoading(true)
+        const res = await apiClient.getReportView({ type: reportType, from, to })
+        if (mounted) setReportData((res as any)?.data || null)
+      } catch (e: any) {
+        if (mounted) setReportData(null)
+        toast({ title: "Không tải được dữ liệu báo cáo", description: e?.message || "Vui lòng thử lại", variant: "destructive" })
+      } finally {
+        if (mounted) setTableLoading(false)
+      }
+    }
+    loadReport()
+    return () => { mounted = false }
+  }, [reportType, from, to, toast])
+
+  const renderReportTable = () => {
+    const type = reportType
+    const d = reportData || {}
+    let rows: any[] = []
+    let columns: { key: string; label: string }[] = []
+
+    if (type === "trips") {
+      rows = Array.isArray(d.trips) ? d.trips : []
+      columns = [
+        { key: "maChuyen", label: "Mã chuyến" },
+        { key: "ngayChay", label: "Ngày chạy" },
+        { key: "tenTuyen", label: "Tuyến" },
+        { key: "bienSoXe", label: "Biển số" },
+        { key: "tenTaiXe", label: "Tài xế" },
+        { key: "trangThai", label: "Trạng thái" },
+      ]
+    } else if (type === "buses") {
+      rows = Array.isArray(d.buses) ? d.buses : []
+      columns = [
+        { key: "maXe", label: "Mã xe" },
+        { key: "bienSoXe", label: "Biển số" },
+        { key: "dongXe", label: "Dòng xe" },
+        { key: "sucChua", label: "Sức chứa" },
+        { key: "trangThai", label: "Trạng thái" },
+      ]
+    } else if (type === "drivers") {
+      rows = Array.isArray(d.drivers) ? d.drivers : []
+      columns = [
+        { key: "maTaiXe", label: "Mã tài xế" },
+        { key: "hoTen", label: "Họ tên" },
+        { key: "soBangLai", label: "Bằng lái" },
+        { key: "soDienThoai", label: "SĐT" },
+        { key: "trangThai", label: "Trạng thái" },
+      ]
+    } else if (type === "students") {
+      rows = Array.isArray(d.students) ? d.students : []
+      columns = [
+        { key: "maHocSinh", label: "Mã học sinh" },
+        { key: "hoTen", label: "Họ tên" },
+        { key: "lop", label: "Lớp" },
+        { key: "tenPhuHuynh", label: "Phụ huynh" },
+        { key: "sdtPhuHuynh", label: "SĐT PH" },
+      ]
+    } else if (type === "incidents") {
+      rows = Array.isArray(d.incidents) ? d.incidents : []
+      columns = [
+        { key: "maSuCo", label: "Mã sự cố" },
+        { key: "loaiSuCo", label: "Loại" },
+        { key: "mucDo", label: "Mức độ" },
+        { key: "moTa", label: "Mô tả" },
+        { key: "ngayTao", label: "Ngày" },
+      ]
+    }
+
+    const sliced = rows.slice(0, 10)
+    return (
+      <Card className="border-border/50">
+        <CardHeader>
+          <CardTitle>
+            Dữ liệu (top {sliced.length}{rows.length > 10 ? ` / ${rows.length}` : ""})
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {tableLoading ? (
+            <Skeleton className="h-32 w-full" />
+          ) : sliced.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Không có dữ liệu trong khoảng thời gian đã chọn.</p>
+          ) : (
+            <div className="overflow-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-muted-foreground">
+                    {columns.map((c) => (
+                      <th key={c.key} className="text-left py-2 pr-4 whitespace-nowrap">{c.label}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sliced.map((r, idx) => (
+                    <tr key={idx} className="border-t border-border/50">
+                      {columns.map((c) => (
+                        <td key={c.key} className="py-2 pr-4 whitespace-nowrap max-w-[260px] truncate" title={String((r as any)[c.key] ?? "")}> {String((r as any)[c.key] ?? "")} </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    )
+  }
 
   // Mock data for charts
   const tripTrendData = [
@@ -170,8 +289,8 @@ export default function ReportsPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-foreground">Báo cáo & Thống kê</h1>
-            <p className="text-muted-foreground mt-1">Phân tích dữ liệu và tạo báo cáo chi tiết</p>
+            <h1 className="text-3xl font-bold text-foreground">{t("reports.title")}</h1>
+            <p className="text-muted-foreground mt-1">{t("reports.description")}</p>
           </div>
           <div className="flex items-center gap-3">
             <Select value={dateRange} onValueChange={setDateRange}>
@@ -179,33 +298,33 @@ export default function ReportsPage() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="7days">7 ngày qua</SelectItem>
-                <SelectItem value="30days">30 ngày qua</SelectItem>
-                <SelectItem value="90days">90 ngày qua</SelectItem>
-                <SelectItem value="custom">Tùy chỉnh</SelectItem>
+                <SelectItem value="7days">{t("reports.last7Days")}</SelectItem>
+                <SelectItem value="30days">30 days ago</SelectItem>
+                <SelectItem value="90days">90 days ago</SelectItem>
+                <SelectItem value="custom">Custom</SelectItem>
               </SelectContent>
             </Select>
             <Button 
               className="gap-2"
               onClick={async () => {
                 try {
-                  const blob = await apiClient.exportReport({ format: "excel", type: reportType, from, to })
+                  const blob = await apiClient.exportReport({ format: "xlsx", type: reportType, from, to })
                   const url = window.URL.createObjectURL(blob)
                   const a = document.createElement("a")
                   a.href = url
-                  a.download = `report_${reportType}_${from}_${to}.csv`
+                  a.download = `report_${reportType}_${from}_${to}.xlsx`
                   document.body.appendChild(a)
                   a.click()
                   window.URL.revokeObjectURL(url)
                   document.body.removeChild(a)
-                  toast({ title: "Thành công", description: "Đã xuất báo cáo thành công" })
+                  toast({ title: t("common.success"), description: t("reports.exportReport") })
                 } catch (e) {
-                  toast({ title: "Lỗi", description: "Không thể xuất báo cáo", variant: "destructive" })
+                  toast({ title: t("common.error"), description: t("reports.exportReport"), variant: "destructive" })
                 }
               }}
             >
               <Download className="w-4 h-4" />
-              Xuất báo cáo
+              {t("reports.exportReport")}
             </Button>
           </div>
         </div>
@@ -216,7 +335,7 @@ export default function ReportsPage() {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Tổng chuyến đi</p>
+                  <p className="text-sm text-muted-foreground">{t("reports.totalTrips")}</p>
                   <p className="text-2xl font-bold text-foreground mt-1">{uiStats.totalTrips}</p>
                   <div className="flex items-center gap-1 mt-2">
                     <TrendingUp className="w-3 h-3 text-green-500" />
@@ -234,7 +353,7 @@ export default function ReportsPage() {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Tỷ lệ đúng giờ</p>
+                  <p className="text-sm text-muted-foreground">{t("reports.onTimeRate")}</p>
                   <p className="text-2xl font-bold text-green-500 mt-1">{uiStats.onTimeRate}%</p>
                   <div className="flex items-center gap-1 mt-2">
                     <TrendingUp className="w-3 h-3 text-green-500" />
@@ -252,7 +371,7 @@ export default function ReportsPage() {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Học sinh</p>
+                  <p className="text-sm text-muted-foreground">{t("reports.students")}</p>
                   <p className="text-2xl font-bold text-foreground mt-1">{uiStats.totalStudents}</p>
                   <div className="flex items-center gap-1 mt-2">
                     <TrendingUp className="w-3 h-3 text-green-500" />
@@ -270,7 +389,7 @@ export default function ReportsPage() {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Trễ TB</p>
+                  <p className="text-sm text-muted-foreground">{t("reports.avgDelay")}</p>
                   <p className="text-2xl font-bold text-orange-500 mt-1">{uiStats.avgDelay}m</p>
                   <div className="flex items-center gap-1 mt-2">
                     <TrendingDown className="w-3 h-3 text-green-500" />
@@ -288,7 +407,7 @@ export default function ReportsPage() {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Sự cố</p>
+                  <p className="text-sm text-muted-foreground">{t("reports.incidents")}</p>
                   <p className="text-2xl font-bold text-foreground mt-1">{uiStats.incidents}</p>
                   <div className="flex items-center gap-1 mt-2">
                     <TrendingDown className="w-3 h-3 text-green-500" />
@@ -321,7 +440,7 @@ export default function ReportsPage() {
         </div>
 
         {/* Detailed Reports */}
-        <Tabs defaultValue="trips" className="space-y-6">
+        <Tabs defaultValue="trips" className="space-y-6" onValueChange={(v) => setActiveTab(v)}>
           <TabsList className="grid w-full max-w-3xl grid-cols-5">
             <TabsTrigger value="trips">Chuyến đi</TabsTrigger>
             <TabsTrigger value="buses">Xe buýt</TabsTrigger>
@@ -332,6 +451,7 @@ export default function ReportsPage() {
 
           {/* Trips Report */}
           <TabsContent value="trips" className="space-y-6">
+            {renderReportTable()}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card className="border-border/50">
                 <CardHeader>
@@ -418,6 +538,7 @@ export default function ReportsPage() {
 
           {/* Buses Report */}
           <TabsContent value="buses" className="space-y-6">
+            {renderReportTable()}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card className="border-border/50">
                 <CardHeader>
@@ -481,6 +602,7 @@ export default function ReportsPage() {
 
           {/* Drivers Report */}
           <TabsContent value="drivers" className="space-y-6">
+            {renderReportTable()}
             <Card className="border-border/50">
               <CardHeader>
                 <CardTitle>Hiệu suất tài xế</CardTitle>
@@ -536,6 +658,7 @@ export default function ReportsPage() {
 
           {/* Students Report */}
           <TabsContent value="students" className="space-y-6">
+            {renderReportTable()}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card className="border-border/50">
                 <CardHeader>
@@ -620,6 +743,7 @@ export default function ReportsPage() {
 
           {/* Incidents Report */}
           <TabsContent value="incidents" className="space-y-6">
+            {renderReportTable()}
             <Card className="border-border/50">
               <CardHeader>
                 <CardTitle>Phân loại sự cố</CardTitle>
@@ -700,7 +824,7 @@ export default function ReportsPage() {
                     const url = window.URL.createObjectURL(blob)
                     const a = document.createElement("a")
                     a.href = url
-                    a.download = `report_overview_${from}_${to}.json`
+                    a.download = `report_overview_${from}_${to}.pdf`
                     document.body.appendChild(a)
                     a.click()
                     window.URL.revokeObjectURL(url)
@@ -723,11 +847,11 @@ export default function ReportsPage() {
                 className="gap-2 h-auto py-4 flex-col bg-transparent"
                 onClick={async () => {
                   try {
-                    const blob = await apiClient.exportReport({ format: "excel", type: "trips", from, to })
+                    const blob = await apiClient.exportReport({ format: "xlsx", type: "trips", from, to })
                     const url = window.URL.createObjectURL(blob)
                     const a = document.createElement("a")
                     a.href = url
-                    a.download = `report_trips_${from}_${to}.csv`
+                    a.download = `report_trips_${from}_${to}.xlsx`
                     document.body.appendChild(a)
                     a.click()
                     window.URL.revokeObjectURL(url)

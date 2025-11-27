@@ -6,6 +6,7 @@ import LichTrinhModel from "../models/LichTrinhModel.js";
 import ChuyenDiModel from "../models/ChuyenDiModel.js";
 import * as response from "../utils/response.js";
 import bcrypt from "bcryptjs";
+import EmailService from "../services/EmailService.js";
 
 class DriverController {
   // Lấy danh sách tất cả tài xế với thông tin người dùng
@@ -137,6 +138,7 @@ class DriverController {
         ngayHetHanBangLai,
         soNamKinhNghiem,
         trangThai,
+        matKhau,
       } = req.body;
 
       // Validation dữ liệu bắt buộc
@@ -195,11 +197,20 @@ class DriverController {
         });
       }
 
-      // Validation ngày hết hạn bằng lái
+      // Validation ngày hết hạn bằng lái (so sánh theo ngày, cho phép bằng ngày hiện tại)
       if (ngayHetHanBangLai) {
         const expiryDate = new Date(ngayHetHanBangLai);
+        if (isNaN(expiryDate.getTime())) {
+          return res.status(400).json({
+            success: false,
+            message: "Ngày hết hạn bằng lái không hợp lệ",
+          });
+        }
         const today = new Date();
-        if (expiryDate <= today) {
+        // Reset giờ để so sánh ngày
+        today.setHours(0, 0, 0, 0);
+        expiryDate.setHours(0, 0, 0, 0);
+        if (expiryDate < today) {
           return res.status(400).json({
             success: false,
             message: "Bằng lái đã hết hạn",
@@ -244,7 +255,6 @@ class DriverController {
       }
 
       // Hash password - bắt buộc khi tạo mới
-      const matKhau = req.body.matKhau;
       if (!matKhau) {
         return res.status(400).json({
           success: false,
@@ -332,6 +342,19 @@ class DriverController {
       const newDriver = await TaiXeModel.getById(userId);
       const userInfo = await NguoiDungModel.getById(userId);
 
+      // Gửi email thông tin tài khoản tài xế (không chặn luồng nếu lỗi)
+      try {
+        await EmailService.sendParentAccountInfo(
+          email,
+          hoTen,
+          email,
+          matKhau,
+          soDienThoai || ""
+        );
+      } catch (emailError) {
+        console.error("Error sending driver account email (non-blocking):", emailError);
+      }
+
       res.status(201).json({
         success: true,
         data: {
@@ -375,6 +398,7 @@ class DriverController {
         soNamKinhNghiem,
         trangThai,
       } = req.body;
+      const matKhau = req.body.matKhau;
 
       if (!id) {
         return res.status(400).json({
@@ -448,7 +472,7 @@ class DriverController {
       // Validation số năm kinh nghiệm
       if (
         soNamKinhNghiem !== undefined &&
-        (soNamKinhNghiem < 0 || soNamKinhNghiem > 50)
+        (Number(soNamKinhNghiem) < 0 || Number(soNamKinhNghiem) > 50)
       ) {
         return res.status(400).json({
           success: false,
@@ -461,23 +485,88 @@ class DriverController {
       if (hoTen !== undefined) userUpdateData.hoTen = hoTen;
       if (email !== undefined) userUpdateData.email = email;
       if (soDienThoai !== undefined) userUpdateData.soDienThoai = soDienThoai;
-      if (trangThai !== undefined) userUpdateData.trangThai = trangThai;
+      if (trangThai !== undefined) {
+        // Bảng NguoiDung.trangThai là số (1: hoạt động, 0: ngừng)
+        const userStatus = (() => {
+          if (String(trangThai).toLowerCase() === "ngung_hoat_dong") return 0;
+          return 1; // mặc định hoạt động
+        })();
+        userUpdateData.trangThai = userStatus;
+      }
 
       if (Object.keys(userUpdateData).length > 0) {
-        await NguoiDungModel.update(id, userUpdateData);
+        try {
+          await NguoiDungModel.update(id, userUpdateData);
+        } catch (err) {
+          console.error("NguoiDungModel.update error:", {
+            message: err?.message,
+            code: err?.code,
+            sqlMessage: err?.sqlMessage,
+            sqlState: err?.sqlState,
+          });
+          return res.status(500).json({
+            success: false,
+            message: "Lỗi server khi cập nhật thông tin người dùng",
+            error: err?.sqlMessage || err?.message,
+          });
+        }
+      }
+
+      // Cập nhật mật khẩu người dùng nếu được cung cấp
+      if (matKhau && typeof matKhau === "string" && matKhau.trim().length > 0) {
+        // Optional: basic password policy
+        if (matKhau.length < 6) {
+          return res.status(400).json({
+            success: false,
+            message: "Mật khẩu phải có ít nhất 6 ký tự",
+          });
+        }
+        const saltRounds = 12;
+        const hashedPassword = await bcrypt.hash(matKhau, saltRounds);
+        try {
+          await NguoiDungModel.update(id, { matKhau: hashedPassword });
+        } catch (err) {
+          console.error("NguoiDungModel.update (password) error:", {
+            message: err?.message,
+            code: err?.code,
+            sqlMessage: err?.sqlMessage,
+            sqlState: err?.sqlState,
+          });
+          return res.status(500).json({
+            success: false,
+            message: "Lỗi server khi cập nhật mật khẩu",
+            error: err?.sqlMessage || err?.message,
+          });
+        }
       }
 
       // Cập nhật thông tin tài xế
       const driverUpdateData = {};
+      // Đồng bộ tên tài xế nếu hoTen thay đổi
+      if (hoTen !== undefined) driverUpdateData.tenTaiXe = hoTen;
       if (soBangLai !== undefined) driverUpdateData.soBangLai = soBangLai;
       if (ngayHetHanBangLai !== undefined)
         driverUpdateData.ngayHetHanBangLai = ngayHetHanBangLai;
       if (soNamKinhNghiem !== undefined)
         driverUpdateData.soNamKinhNghiem = soNamKinhNghiem;
-      if (trangThai !== undefined) driverUpdateData.trangThai = trangThai;
+      if (trangThai !== undefined) driverUpdateData.trangThai = trangThai; // Bảng TaiXe dùng chuỗi
 
       if (Object.keys(driverUpdateData).length > 0) {
-        await TaiXeModel.update(id, driverUpdateData);
+        try {
+          await TaiXeModel.update(id, driverUpdateData);
+        } catch (err) {
+          console.error("TaiXeModel.update error:", {
+            message: err?.message,
+            code: err?.code,
+            sqlMessage: err?.sqlMessage,
+            sqlState: err?.sqlState,
+          });
+          return res.status(500).json({
+            success: false,
+            message: "Lỗi server khi cập nhật thông tin tài xế",
+            error: err?.sqlMessage || err?.message,
+          });
+        }
       }
 
       // Lấy thông tin tài xế sau khi cập nhật
@@ -561,7 +650,14 @@ class DriverController {
   static async getSchedules(req, res) {
     try {
       const { id } = req.params;
-      const { date, status } = req.query;
+      const { 
+        date, 
+        status, 
+        dateRange, // 'today', 'thisWeek', hoặc 'custom'
+        fromDate,  // YYYY-MM-DD (cho custom)
+        toDate,    // YYYY-MM-DD (cho custom)
+        tripStatus // Trạng thái trip: 'chua_khoi_hanh', 'dang_chay', 'hoan_thanh', 'huy'
+      } = req.query;
 
       if (!id) {
         return res.status(400).json({
@@ -581,22 +677,118 @@ class DriverController {
 
       let schedules = await LichTrinhModel.getByDriver(id);
 
-      // Lọc theo ngày
-      if (date) {
-        schedules = schedules.filter((schedule) => schedule.ngayChay === date);
+      // Tính toán date range
+      let startDate = null;
+      let endDate = null;
+      
+      if (dateRange === 'today') {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        startDate = today;
+        endDate = new Date(today);
+        endDate.setHours(23, 59, 59, 999);
+      } else if (dateRange === 'thisWeek') {
+        const today = new Date();
+        const dayOfWeek = today.getDay();
+        const diff = today.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1); // Monday
+        startDate = new Date(today.setDate(diff));
+        startDate.setHours(0, 0, 0, 0);
+        endDate = new Date(startDate);
+        endDate.setDate(endDate.getDate() + 6);
+        endDate.setHours(23, 59, 59, 999);
+      } else if (dateRange === 'custom' && fromDate && toDate) {
+        startDate = new Date(fromDate);
+        startDate.setHours(0, 0, 0, 0);
+        endDate = new Date(toDate);
+        endDate.setHours(23, 59, 59, 999);
+      } else if (date) {
+        // Backward compatibility: single date filter
+        startDate = new Date(date);
+        startDate.setHours(0, 0, 0, 0);
+        endDate = new Date(date);
+        endDate.setHours(23, 59, 59, 999);
       }
 
-      // Lọc theo trạng thái
-      if (status) {
-        schedules = schedules.filter(
-          (schedule) => schedule.trangThai === status
+      // Lọc theo date range
+      if (startDate && endDate) {
+        schedules = schedules.filter((schedule) => {
+          const scheduleDate = new Date(schedule.ngayChay);
+          return scheduleDate >= startDate && scheduleDate <= endDate;
+        });
+      }
+
+      // Lấy thông tin trip cho mỗi schedule và thêm trip status
+      const schedulesWithTrips = await Promise.all(
+        schedules.map(async (schedule) => {
+          try {
+            // Tìm trip tương ứng với schedule này
+            const trip = await ChuyenDiModel.getByScheduleIdAndDate(
+              schedule.maLichTrinh,
+              schedule.ngayChay
+            );
+
+            // Đếm số học sinh trong schedule
+            const ScheduleStudentStopModel = (await import("../models/ScheduleStudentStopModel.js")).default;
+            const students = await ScheduleStudentStopModel.getByScheduleId(schedule.maLichTrinh);
+            
+            return {
+              ...schedule,
+              tripStatus: trip ? trip.trangThai : 'chua_khoi_hanh',
+              tripId: trip ? trip.maChuyen : null,
+              gioBatDauThucTe: trip ? trip.gioBatDauThucTe : null,
+              gioKetThucThucTe: trip ? trip.gioKetThucThucTe : null,
+              totalStudents: students ? students.length : 0,
+            };
+          } catch (err) {
+            console.error(`Error processing schedule ${schedule.maLichTrinh}:`, err);
+            return {
+              ...schedule,
+              tripStatus: 'chua_khoi_hanh',
+              tripId: null,
+              gioBatDauThucTe: null,
+              gioKetThucThucTe: null,
+              totalStudents: 0,
+            };
+          }
+        })
+      );
+
+      // Lọc theo trip status nếu có
+      let filteredSchedules = schedulesWithTrips;
+      if (tripStatus) {
+        filteredSchedules = schedulesWithTrips.filter(
+          (schedule) => schedule.tripStatus === tripStatus
         );
       }
 
+      // Lọc theo status (backward compatibility - lọc theo schedule status)
+      if (status) {
+        filteredSchedules = filteredSchedules.filter(
+          (schedule) => schedule.dangApDung === (status === 'active')
+        );
+      }
+
+      // Sắp xếp theo ngày và giờ
+      filteredSchedules.sort((a, b) => {
+        const dateA = new Date(`${a.ngayChay} ${a.gioKhoiHanh}`);
+        const dateB = new Date(`${b.ngayChay} ${b.gioKhoiHanh}`);
+        return dateA - dateB;
+      });
+
       res.status(200).json({
         success: true,
-        data: schedules,
+        data: filteredSchedules,
         message: "Lấy lịch trình tài xế thành công",
+        meta: {
+          total: filteredSchedules.length,
+          dateRange: dateRange || (date ? 'single' : 'all'),
+          filters: {
+            dateRange,
+            fromDate,
+            toDate,
+            tripStatus,
+          },
+        },
       });
     } catch (error) {
       console.error("Error in DriverController.getSchedules:", error);
@@ -647,6 +839,99 @@ class DriverController {
       res.status(500).json({
         success: false,
         message: "Lỗi server khi lấy thống kê tài xế",
+        error: error.message,
+      });
+    }
+  }
+
+  // Lấy chi tiết lịch trình với route stops và students
+  static async getScheduleDetail(req, res) {
+    try {
+      const { id, scheduleId } = req.params;
+      const userId = req.user?.userId;
+
+      // Nếu là driver, chỉ được xem schedule của chính mình
+      if (req.user?.role === "tai_xe" && Number(id) !== Number(userId)) {
+        return res.status(403).json({
+          success: false,
+          message: "Bạn chỉ có thể xem lịch trình của chính mình",
+        });
+      }
+
+      if (!scheduleId) {
+        return res.status(400).json({
+          success: false,
+          message: "Mã lịch trình là bắt buộc",
+        });
+      }
+
+      // Lấy thông tin schedule
+      const schedule = await LichTrinhModel.getById(scheduleId);
+      if (!schedule) {
+        return res.status(404).json({
+          success: false,
+          message: "Không tìm thấy lịch trình",
+        });
+      }
+
+      // Kiểm tra schedule thuộc về driver này
+      if (Number(schedule.maTaiXe) !== Number(id)) {
+        return res.status(403).json({
+          success: false,
+          message: "Lịch trình này không thuộc về tài xế này",
+        });
+      }
+
+      // Sử dụng ScheduleService để lấy đầy đủ thông tin
+      const ScheduleService = (await import("../services/ScheduleService.js")).default;
+      const scheduleDetail = await ScheduleService.getById(scheduleId);
+
+      // Lấy thông tin trip nếu có
+      const trip = await ChuyenDiModel.getByScheduleIdAndDate(
+        scheduleId,
+        schedule.ngayChay
+      );
+
+      // Lấy thông tin route, bus, driver
+      const TuyenDuongModel = (await import("../models/TuyenDuongModel.js")).default;
+      const XeBuytModel = (await import("../models/XeBuytModel.js")).default;
+      
+      const routeInfo = await TuyenDuongModel.getById(scheduleDetail.maTuyen);
+      const busInfo = await XeBuytModel.getById(scheduleDetail.maXe);
+
+      res.status(200).json({
+        success: true,
+        data: {
+          ...scheduleDetail,
+          routeInfo: {
+            maTuyen: routeInfo?.maTuyen,
+            tenTuyen: routeInfo?.tenTuyen,
+            diemBatDau: routeInfo?.diemBatDau,
+            diemKetThuc: routeInfo?.diemKetThuc,
+            thoiGianUocTinh: routeInfo?.thoiGianUocTinh,
+            polyline: routeInfo?.polyline,
+          },
+          busInfo: {
+            maXe: busInfo?.maXe,
+            bienSoXe: busInfo?.bienSoXe,
+            dongXe: busInfo?.dongXe,
+            sucChua: busInfo?.sucChua,
+          },
+          trip: trip ? {
+            maChuyen: trip.maChuyen,
+            trangThai: trip.trangThai,
+            gioBatDauThucTe: trip.gioBatDauThucTe,
+            gioKetThucThucTe: trip.gioKetThucThucTe,
+            ghiChu: trip.ghiChu,
+          } : null,
+        },
+        message: "Lấy chi tiết lịch trình thành công",
+      });
+    } catch (error) {
+      console.error("Error in DriverController.getScheduleDetail:", error);
+      res.status(500).json({
+        success: false,
+        message: "Lỗi server khi lấy chi tiết lịch trình",
         error: error.message,
       });
     }

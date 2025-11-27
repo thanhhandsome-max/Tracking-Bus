@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import NguoiDungModel from "../models/NguoiDungModel.js";
 import XeBuytModel from "../models/XeBuytModel.js";
 import ChuyenDiModel from "../models/ChuyenDiModel.js";
+import DelayAlertService from "./DelayAlertService.js";
 
 class SocketService {
   constructor() {
@@ -182,6 +183,18 @@ class SocketService {
         timestamp: timestamp || new Date().toISOString(),
       },
     });
+
+    // 🚨 Check for delay and send alerts
+    try {
+      // Get active trip for this bus
+      const activeTrip = await ChuyenDiModel.getActiveByBusId(busId);
+      if (activeTrip) {
+        await DelayAlertService.sendDelayAlert(activeTrip.maChuyen, this.io);
+      }
+    } catch (error) {
+      console.error('[SocketService] Error checking delay:', error);
+      // Don't fail location update if delay check fails
+    }
 
     socket.emit("location_update_success", {
       message: "Location updated successfully",
