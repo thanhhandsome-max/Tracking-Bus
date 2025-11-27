@@ -661,6 +661,7 @@ class ApiClient {
     trangThai?: string;
     hocSinhLienQuan?: number[];
     affectedStudents?: number[];
+    thoiGianBao?: string;
   }) {
     // Send to /incidents endpoint with all fields
     return this.request("/incidents", { 
@@ -673,6 +674,7 @@ class ApiClient {
         viTri: payload.viTri,
         trangThai: payload.trangThai,
         hocSinhLienQuan: payload.hocSinhLienQuan || payload.affectedStudents,
+        thoiGianBao: payload.thoiGianBao || new Date().toISOString(),
       })
     });
   }

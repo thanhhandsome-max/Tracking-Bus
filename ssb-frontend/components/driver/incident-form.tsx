@@ -445,11 +445,23 @@ export function IncidentForm({ onClose, tripId, currentLocation, gpsLastPoint }:
         critical: "nghiem_trong",
       }
       // 🔥 FIX: Gửi kèm vị trí GPS thật
+      const finalTripId = selectedTripId || tripId
+      
+      if (!finalTripId) {
+        toast({
+          title: "Lỗi",
+          description: "Vui lòng chọn chuyến đi",
+          variant: "destructive",
+        })
+        return
+      }
+      
       const payload: any = {
-        maChuyen: Number(selectedTripId),
+        maChuyen: Number(finalTripId),
         loaiSuCo: type,
         moTa: description,
         mucDo: severityMap[severity] || "nhe",
+        thoiGianBao: new Date().toISOString(),
       }
       
       if (affectedStudents.length > 0) {
@@ -476,7 +488,26 @@ export function IncidentForm({ onClose, tripId, currentLocation, gpsLastPoint }:
         console.warn("[IncidentForm] No valid location available, sending without viTri")
       }
       
-      console.log("[IncidentForm] Submitting incident:", { ...payload, viTri: payload.viTri ? "***" : "none" })
+      console.log("[IncidentForm] Submitting incident:", { 
+        ...payload, 
+        viTri: payload.viTri ? "***" : "none",
+        maChuyen: payload.maChuyen,
+        moTa: payload.moTa ? `${payload.moTa.substring(0, 50)}...` : "EMPTY"
+      })
+      
+      if (!payload.maChuyen || !payload.moTa) {
+        console.error("[IncidentForm] Missing required fields:", { 
+          maChuyen: payload.maChuyen, 
+          moTa: payload.moTa 
+        })
+        toast({
+          title: "Lỗi",
+          description: "Thiếu thông tin bắt buộc (maChuyen hoặc moTa)",
+          variant: "destructive",
+        })
+        return
+      }
+      
       await apiClient.createIncident(payload)
       toast({
         title: "Đã gửi báo cáo",

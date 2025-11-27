@@ -1230,7 +1230,7 @@ class TripController {
               parentIds.forEach((parentId) => {
                 const roomName = `user-${parentId}`;
                 console.log(`[M5 DEBUG] Emitting to room: ${roomName}`);
-                io.to(roomName).emit("notification:new", {
+                const notifData = {
                   maNguoiNhan: parentId,
                   tieuDe,
                   noiDung,
@@ -1238,7 +1238,9 @@ class TripController {
                   tripId: id,
                   thoiGianGui: new Date(),
                   daDoc: false,
-                });
+                };
+                console.log(`🔍 [TRIP] Emitting 'notification:new' to ${roomName}:`, notifData);
+                io.to(roomName).emit("notification:new", notifData);
               });
             } else {
               console.warn(`[M5 DEBUG] Socket.IO instance not found!`);

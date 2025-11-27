@@ -59,6 +59,7 @@ export default function ParentDashboard() {
   // M5: Realtime notifications state
   const [recentNotifications, setRecentNotifications] = useState<
     Array<{
+      id: number; // ← FIX: Thêm id field vào type
       type: "success" | "info" | "warning";
       title: string;
       time: string;
@@ -240,13 +241,23 @@ export default function ParentDashboard() {
 
       // Add to recent notifications list (max 10 items)
       setRecentNotifications((prev) => {
+        console.log('📋 [PARENT DASH] Adding notification to recent list:', {
+          maThongBao: data.maThongBao,
+          loaiThongBao: data.loaiThongBao,
+          tieuDe: data.tieuDe,
+          title: title,
+          calculatedType: notifType
+        })
+        
         const newNotif = {
+          id: data.maThongBao || Date.now(), // ← FIX: Thêm ID từ payload
           type: notifType,
           title: title,
           time: "Vừa xong",
           timestamp: Date.now(),
         };
         const updated = [newNotif, ...prev].slice(0, 10);
+        console.log('✅ [PARENT DASH] Updated recent notifications:', updated.length, updated)
         return updated;
       });
 
@@ -458,6 +469,7 @@ export default function ParentDashboard() {
       // Add to notifications
       setRecentNotifications((prev) => {
         const newNotif = {
+          id: data.id || Date.now(), // ← FIX: Thêm ID
           type: "warning" as const,
           title: `⚠️ Sự cố: ${data.incidentType || "Khẩn cấp"}`,
           time: "Vừa xong",
@@ -547,6 +559,7 @@ export default function ParentDashboard() {
           const notifications = Array.isArray(res?.data) ? res.data : [];
           if (notifications.length > 0) {
             const mapped = notifications.map((n: any) => ({
+              id: n.maThongBao, // ← FIX: Thêm ID để tránh duplicate trong React
               type: n.loaiThongBao === "trip_incident" ? "warning" : "success",
               title: n.tieuDe || "Thông báo",
               time: "Vừa xong",
@@ -805,6 +818,7 @@ export default function ParentDashboard() {
           }
 
           return {
+            id: notif.maThongBao, // ← FIX: Thêm ID
             type,
             title,
             time: timeStr,
@@ -1175,7 +1189,7 @@ export default function ParentDashboard() {
                           : MapPin;
                       return (
                         <div
-                          key={`${notification.timestamp}-${index}`}
+                          key={notification.id || `${notification.timestamp}-${index}`}
                           className={`flex items-start gap-4 p-4 rounded-lg transition-all cursor-pointer border-2 ${
                             notification.type === "warning"
                               ? "bg-orange-50 dark:bg-orange-950/20 border-orange-500 hover:bg-orange-100 dark:hover:bg-orange-900/30"
