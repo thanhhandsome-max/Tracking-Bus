@@ -725,6 +725,15 @@ class ApiClient {
     return this.request(`/reports/overview${q ? `?${q}` : ""}`);
   }
 
+  async getReportView(params?: { type?: string; from?: string; to?: string }) {
+    const queryParams = new URLSearchParams();
+    if (params?.type) queryParams.append("type", params.type);
+    if (params?.from) queryParams.append("from", params.from);
+    if (params?.to) queryParams.append("to", params.to);
+    const q = queryParams.toString();
+    return this.request(`/reports/view${q ? `?${q}` : ""}`);
+  }
+
   // Trip history for parent
   async getTripHistory(params?: { from?: string; to?: string; page?: number; limit?: number }) {
     const queryParams = new URLSearchParams();
@@ -783,7 +792,7 @@ class ApiClient {
     const q = queryParams.toString();
     // Return blob for file download
     const url = `${this.baseURL}/reports/export${q ? `?${q}` : ""}`;
-    const headers: HeadersInit = { "Content-Type": "application/json" };
+    const headers: HeadersInit = { "Content-Type": "application/json", "Accept": "application/octet-stream" };
     if (this.token) {
       (headers as Record<string, string>).Authorization = `Bearer ${this.token}`;
     }
