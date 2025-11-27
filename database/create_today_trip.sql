@@ -8,8 +8,15 @@
 
 USE school_bus_system;
 
+-- Force UTF-8 session to avoid collation conflicts
+SET NAMES utf8mb4;
+SET character_set_client = utf8mb4;
+SET character_set_connection = utf8mb4;
+SET character_set_results = utf8mb4;
+SET collation_connection = 'utf8mb4_0900_ai_ci';
 -- 📌 NGÀY CẦN TẠO CHUYẾN
-SET @target_date := '2025-10-30';
+-- Use today by default to match UI date range
+SET @target_date := CURDATE();
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- 1️⃣ TẠO CÁC CHUYẾN ĐI (ChuyenDi) TỪ LICH_TRINH TRONG NGÀY @target_date
@@ -25,8 +32,8 @@ SELECT
 FROM LichTrinh lt
 LEFT JOIN ChuyenDi cd
     ON cd.maLichTrinh = lt.maLichTrinh
-   AND cd.ngayChay    = @target_date
-WHERE lt.ngayChay = @target_date
+   AND DATE(cd.ngayChay)    = @target_date
+WHERE DATE(lt.ngayChay) = @target_date
   AND cd.maChuyen IS NULL;
 
 -- Thông tin kiểm tra số chuyến vừa tạo
@@ -34,7 +41,7 @@ SELECT
     @target_date AS ngayChay,
     COUNT(*) AS soChuyenTrongNgay
 FROM ChuyenDi
-WHERE ngayChay = @target_date;
+WHERE DATE(ngayChay) = @target_date;
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- 2️⃣ GÁN HỌC SINH VÀO CHUYẾN (TrangThaiHocSinh) DỰA TRÊN schedule_student_stops
@@ -57,7 +64,7 @@ JOIN LichTrinh lt
     ON lt.maLichTrinh = cd.maLichTrinh
 JOIN schedule_student_stops sss
     ON sss.maLichTrinh = lt.maLichTrinh
-WHERE cd.ngayChay = @target_date
+WHERE DATE(cd.ngayChay) = @target_date
 -- Tránh insert trùng nếu đã có sẵn
 ON DUPLICATE KEY UPDATE
     thuTuDiemDon    = VALUES(thuTuDiemDon),
@@ -73,7 +80,7 @@ SELECT
     COUNT(*) AS tongRecordTrangThai
 FROM TrangThaiHocSinh tths
 JOIN ChuyenDi cd ON cd.maChuyen = tths.maChuyen
-WHERE cd.ngayChay = @target_date
+WHERE DATE(cd.ngayChay) = @target_date
 GROUP BY cd.ngayChay;
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -95,7 +102,8 @@ JOIN LichTrinh l ON c.maLichTrinh = l.maLichTrinh
 JOIN TuyenDuong t ON l.maTuyen = t.maTuyen
 JOIN XeBuyt x ON l.maXe = x.maXe
 JOIN TaiXe tx ON l.maTaiXe = tx.maTaiXe
-WHERE c.ngayChay = @target_date
+WHERE DATE(c.ngayChay) = @target_date
 ORDER BY c.maChuyen;
 
-SELECT CONCAT('✅ Trips & student statuses for ', @target_date, ' processed successfully!') AS message;
+-- Ensure message uses UTF8 collation to avoid mix errors
+SELECT CONVERT(CONCAT('✅ Trips & student statuses for ', @target_date, ' processed successfully!') USING utf8mb4) AS message;

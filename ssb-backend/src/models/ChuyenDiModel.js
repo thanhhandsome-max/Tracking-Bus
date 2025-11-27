@@ -31,6 +31,15 @@ const ChuyenDiModel = {
       query += " AND DATE(cd.ngayChay) = DATE(?)";
       params.push(filters.ngayChay);
     }
+    // Hỗ trợ lọc theo khoảng thời gian
+    if (filters.from) {
+      query += " AND DATE(cd.ngayChay) >= DATE(?)";
+      params.push(filters.from);
+    }
+    if (filters.to) {
+      query += " AND DATE(cd.ngayChay) <= DATE(?)";
+      params.push(filters.to);
+    }
     if (filters.trangThai) {
       query += " AND cd.trangThai = ?";
       params.push(filters.trangThai);
@@ -349,7 +358,7 @@ const ChuyenDiModel = {
   },
 
   // Thống kê chuyến đi
-  async getStats(filters = {}) {
+  async getStatusCounts(filters = {}) {
     let query = `
       SELECT 
         trangThai,
