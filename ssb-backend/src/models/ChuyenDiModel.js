@@ -180,6 +180,46 @@ const ChuyenDiModel = {
     return rows;
   },
 
+  // Lấy chuyến đi theo schedule id và ngày
+  async getByScheduleIdAndDate(maLichTrinh, ngayChay) {
+    const [rows] = await pool.query(
+      `SELECT 
+        cd.*,
+        lt.loaiChuyen,
+        lt.gioKhoiHanh,
+        td.tenTuyen,
+        xb.bienSoXe
+       FROM ChuyenDi cd
+       INNER JOIN LichTrinh lt ON cd.maLichTrinh = lt.maLichTrinh
+       INNER JOIN TuyenDuong td ON lt.maTuyen = td.maTuyen
+       INNER JOIN XeBuyt xb ON lt.maXe = xb.maXe
+       WHERE cd.maLichTrinh = ? AND cd.ngayChay = ?
+       LIMIT 1`,
+      [maLichTrinh, ngayChay]
+    );
+    return rows[0] || null;
+  },
+
+  // Lấy chuyến đi theo schedule id
+  async getByScheduleId(maLichTrinh) {
+    const [rows] = await pool.query(
+      `SELECT 
+        cd.*,
+        lt.loaiChuyen,
+        lt.gioKhoiHanh,
+        td.tenTuyen,
+        xb.bienSoXe
+       FROM ChuyenDi cd
+       INNER JOIN LichTrinh lt ON cd.maLichTrinh = lt.maLichTrinh
+       INNER JOIN TuyenDuong td ON lt.maTuyen = td.maTuyen
+       INNER JOIN XeBuyt xb ON lt.maXe = xb.maXe
+       WHERE cd.maLichTrinh = ?
+       ORDER BY cd.ngayChay DESC`,
+      [maLichTrinh]
+    );
+    return rows;
+  },
+
   // Lấy lịch sử chuyến đi theo tài xế với filter (date range)
   async getByDriverId(maTaiXe, filters = {}) {
     let query = `
