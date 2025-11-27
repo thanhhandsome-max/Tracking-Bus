@@ -70,7 +70,8 @@ class IncidentController {
         trangThai = "moi",
         loaiSuCo,
         viTri,
-        hocSinhLienQuan // array of student IDs
+        hocSinhLienQuan, // array of student IDs
+        thoiGianBao // timestamp from client
       } = req.body;
 
       console.log('🔍 [IncidentController.create] Full request body:', JSON.stringify(req.body, null, 2));
@@ -92,7 +93,8 @@ class IncidentController {
         trangThai,
         loaiSuCo,
         viTri,
-        hocSinhLienQuan 
+        hocSinhLienQuan,
+        thoiGianBao
       });
 
       console.log('✅ [IncidentController.create] Created incident:', created.maSuCo);
@@ -148,14 +150,16 @@ class IncidentController {
           // Emit real-time to admins
           if (io) {
             admins.forEach(admin => {
-              io.to(`user-${admin.maNguoiDung}`).emit('notification', {
+              const notifData = {
                 type: 'su_co',
                 title: `🚨 Sự cố ${severityText}`,
                 message: `${typeText} - Chuyến #${maChuyen}`,
                 severity: mucDo,
                 maChuyen,
                 maSuCo: created.maSuCo
-              });
+              };
+              console.log(`🔍 [INCIDENT] Emitting 'notification' to user-${admin.maNguoiDung}:`, notifData);
+              io.to(`user-${admin.maNguoiDung}`).emit('notification', notifData);
             });
             console.log(`✅ [IncidentController.create] Sent real-time to ${admins.length} admins`);
           }
@@ -236,10 +240,21 @@ class IncidentController {
       });
     } catch (error) {
       console.error("❌ [IncidentController.create] Error:", error);
+      console.error("❌ [IncidentController.create] Error stack:", error.stack);
+      console.error("❌ [IncidentController.create] Error details:", {
+        name: error.name,
+        message: error.message,
+        code: error.code,
+        errno: error.errno,
+        sql: error.sql,
+        sqlState: error.sqlState,
+        sqlMessage: error.sqlMessage
+      });
       return res.status(500).json({ 
         success: false, 
         message: "Lỗi server khi báo cáo sự cố",
-        error: error.message 
+        error: error.message,
+        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
       });
     }
   }
