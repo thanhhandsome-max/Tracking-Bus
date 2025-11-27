@@ -649,7 +649,7 @@ export default function TripDetailPage() {
           console.warn("[Driver Trip] Failed to set route polyline state", err);
         }
 
-        const mappedStops = routeStops.map((stop: any, index: number) => {
+        let mappedStops = routeStops.map((stop: any, index: number) => {
           // Use stop.sequence if available, otherwise use index + 1
           const stopSequence = stop.sequence || index + 1;
 
@@ -751,6 +751,17 @@ export default function TripDetailPage() {
           };
         });
 
+        // 🔥 Chuyến về: tất cả học sinh đã ở trên xe ngay từ đầu -> chuyển pending -> picked
+        const tripTypeValue = data?.schedule?.loaiChuyen || data?.loaiChuyen || null;
+        if (tripTypeValue === "tra_chieu") {
+          mappedStops = mappedStops.map((stop: any) => ({
+            ...stop,
+            students: (stop.students || []).map((st: any) =>
+              st.status === "pending" ? { ...st, status: "picked" } : st
+            ),
+          }));
+        }
+
         // 🔥 Set trip status và started state
         if (data?.trangThai) {
           setTripStatus(data.trangThai);
@@ -786,8 +797,7 @@ export default function TripDetailPage() {
         const isLastStopValue = currentStopSequence === maxSequence;
         
         // Lấy tripType từ schedule
-        const tripTypeValue = data?.schedule?.loaiChuyen || data?.loaiChuyen || null;
-        
+        // (tripTypeValue đã khai báo ở trên sau khi mappedStops) -> set state
         setIsLastStop(isLastStopValue);
         setTripType(tripTypeValue as "don_sang" | "tra_chieu" | null);
         
@@ -1686,6 +1696,34 @@ export default function TripDetailPage() {
     }
   };
 
+  // 🔥 Listen for pickupStatusUpdate to sync student statuses (onboard/dropped)
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const data = (event as CustomEvent).detail;
+      const evtTripId = data?.tripId || data?.trip_id || data?.maChuyen;
+      if (!evtTripId || Number(evtTripId) !== effectiveTripId) return;
+      const studentId = String(data?.studentId || data?.student_id);
+      const newStatusRaw = data?.status;
+      const mappedStatus = newStatusRaw === "onboard" ? "picked" : newStatusRaw === "dropped" ? "dropped" : undefined;
+      if (!mappedStatus) return;
+      setTrip(prev => ({
+        ...prev,
+        stops: prev.stops.map(stop => ({
+          ...stop,
+          students: stop.students.map(st => st.id === studentId ? { ...st, status: mappedStatus } : st)
+        }))
+      }));
+      if (mappedStatus === "dropped") {
+        toast({
+          title: "✅ Đã trả học sinh",
+          description: data?.studentName ? `${data.studentName} đã xuống xe an toàn` : "Học sinh đã xuống xe",
+        });
+      }
+    };
+    window.addEventListener("pickupStatusUpdate", handler as EventListener);
+    return () => window.removeEventListener("pickupStatusUpdate", handler as EventListener);
+  }, [effectiveTripId, toast]);
+
   // P1 Fix: Cancel Trip handler
   const handleCancelTrip = async () => {
     try {
@@ -2339,6 +2377,8 @@ export default function TripDetailPage() {
                   </CardContent>
                 </Card>
 
+                {/* (Panel tổng hợp học sinh trên xe đã được gỡ theo yêu cầu) */}
+
                 {/* 🔥 Students List với nút hành động rõ ràng */}
                 <div className="space-y-3">
                   {/* 🔥 Hiển thị message đặc biệt cho điểm cuối của chuyến đi */}
@@ -2407,6 +2447,12 @@ export default function TripDetailPage() {
                                       Chờ đón
                                     </Badge>
                                   )}
+                                  {student.status === "dropped" && (
+                                    <Badge variant="outline" className="bg-blue-600/10 text-blue-700 dark:text-blue-300 border-blue-600/30">
+                                      <CheckCircle className="w-3 h-3 mr-1" />
+                                      Đã trả
+                                    </Badge>
+                                  )}
                                 </div>
                               </div>
                             </div>
@@ -2419,13 +2465,17 @@ export default function TripDetailPage() {
                               >
                                 <Phone className="w-4 h-4" />
                               </Button>
-                              {/* 🔥 Chuyến về: Hiển thị button "Trả học sinh" cho học sinh đã lên xe */}
-                              {tripType === "tra_chieu" && student.status === "picked" && (
+                              {/* 🔥 Chuyến về: Nút "Trả học sinh" luôn hiển thị; disable nếu học sinh chưa ở trên xe */}
+                              {tripType === "tra_chieu" && student.status !== "dropped" && (
                                 <Button
                                   variant="default"
                                   size="sm"
-                                  onClick={() => handleStudentCheckout(student.id)}
-                                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                                  onClick={() => {
+                                    // Cho phép trả trực tiếp (đã convert pending -> picked khi load)
+                                    handleStudentCheckout(student.id);
+                                  }}
+                                  title="Xác nhận đã trả học sinh"
+                                  className="text-white bg-blue-600 hover:bg-blue-700"
                                 >
                                   <CheckCircle className="w-4 h-4 mr-1" />
                                   Trả học sinh
