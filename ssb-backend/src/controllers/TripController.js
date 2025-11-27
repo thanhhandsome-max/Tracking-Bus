@@ -469,8 +469,9 @@ class TripController {
 
       // Tính tổng số học sinh theo trạng thái
       const totalStudents = students.length;
+      // 🔥 FIX: Đã đón bao gồm cả da_don và da_tra (cho cả chuyến đi và về)
       const pickedCount = students.filter(
-        (s) => s.trangThai === "da_don"
+        (s) => s.trangThai === "da_don" || s.trangThai === "da_tra"
       ).length;
       const absentCount = students.filter((s) => s.trangThai === "vang").length;
       const waitingCount = students.filter(

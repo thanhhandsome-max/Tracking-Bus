@@ -2571,12 +2571,20 @@ export default function TripDetailPage() {
             waitingCount = trip.summary.waitingCount || 0;
           } else {
             // Fallback: Calculate from trip.stops
+            // 🔥 FIX: Count both "picked" and "dropped" as picked for display
             trip.stops.forEach((stop: any) => {
               stop.students?.forEach((student: any) => {
                 totalStudents++;
-                if (student.status === "picked") pickedCount++;
-                else if (student.status === "absent") absentCount++;
-                else waitingCount++;
+                if (
+                  student.status === "picked" ||
+                  student.status === "dropped"
+                ) {
+                  pickedCount++;
+                } else if (student.status === "absent") {
+                  absentCount++;
+                } else {
+                  waitingCount++;
+                }
               });
             });
           }
@@ -3116,58 +3124,6 @@ export default function TripDetailPage() {
                 disabled={!simulatorRunning}
               />
             )}
-
-            {/* Quick Stats */}
-            <Card className="border-border/50">
-              <CardHeader>
-                <CardTitle>Thống kê</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {(() => {
-                  // 🔥 Tính toán thống kê từ trip.stops thật (không phải hardcode)
-                  let pickedCount = 0;
-                  let absentCount = 0;
-                  let remainingCount = 0;
-
-                  trip.stops.forEach((stop: any) => {
-                    stop.students?.forEach((student: any) => {
-                      if (student.status === "picked") pickedCount++;
-                      else if (student.status === "absent") absentCount++;
-                      else remainingCount++;
-                    });
-                  });
-
-                  return (
-                    <>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">
-                          Đã đón
-                        </span>
-                        <span className="text-sm font-medium text-success">
-                          {pickedCount} học sinh
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">
-                          Vắng
-                        </span>
-                        <span className="text-sm font-medium text-warning">
-                          {absentCount} học sinh
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">
-                          Còn lại
-                        </span>
-                        <span className="text-sm font-medium">
-                          {remainingCount} học sinh
-                        </span>
-                      </div>
-                    </>
-                  );
-                })()}
-              </CardContent>
-            </Card>
 
             <Card className="border-border/50">
               <CardHeader>
