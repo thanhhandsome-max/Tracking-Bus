@@ -153,6 +153,32 @@ export default function AdminDashboard() {
             <h1 className="text-3xl font-bold text-foreground">Dashboard Thống Kê</h1>
             <p className="text-muted-foreground mt-1">Theo dõi hiệu suất và phân tích dữ liệu</p>
           </div>
+          <div className="flex items-center gap-3">
+            <Button
+              className="gap-2"
+              onClick={async () => {
+                try {
+                  if (!dateFrom || !dateTo) return
+                  const from = format(dateFrom, "yyyy-MM-dd")
+                  const to = format(dateTo, "yyyy-MM-dd")
+                  const blob = await apiClient.exportReport({ format: "xlsx", type: "overview", from, to })
+                  const url = window.URL.createObjectURL(blob)
+                  const a = document.createElement("a")
+                  a.href = url
+                  a.download = `dashboard_overview_${from}_${to}.xlsx`
+                  document.body.appendChild(a)
+                  a.click()
+                  window.URL.revokeObjectURL(url)
+                  document.body.removeChild(a)
+                  toast({ title: "Thành công", description: "Đã xuất báo cáo tổng quan" })
+                } catch (e: any) {
+                  toast({ title: "Lỗi", description: e?.message || "Không thể xuất báo cáo", variant: "destructive" })
+                }
+              }}
+            >
+              Xuất báo cáo
+            </Button>
+          </div>
         </div>
 
         {/* Filters */}
