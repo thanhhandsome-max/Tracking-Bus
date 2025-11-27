@@ -34,6 +34,7 @@ import {
 } from "lucide-react"
 import apiClient from "@/lib/api"
 import { useToast } from "@/hooks/use-toast"
+import { socket } from "@/lib/socket"
 
 type UIIncident = {
   id: string
@@ -90,6 +91,18 @@ export default function DriverIncidentsPage() {
       }
     }
     load()
+
+    // Listen for real-time incident creation
+    const handleIncidentCreated = () => {
+      console.log('📨 Received incident-created event, refreshing list...')
+      load()
+    }
+
+    socket.on('incident-created', handleIncidentCreated)
+
+    return () => {
+      socket.off('incident-created', handleIncidentCreated)
+    }
   }, [])
 
   // Calculate statistics
