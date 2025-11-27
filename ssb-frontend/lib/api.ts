@@ -662,21 +662,19 @@ class ApiClient {
     hocSinhLienQuan?: number[];
     affectedStudents?: number[];
   }) {
-    // 🔥 FIX: Gửi đến endpoint /trips/:id/incident thay vì /incidents nếu có maChuyen
-    if (payload.maChuyen) {
-      return this.request(`/trips/${payload.maChuyen}/incident`, { 
-        method: "POST", 
-        body: JSON.stringify({
-          loaiSuCo: payload.loaiSuCo || "other",
-          moTa: payload.moTa,
-          mucDo: payload.mucDo,
-          viTri: payload.viTri,
-          hocSinhLienQuan: payload.hocSinhLienQuan || payload.affectedStudents,
-        })
-      });
-    }
-    // Fallback: Gửi đến /incidents nếu không có maChuyen
-    return this.request("/incidents", { method: "POST", body: JSON.stringify(payload) });
+    // Send to /incidents endpoint with all fields
+    return this.request("/incidents", { 
+      method: "POST", 
+      body: JSON.stringify({
+        maChuyen: payload.maChuyen,
+        loaiSuCo: payload.loaiSuCo || "other",
+        moTa: payload.moTa,
+        mucDo: payload.mucDo,
+        viTri: payload.viTri,
+        trangThai: payload.trangThai,
+        hocSinhLienQuan: payload.hocSinhLienQuan || payload.affectedStudents,
+      })
+    });
   }
 
   async updateIncident(id: number, payload: { moTa?: string; mucDo?: string; trangThai?: string }) {

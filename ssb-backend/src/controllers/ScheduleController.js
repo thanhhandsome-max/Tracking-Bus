@@ -492,7 +492,7 @@ class ScheduleController {
       const validStatuses = [
         "chua_khoi_hanh",
         "dang_chay",
-        "da_hoan_thanh",
+        "hoan_thanh",
         "bi_huy",
       ];
       if (!validStatuses.includes(trangThai)) {
