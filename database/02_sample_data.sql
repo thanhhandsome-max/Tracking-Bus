@@ -5,7 +5,7 @@
 -- Dữ liệu: 100 học sinh phân bố ở 10 quận/huyện TP.HCM
 -- Tạo từng lần 10 học sinh kèm phụ huynh
 
--- USE school_bus_system;
+USE school_bus_system;
 
 -- =================================================================
 -- KHỐI 1: TÀI KHOẢN QUẢN TRỊ VÀ TÀI XẾ
