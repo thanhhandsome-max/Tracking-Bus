@@ -4,6 +4,11 @@ import helmet from "helmet";
 import compression from "compression";
 import { createServer } from "http";
 import os from "os";
+import path from "path";
+import { fileURLToPath } from "url";
+import { dirname } from "path";
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 import config from "./config/env.js";
 import { corsMiddleware, corsHandler, securityHeaders, rateLimitHeaders, } from "./middlewares/cors.js";
 import { errorHandler, notFoundHandler, successResponse, } from "./middlewares/error.js";
@@ -51,6 +56,9 @@ app.use(rateLimitHeaders);
 app.use(compression());
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+const imagesPath = path.join(__dirname, "..", "images");
+app.use("/images", express.static(imagesPath));
+console.log(`[Server] Serving static images from: ${imagesPath}`);
 app.get(`${API_PREFIX}/health`, (_req, res) => {
     const healthData = {
         status: "ok",

@@ -57,15 +57,13 @@ const config = {
         maxFileSize: parseInt(process.env["MAX_FILE_SIZE"] || "5242880", 10),
         path: process.env["UPLOAD_PATH"] || "uploads/",
     },
-};
-if (process.env["SMTP_HOST"]) {
-    config.email = {
+    email: {
         host: process.env["SMTP_HOST"],
         port: parseInt(process.env["SMTP_PORT"] || "587", 10),
         user: process.env["SMTP_USER"],
         password: process.env["SMTP_PASS"],
-    };
-}
+    },
+};
 if (process.env["REDIS_HOST"]) {
     config.redis = {
         host: process.env["REDIS_HOST"],
