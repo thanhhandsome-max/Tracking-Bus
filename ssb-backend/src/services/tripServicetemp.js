@@ -1,7 +1,7 @@
 import ChuyenDiModel from "../models/ChuyenDiModel.js";
 import LichTrinhModel from "../models/LichTrinhModel.js";
 
-class TripService {
+class tripService {
   static async list(options = {}) {
     const { page = 1, limit = 10 } = options;
     const data = await ChuyenDiModel.getAll(options);
@@ -69,4 +69,4 @@ class TripService {
   }
 }
 
-export default TripService;
+export default tripService;
