@@ -11,6 +11,14 @@ router.get(
   ReportsController.overview
 );
 
+// View report data in JSON (for preview in FE)
+router.get(
+  "/view",
+  AuthMiddleware.authenticate,
+  AuthMiddleware.authorize("quan_tri"),
+  ReportsController.view
+);
+
 router.get(
   "/export",
   AuthMiddleware.authenticate,

@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState, useMemo } from "react"
+import { useLanguage } from "@/lib/language-context"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { AdminSidebar } from "@/components/admin/admin-sidebar"
 import { Button } from "@/components/ui/button"
@@ -35,6 +36,7 @@ type Route = {
 }
 
 export default function RoutesPage() {
+  const { t } = useLanguage()
   const router = useRouter()
   const { toast } = useToast()
   const [searchQuery, setSearchQuery] = useState("")
@@ -69,7 +71,7 @@ export default function RoutesPage() {
     
     return {
       id: String(r.maTuyen || r.id || r._id || ''),
-      name: r.tenTuyen || r.ten || r.name || 'Tuyến chưa có tên',
+      name: r.tenTuyen || r.ten || r.name || t("routes.noName"),
       status: status,
       stopsCount: stopsCount,
       distance: r.quangDuong || r.distance || r.khoangCach || r.totalDistanceKm,
@@ -250,17 +252,33 @@ export default function RoutesPage() {
     }
     
     // Fallback
-    if (!origin) origin = 'Chưa xác định'
-    if (!destination) destination = 'Chưa xác định'
+    if (!origin) origin = t("routes.unknown")
+    if (!destination) destination = t("routes.unknown")
     
     return { origin, destination }
   }
 
   // Show RouteBuilder in fullscreen when creating/editing
   if (isAddDialogOpen || isEditDialogOpen) {
+    // 🔥 Đảm bảo stops có đầy đủ thông tin khi edit
+    const stopsForEdit = isEditDialogOpen && editingRoute
+      ? (editingRoute.raw?.diemDung || editingRoute.raw?.stops || []).map((stop: any) => ({
+          ...stop,
+          tenDiem: stop.tenDiem || stop.name || '',
+          diaChi: stop.diaChi || stop.address || '',
+          viDo: stop.viDo || stop.latitude,
+          kinhDo: stop.kinhDo || stop.longitude,
+          latitude: stop.viDo || stop.latitude,
+          longitude: stop.kinhDo || stop.longitude,
+          thuTu: stop.thuTu || stop.sequence,
+          thoiGianDung: stop.thoiGianDung || stop.dwell_seconds || 0,
+        }))
+      : undefined;
+    
     return (
       <DashboardLayout sidebar={<AdminSidebar />}>
         <RouteBuilder
+          key={isEditDialogOpen && editingRoute ? `edit-${editingRoute.id}` : 'create'} // 🔥 Force re-mount khi edit route khác
           mode={isEditDialogOpen ? 'edit' : 'create'}
           initialRoute={
             isEditDialogOpen && editingRoute
@@ -269,7 +287,7 @@ export default function RoutesPage() {
                   name: editingRoute.name,
                   diemBatDau: editingRoute.raw?.diemBatDau,
                   diemKetThuc: editingRoute.raw?.diemKetThuc,
-                  stops: editingRoute.raw?.diemDung || editingRoute.raw?.stops,
+                  stops: stopsForEdit,
                 }
               : undefined
           }
@@ -294,8 +312,8 @@ export default function RoutesPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-foreground">Quản lý Tuyến đường</h1>
-            <p className="text-muted-foreground mt-1">Quản lý và cấu hình các tuyến đường xe buýt</p>
+            <h1 className="text-3xl font-bold text-foreground">{t("routes.title")}</h1>
+            <p className="text-muted-foreground mt-1">{t("routes.description")}</p>
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -303,14 +321,14 @@ export default function RoutesPage() {
               onClick={() => setIsSuggestionDialogOpen(true)}
             >
               <Sparkles className="w-4 h-4 mr-2" />
-              Đề xuất tuyến đường
+              {t("routes.suggestRoute")}
             </Button>
             <Button 
               className="bg-primary hover:bg-primary/90"
               onClick={() => setIsAddDialogOpen(true)}
             >
               <Plus className="w-4 h-4 mr-2" />
-              Thêm tuyến mới
+              {t("routes.addNew")}
             </Button>
           </div>
         </div>
@@ -319,33 +337,33 @@ export default function RoutesPage() {
         {stats && (
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <StatsCard
-              title="Tổng tuyến"
+              title={t("routes.totalRoutes")}
               value={String(stats.total)}
-              change={`${stats.active} đang hoạt động`}
+              change={`${stats.active} ${t("routes.activeStatus")}`}
               trend="up"
               icon={Route}
               iconColor="text-primary"
             />
             <StatsCard
-              title="Đang hoạt động"
+              title={t("routes.activeRoutes")}
               value={String(stats.active)}
-              change={`${stats.inactive} tạm ngừng`}
+              change={`${stats.inactive} ${t("routes.pausedStatus")}`}
               trend="up"
               icon={AlertCircle}
               iconColor="text-success"
             />
             <StatsCard
-              title="Tổng điểm dừng"
+              title={t("routes.totalStops")}
               value={String(stats.totalStops)}
-              change={`TB: ${stats.averageStops} điểm/tuyến`}
+              change={t("routes.avgStops", { count: stats.averageStops })}
               trend="neutral"
               icon={MapPin}
               iconColor="text-warning"
             />
             <StatsCard
-              title="Thời gian TB"
-              value={`${stats.averageTime} phút`}
-              change="Ước tính hoàn thành"
+              title={t("routes.avgTime")}
+              value={`${stats.averageTime} ${t("dashboard.minutes")}`}
+              change={t("routes.estimatedCompletion")}
               trend="neutral"
               icon={Clock}
               iconColor="text-info"
@@ -362,7 +380,7 @@ export default function RoutesPage() {
                 <div className="relative w-full sm:w-80">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input
-                    placeholder="Tìm kiếm tuyến đường..."
+                    placeholder={t("routes.searchPlaceholder")}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="pl-10"
@@ -374,7 +392,7 @@ export default function RoutesPage() {
               <div className="flex flex-wrap items-center gap-3 pt-2 border-t">
                 <div className="flex items-center gap-2">
                   <Filter className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-sm font-medium text-muted-foreground">Lọc:</span>
+                  <span className="text-sm font-medium text-muted-foreground">{t("routes.filter")}</span>
                 </div>
                 
                  {/* Status Filter */}
@@ -384,48 +402,48 @@ export default function RoutesPage() {
                      size="sm"
                      onClick={() => setStatusFilter('all')}
                    >
-                     Tất cả
+                     {t("routes.all")}
                    </Button>
                    <Button
                      variant={statusFilter === 'active' ? 'default' : 'outline'}
                      size="sm"
                      onClick={() => setStatusFilter('active')}
                    >
-                     Hoạt động
+                     {t("routes.active")}
                    </Button>
                    <Button
                      variant={statusFilter === 'inactive' ? 'default' : 'outline'}
                      size="sm"
                      onClick={() => setStatusFilter('inactive')}
                    >
-                     Tạm ngừng
+                     {t("routes.paused")}
                    </Button>
                  </div>
 
                  {/* Route Type Filter */}
                  <div className="flex items-center gap-2 ml-2 pl-2 border-l">
-                   <span className="text-sm font-medium text-muted-foreground">Loại:</span>
+                   <span className="text-sm font-medium text-muted-foreground">{t("routes.type")}</span>
                    <div className="flex gap-2">
                      <Button
                        variant={routeTypeFilter === 'all' ? 'default' : 'outline'}
                        size="sm"
                        onClick={() => setRouteTypeFilter('all')}
                      >
-                       Tất cả
+                       {t("routes.all")}
                      </Button>
                      <Button
                        variant={routeTypeFilter === 'di' ? 'default' : 'outline'}
                        size="sm"
                        onClick={() => setRouteTypeFilter('di')}
                      >
-                       Tuyến đi
+                       {t("routes.outbound")}
                      </Button>
                      <Button
                        variant={routeTypeFilter === 've' ? 'default' : 'outline'}
                        size="sm"
                        onClick={() => setRouteTypeFilter('ve')}
                      >
-                       Tuyến về
+                       {t("routes.return")}
                      </Button>
                    </div>
                  </div>
@@ -434,10 +452,10 @@ export default function RoutesPage() {
                {/* Active Filters Summary */}
                {(statusFilter !== 'all' || routeTypeFilter !== 'all') && (
                  <div className="flex items-center gap-2 pt-2 border-t">
-                   <span className="text-xs text-muted-foreground">Đang lọc:</span>
+                   <span className="text-xs text-muted-foreground">{t("routes.filtering")}</span>
                    {statusFilter !== 'all' && (
                      <Badge variant="secondary" className="gap-1">
-                       Trạng thái: {statusFilter === 'active' ? 'Hoạt động' : 'Tạm ngừng'}
+                       {t("routes.status")} {statusFilter === 'active' ? t("routes.active") : t("routes.paused")}
                        <button
                          className="ml-1 hover:bg-muted rounded-full p-0.5"
                          onClick={() => setStatusFilter('all')}
@@ -448,7 +466,7 @@ export default function RoutesPage() {
                    )}
                    {routeTypeFilter !== 'all' && (
                      <Badge variant="secondary" className="gap-1">
-                       Loại: {routeTypeFilter === 'di' ? 'Tuyến đi' : 'Tuyến về'}
+                       {t("routes.type")} {routeTypeFilter === 'di' ? t("routes.outbound") : t("routes.return")}
                        <button
                          className="ml-1 hover:bg-muted rounded-full p-0.5"
                          onClick={() => setRouteTypeFilter('all')}
@@ -466,7 +484,7 @@ export default function RoutesPage() {
                        setRouteTypeFilter('all');
                      }}
                    >
-                     Xóa tất cả
+                     {t("routes.clearFilter")}
                    </Button>
                  </div>
                )}
@@ -494,7 +512,7 @@ export default function RoutesPage() {
             <CardContent className="pt-6">
               <div className="flex items-center gap-2 text-destructive">
                 <AlertCircle className="w-5 h-5" />
-                <p>{error instanceof Error ? error.message : 'Không thể tải danh sách tuyến'}</p>
+                <p>{error instanceof Error ? error.message : t("routes.loadError")}</p>
               </div>
             </CardContent>
           </Card>
@@ -506,12 +524,12 @@ export default function RoutesPage() {
                   <Route className="w-8 h-8 text-muted-foreground" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-lg">Không có tuyến đường</h3>
-                  <p className="text-muted-foreground">Bắt đầu bằng cách thêm tuyến đường đầu tiên</p>
+                  <h3 className="font-semibold text-lg">{t("routes.noRoutes")}</h3>
+                  <p className="text-muted-foreground">{t("routes.noRoutesDesc")}</p>
                 </div>
                 <Button onClick={() => setIsAddDialogOpen(true)}>
                   <Plus className="w-4 h-4 mr-2" />
-                  Thêm tuyến mới
+                  {t("routes.addNew")}
                 </Button>
               </div>
             </CardContent>
@@ -524,11 +542,11 @@ export default function RoutesPage() {
                   <Route className="w-8 h-8 text-muted-foreground" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-lg">Không tìm thấy tuyến đường</h3>
+                  <h3 className="font-semibold text-lg">{t("routes.notFound")}</h3>
                   <p className="text-muted-foreground">
                     {statusFilter !== 'all' 
-                      ? "Thử thay đổi bộ lọc để xem thêm tuyến đường"
-                      : "Bắt đầu bằng cách thêm tuyến đường đầu tiên"}
+                      ? t("routes.notFoundDesc")
+                      : t("routes.notFoundDesc2")}
                   </p>
                 </div>
                 {statusFilter !== 'all' ? (
@@ -536,12 +554,12 @@ export default function RoutesPage() {
                     variant="outline"
                     onClick={() => setStatusFilter('all')}
                   >
-                    Xóa bộ lọc
+                    {t("routes.clearFilter")}
                   </Button>
                 ) : (
                   <Button onClick={() => setIsAddDialogOpen(true)}>
                     <Plus className="w-4 h-4 mr-2" />
-                    Thêm tuyến mới
+                    {t("routes.addNew")}
                   </Button>
                 )}
               </div>
@@ -557,11 +575,8 @@ export default function RoutesPage() {
                    {isPaired && (
                      <div className="flex items-center gap-2 px-2 py-1 bg-muted/30 rounded-md">
                        <Badge variant="outline" className="text-xs">
-                         Cặp tuyến đi/về
+                         {t("routes.roundTrip", { count: routeGroup.length })}
                        </Badge>
-                       <span className="text-xs text-muted-foreground">
-                         {routeGroup.length} tuyến
-                       </span>
                      </div>
                    )}
                    <div className={isPaired ? "space-y-2 pl-4 border-l-2 border-primary/20" : ""}>
@@ -585,7 +600,7 @@ export default function RoutesPage() {
                                    : "border-muted-foreground text-muted-foreground bg-muted/10"
                                }
                              >
-                               {isActive ? "Hoạt động" : "Tạm ngừng"}
+                               {isActive ? t("routes.active") : t("routes.paused")}
                              </Badge>
                              {(route.raw?.routeType === 'di' || route.raw?.routeType === 've') && (
                                <Badge
@@ -596,15 +611,15 @@ export default function RoutesPage() {
                                      : "border-purple-500 text-purple-600 bg-purple-50 dark:bg-purple-950/20"
                                  }
                                >
-                                 {route.raw?.routeType === 'di' ? 'Đi' : 'Về'}
+                                 {route.raw?.routeType === 'di' ? t("routes.outbound") : t("routes.return")}
                                </Badge>
                              )}
-                             {route.stopsCount < 2 && (
+                             {((route.stopsCount ?? 0) < 2) && (
                                <Badge
                                  variant="outline"
                                  className="border-amber-500 text-amber-600 bg-amber-50 dark:bg-amber-950/20"
                                >
-                                 ⚠️ Thiếu điểm dừng
+                                 ⚠️ {t("routes.missingStops")}
                                </Badge>
                              )}
                            </div>
@@ -634,12 +649,12 @@ export default function RoutesPage() {
                         <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
                           <div className="flex items-center gap-1">
                             <MapPin className="w-4 h-4 shrink-0" />
-                            <span>{route.stopsCount ?? 0} điểm dừng</span>
+                            <span>{route.stopsCount ?? 0} {t("routes.stops")}</span>
                           </div>
                           {route.duration && (
                             <div className="flex items-center gap-1">
                               <Clock className="w-4 h-4 shrink-0" />
-                              <span>{typeof route.duration === 'number' ? `${route.duration} phút` : route.duration}</span>
+                              <span>{typeof route.duration === 'number' ? `${route.duration} ${t("dashboard.minutes")}` : route.duration}</span>
                             </div>
                           )}
                           {route.distance && (
@@ -661,7 +676,7 @@ export default function RoutesPage() {
                           onClick={() => router.push(`/admin/routes/${route.id}`)}
                         >
                           <Eye className="w-4 h-4 mr-1.5" />
-                          Chi tiết
+                          {t("routes.details")}
                         </Button>
                         <Button 
                           variant="outline" 
@@ -675,13 +690,13 @@ export default function RoutesPage() {
                           size="sm"
                           className="text-destructive hover:text-destructive hover:bg-destructive/10"
                           onClick={() => {
-                            if (!confirm(`Bạn có chắc chắn muốn xóa tuyến "${route.name}"?`)) return
+                            if (!confirm(t("routes.deleteConfirm", { name: route.name }))) return
                             deleteRoute(route.id, {
                               onSuccess: () => {
-                                toast({ title: "Thành công", description: "Đã xóa tuyến đường." })
+                                toast({ title: t("settings.saveSuccess"), description: t("routes.deleteSuccess") })
                               },
                               onError: (err: Error) => {
-                                toast({ title: "Lỗi", description: err.message || 'Xóa thất bại', variant: "destructive" })
+                                toast({ title: t("settings.saveError"), description: err.message || t("routes.deleteError"), variant: "destructive" })
                               },
                             })
                           }}

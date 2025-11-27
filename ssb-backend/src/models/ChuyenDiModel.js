@@ -31,6 +31,15 @@ const ChuyenDiModel = {
       query += " AND DATE(cd.ngayChay) = DATE(?)";
       params.push(filters.ngayChay);
     }
+    // Hỗ trợ lọc theo khoảng thời gian
+    if (filters.from) {
+      query += " AND DATE(cd.ngayChay) >= DATE(?)";
+      params.push(filters.from);
+    }
+    if (filters.to) {
+      query += " AND DATE(cd.ngayChay) <= DATE(?)";
+      params.push(filters.to);
+    }
     if (filters.trangThai) {
       query += " AND cd.trangThai = ?";
       params.push(filters.trangThai);
@@ -167,6 +176,46 @@ const ChuyenDiModel = {
        WHERE lt.maTaiXe = ? AND cd.ngayChay = ?
        ORDER BY lt.gioKhoiHanh`,
       [maTaiXe, ngayChay]
+    );
+    return rows;
+  },
+
+  // Lấy chuyến đi theo schedule id và ngày
+  async getByScheduleIdAndDate(maLichTrinh, ngayChay) {
+    const [rows] = await pool.query(
+      `SELECT 
+        cd.*,
+        lt.loaiChuyen,
+        lt.gioKhoiHanh,
+        td.tenTuyen,
+        xb.bienSoXe
+       FROM ChuyenDi cd
+       INNER JOIN LichTrinh lt ON cd.maLichTrinh = lt.maLichTrinh
+       INNER JOIN TuyenDuong td ON lt.maTuyen = td.maTuyen
+       INNER JOIN XeBuyt xb ON lt.maXe = xb.maXe
+       WHERE cd.maLichTrinh = ? AND cd.ngayChay = ?
+       LIMIT 1`,
+      [maLichTrinh, ngayChay]
+    );
+    return rows[0] || null;
+  },
+
+  // Lấy chuyến đi theo schedule id
+  async getByScheduleId(maLichTrinh) {
+    const [rows] = await pool.query(
+      `SELECT 
+        cd.*,
+        lt.loaiChuyen,
+        lt.gioKhoiHanh,
+        td.tenTuyen,
+        xb.bienSoXe
+       FROM ChuyenDi cd
+       INNER JOIN LichTrinh lt ON cd.maLichTrinh = lt.maLichTrinh
+       INNER JOIN TuyenDuong td ON lt.maTuyen = td.maTuyen
+       INNER JOIN XeBuyt xb ON lt.maXe = xb.maXe
+       WHERE cd.maLichTrinh = ?
+       ORDER BY cd.ngayChay DESC`,
+      [maLichTrinh]
     );
     return rows;
   },
@@ -349,7 +398,7 @@ const ChuyenDiModel = {
   },
 
   // Thống kê chuyến đi
-  async getStats(filters = {}) {
+  async getStatusCounts(filters = {}) {
     let query = `
       SELECT 
         trangThai,

@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useLanguage } from "@/lib/language-context"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { AdminSidebar } from "@/components/admin/admin-sidebar"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -14,6 +15,7 @@ import { apiClient } from "@/lib/api"
 import { useToast } from "@/hooks/use-toast"
 
 export default function NotificationsPage() {
+  const { t } = useLanguage()
   const [notifications, setNotifications] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<string>("all")
@@ -44,7 +46,7 @@ export default function NotificationsPage() {
         setNotifications(mapped)
       } catch (e) {
         console.error("Failed to load notifications", e)
-        toast({ title: "Lỗi", description: "Không thể tải thông báo", variant: "destructive" })
+        toast({ title: t("common.error"), description: t("notifications.loadError"), variant: "destructive" })
       } finally {
         setLoading(false)
       }
@@ -69,9 +71,9 @@ export default function NotificationsPage() {
     try {
       await apiClient.markAllNotificationsRead()
       setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
-      toast({ title: "Thành công", description: "Đã đánh dấu tất cả đã đọc" })
+      toast({ title: t("common.success"), description: t("notifications.markAllReadSuccess") })
     } catch (e) {
-      toast({ title: "Lỗi", description: "Không thể đánh dấu đã đọc", variant: "destructive" })
+      toast({ title: t("common.error"), description: t("notifications.markAllReadError"), variant: "destructive" })
     }
   }
 
@@ -79,9 +81,9 @@ export default function NotificationsPage() {
     try {
       await apiClient.deleteNotification(Number(id))
       setNotifications((prev) => prev.filter((n) => n.id !== id))
-      toast({ title: "Thành công", description: "Đã xóa thông báo" })
+      toast({ title: t("common.success"), description: t("notifications.deleteSuccess") })
     } catch (e) {
-      toast({ title: "Lỗi", description: "Không thể xóa thông báo", variant: "destructive" })
+      toast({ title: t("common.error"), description: t("notifications.deleteError"), variant: "destructive" })
     }
   }
 
@@ -103,12 +105,12 @@ export default function NotificationsPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-foreground">Thông báo & Cảnh báo</h1>
-            <p className="text-muted-foreground mt-1">Theo dõi các thông báo và cảnh báo hệ thống</p>
+            <h1 className="text-3xl font-bold text-foreground">{t("notifications.title")}</h1>
+            <p className="text-muted-foreground mt-1">{t("notifications.description")}</p>
           </div>
           <Button variant="outline" onClick={markAllRead} disabled={loading}>
             <CheckCircle className="w-4 h-4 mr-2" />
-            Đánh dấu tất cả đã đọc
+            {t("notifications.markAllRead")}
           </Button>
         </div>
 
@@ -119,7 +121,7 @@ export default function NotificationsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-2xl font-bold text-foreground">{unreadCount}</div>
-                  <p className="text-sm text-muted-foreground">Chưa đọc</p>
+                  <p className="text-sm text-muted-foreground">{t("notifications.unread")}</p>
                 </div>
                 <Bell className="w-8 h-8 text-primary" />
               </div>
@@ -130,7 +132,7 @@ export default function NotificationsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-2xl font-bold text-warning">{warningCount}</div>
-                  <p className="text-sm text-muted-foreground">Cảnh báo</p>
+                  <p className="text-sm text-muted-foreground">{t("notifications.warning")}</p>
                 </div>
                 <AlertTriangle className="w-8 h-8 text-warning" />
               </div>
@@ -141,7 +143,7 @@ export default function NotificationsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-2xl font-bold text-destructive">{dangerCount}</div>
-                  <p className="text-sm text-muted-foreground">Khẩn cấp</p>
+                  <p className="text-sm text-muted-foreground">{t("notifications.urgent")}</p>
                 </div>
                 <AlertTriangle className="w-8 h-8 text-destructive" />
               </div>
@@ -152,7 +154,7 @@ export default function NotificationsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-2xl font-bold text-success">{successCount}</div>
-                  <p className="text-sm text-muted-foreground">Thành công</p>
+                  <p className="text-sm text-muted-foreground">{t("notifications.success")}</p>
                 </div>
                 <CheckCircle className="w-8 h-8 text-success" />
               </div>
@@ -163,25 +165,25 @@ export default function NotificationsPage() {
         {/* Notifications List */}
         <Card className="border-border/50">
           <CardHeader>
-            <CardTitle>Danh sách thông báo</CardTitle>
+            <CardTitle>{t("notifications.list")}</CardTitle>
           </CardHeader>
           <CardContent>
             {loading ? (
-              <div className="py-12 text-center text-muted-foreground">Đang tải thông báo...</div>
+              <div className="py-12 text-center text-muted-foreground">{t("common.loading")}</div>
             ) : (
               <Tabs defaultValue="all" onValueChange={setFilter}>
                 <TabsList className="mb-4">
-                  <TabsTrigger value="all">Tất cả ({notifications.length})</TabsTrigger>
-                  <TabsTrigger value="unread">Chưa đọc ({unreadCount})</TabsTrigger>
-                  <TabsTrigger value="warning">Cảnh báo ({warningCount})</TabsTrigger>
-                  <TabsTrigger value="success">Thành công ({successCount})</TabsTrigger>
+                  <TabsTrigger value="all">{t("notifications.all")} ({notifications.length})</TabsTrigger>
+                  <TabsTrigger value="unread">{t("notifications.unread")} ({unreadCount})</TabsTrigger>
+                  <TabsTrigger value="warning">{t("notifications.warning")} ({warningCount})</TabsTrigger>
+                  <TabsTrigger value="success">{t("notifications.success")} ({successCount})</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="all">
                   <ScrollArea className="h-[600px] pr-4">
                     <div className="space-y-3">
                       {filteredNotifications.length === 0 ? (
-                        <div className="py-12 text-center text-muted-foreground">Không có thông báo</div>
+                        <div className="py-12 text-center text-muted-foreground">{t("notifications.noNotifications")}</div>
                       ) : (
                         filteredNotifications.map((notification) => (
                           <Card
@@ -242,7 +244,7 @@ export default function NotificationsPage() {
                   <ScrollArea className="h-[600px] pr-4">
                     <div className="space-y-3">
                       {filteredNotifications.length === 0 ? (
-                        <div className="py-12 text-center text-muted-foreground">Không có thông báo chưa đọc</div>
+                        <div className="py-12 text-center text-muted-foreground">{t("notifications.noNotifications")}</div>
                       ) : (
                         filteredNotifications.map((notification) => (
                           <Card key={notification.id} className="border-primary/30 bg-card">
