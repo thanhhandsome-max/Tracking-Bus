@@ -245,10 +245,16 @@ class SocketService {
 
     // Generic notification event
     this.socket.on("notification:new", (data) => {
-      console.log("Notification new:", data);
+      console.log("🔔 [SOCKET DEBUG] Received notification:new event:", data);
+      console.log("   Type:", data.loaiThongBao);
+      console.log("   Title:", data.tieuDe);
+      console.log("   Content:", data.noiDung);
+      
       window.dispatchEvent(
         new CustomEvent("notificationNew", { detail: data })
       );
+      
+      console.log("✅ [SOCKET DEBUG] Dispatched notificationNew custom event");
     });
 
     // Day 4: stop proximity and delay alerts

@@ -29,7 +29,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 
 interface IncidentFormProps {
   onClose: () => void
-  tripId: string | number
+  tripId?: string | number // 🔥 Optional: nếu không truyền thì cho chọn
   currentLocation?: { lat: number; lng: number } // Vị trí từ busPosition
   gpsLastPoint?: { lat: number; lng: number } // Vị trí từ useGPS hook
 }
@@ -87,6 +87,11 @@ const quickTemplates = [
 ]
 
 export function IncidentForm({ onClose, tripId, currentLocation, gpsLastPoint }: IncidentFormProps) {
+  // 🔥 NEW: State for trip selection
+  const [selectedTripId, setSelectedTripId] = useState<string | number | undefined>(tripId)
+  const [availableTrips, setAvailableTrips] = useState<any[]>([])
+  const [loadingTrips, setLoadingTrips] = useState(false)
+  
   const [type, setType] = useState("")
   const [severity, setSeverity] = useState("medium")
   const [description, setDescription] = useState("")
@@ -303,17 +308,41 @@ export function IncidentForm({ onClose, tripId, currentLocation, gpsLastPoint }:
     }
   }, [])
 
+  // 🔥 NEW: Load danh sách chuyến đi nếu không có tripId
+  useEffect(() => {
+    if (!tripId) {
+      setLoadingTrips(true)
+      apiClient.getTrips({ page: 1, limit: 50, trangThai: 'dang_chay' })
+        .then((res: any) => {
+          const trips = res?.data?.trips || []
+          setAvailableTrips(trips)
+          if (trips.length > 0 && !selectedTripId) {
+            setSelectedTripId(trips[0].maChuyen)
+          }
+        })
+        .catch((err) => {
+          console.error('[IncidentForm] Failed to load trips:', err)
+          toast({
+            title: '❌ Không tải được danh sách chuyến',
+            description: 'Vui lòng thử lại sau',
+            variant: 'destructive',
+          })
+        })
+        .finally(() => setLoadingTrips(false))
+    }
+  }, [tripId, toast])
+
   // 🔥 FIX: Load danh sách học sinh từ trip
   useEffect(() => {
     async function loadStudents() {
-      if (!tripId) {
+      if (!selectedTripId) {
         setStudentsList([])
         return
       }
       try {
         setLoading(true)
         // Lấy danh sách học sinh trong chuyến đi
-        const tripRes: any = await apiClient.getTripById(Number(tripId))
+        const tripRes: any = await apiClient.getTripById(Number(selectedTripId))
         const trip = tripRes?.data || tripRes
         
         console.log("[IncidentForm] Trip data:", trip)
@@ -328,7 +357,7 @@ export function IncidentForm({ onClose, tripId, currentLocation, gpsLastPoint }:
         } else {
           // Fallback: Thử lấy từ API getTripStudents
           try {
-            const studentsRes: any = await apiClient.getTripStudents(Number(tripId))
+            const studentsRes: any = await apiClient.getTripStudents(Number(selectedTripId))
             const students = studentsRes?.data || studentsRes || []
             if (Array.isArray(students) && students.length > 0) {
               const mapped = students.map((s: any) => ({
@@ -353,10 +382,20 @@ export function IncidentForm({ onClose, tripId, currentLocation, gpsLastPoint }:
       }
     }
     loadStudents()
-  }, [tripId])
+  }, [selectedTripId])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    // 🔥 NEW: Validate mã chuyến trước
+    if (!selectedTripId) {
+      toast({
+        title: "❌ Thiếu thông tin",
+        description: "Vui lòng chọn chuyến đi",
+        variant: "destructive",
+      })
+      return
+    }
 
     if (!type || !description) {
       toast({
@@ -376,7 +415,7 @@ export function IncidentForm({ onClose, tripId, currentLocation, gpsLastPoint }:
       }
       // 🔥 FIX: Gửi kèm vị trí GPS thật
       const payload: any = {
-        maChuyen: Number(tripId) || undefined,
+        maChuyen: Number(selectedTripId),
         loaiSuCo: type,
         moTa: description,
         mucDo: severityMap[severity] || "nhe",
@@ -441,6 +480,35 @@ export function IncidentForm({ onClose, tripId, currentLocation, gpsLastPoint }:
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {/* 🔥 NEW: Chọn chuyến đi nếu không có tripId */}
+      {!tripId && (
+        <div className="space-y-2">
+          <Label htmlFor="trip-select">Chuyến đi *</Label>
+          <select
+            id="trip-select"
+            value={selectedTripId || ''}
+            onChange={(e) => setSelectedTripId(e.target.value ? Number(e.target.value) : undefined)}
+            disabled={loadingTrips}
+            className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+          >
+            {loadingTrips ? (
+              <option value="">Đang tải...</option>
+            ) : availableTrips.length === 0 ? (
+              <option value="">Không có chuyến đang chạy</option>
+            ) : (
+              <>
+                <option value="">Vui lòng chọn chuyến đi</option>
+                {availableTrips.map((trip: any) => (
+                  <option key={trip.maChuyen} value={trip.maChuyen}>
+                    Chuyến #{trip.maChuyen} - {trip.maTuyen || 'N/A'} ({trip.trangThai})
+                  </option>
+                ))}
+              </>
+            )}
+          </select>
+        </div>
+      )}
+
       <Card className="border-border/50 bg-muted/30">
         <CardContent className="pt-4 space-y-2">
           <div className="flex items-center justify-between gap-2 text-sm">
