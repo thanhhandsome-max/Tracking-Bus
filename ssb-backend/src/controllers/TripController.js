@@ -9,7 +9,7 @@ import HocSinhModel from "../models/HocSinhModel.js";
 import ThongBaoModel from "../models/ThongBaoModel.js"; // M5: Send notifications to parents
 import TripStopStatusModel from "../models/TripStopStatusModel.js"; // Store stop arrival/departure times
 import ScheduleStudentStopModel from "../models/ScheduleStudentStopModel.js"; // Schedule student stop mapping
-import TripService from "../services/TripService"; // kết nối tới service xử lý logic trip
+import tripService from "../services/tripService.js"; // kết nối tới service xử lý logic trip
 import TelemetryService from "../services/telemetryService.js"; // clear cache khi trip ends
 import * as response from "../utils/response.js"; // M4-M6: Response envelope
 
@@ -213,8 +213,8 @@ class TripController {
 
       // Use service if available, otherwise fallback to model
       let result;
-      if (TripService && TripService.list) {
-        result = await TripService.list({
+      if (tripService && tripService.list) {
+        result = await tripService.list({
           page: pageNum,
           limit,
           ...filters,
@@ -322,8 +322,8 @@ class TripController {
         ]);
       }
 
-      const trip = await (TripService && TripService.getById
-        ? TripService.getById(id)
+      const trip = await (tripService && tripService.getById
+        ? tripService.getById(id)
         : ChuyenDiModel.getById(id));
 
       if (!trip) {
@@ -534,8 +534,8 @@ class TripController {
       // Use service if available
       let trip;
       try {
-        if (TripService && TripService.create) {
-          trip = await TripService.create({
+        if (tripService && tripService.create) {
+          trip = await tripService.create({
             maLichTrinh,
             ngayChay,
             trangThai,
@@ -1385,8 +1385,8 @@ class TripController {
       // M4-M6: Use service if available (will calculate stats)
       let updatedTrip;
       try {
-        if (TripService && TripService.complete) {
-          updatedTrip = await TripService.complete(id, req.user?.userId);
+        if (tripService && tripService.complete) {
+          updatedTrip = await tripService.complete(id, req.user?.userId);
         } else {
           // Fallback: Update status and end time
           const isUpdated = await ChuyenDiModel.update(id, {
