@@ -22,6 +22,14 @@ export async function GET(request: NextRequest) {
     const endDate = new Date(yearNum, monthNum, 1);
 
     // --- BẮT ĐẦU AGGREGATION PIPELINE ---
+
+    // 1.Lọc các tài liệu trong collection Trip.
+    // 2.Nhóm các chuyến đi theo trường driverId.
+    // 3.Thực hiện phép JOIN (kết nối) với collection users.
+    // 4.Thực hiện phép JOIN với collection buses.
+    // 5.Phá vỡ mảng driverInfo (chỉ có một phần tử) thành một đối tượng duy nhất ( đảm bảo các chuyến không có tài xế vẫn được giữ lại)
+    // 6.Chọn, đổi tên và định dạng lại các trường dữ liệu.
+    // 7.Sắp xếp kết quả cuối cùng.
     const stats = await Trip.aggregate([
       // 1. Lọc các chuyến trong tháng
       {
