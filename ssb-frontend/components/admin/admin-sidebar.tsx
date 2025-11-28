@@ -46,16 +46,16 @@ export function AdminSidebar() {
 
   return (
     
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full bg-gradient-to-b from-white to-blue-50/30">
       {/* Logo */}
-      <div className="h-16 flex items-center px-6 border-b border-border">
+      <div className="h-16 flex items-center px-6 border-b border-blue-200/50">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-            <Bus className="w-5 h-5 text-primary-foreground" />
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-110">
+            <Bus className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h2 className="font-bold text-foreground">SSB 1.0</h2>
-            <p className="text-xs text-muted-foreground">{t("sidebar.adminPanel")}</p>
+            <h2 className="font-black text-transparent bg-gradient-to-r from-blue-600 to-blue-800 bg-clip-text">SSB 1.0</h2>
+            <p className="text-xs text-blue-600 font-semibold">{t("sidebar.adminPanel")}</p>
           </div>
         </div>
       </div>

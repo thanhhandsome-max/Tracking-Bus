@@ -49,14 +49,31 @@ class SocketService {
       this.socket!.on("connect_error", (error) => {
         console.error("Socket.IO connection error:", error);
         clearTimeout(timeout);
-        // Don't reject immediately, let reconnection attempts happen
-        // Only reject if it's a critical error
+        
+        // Check if it's an authentication error
         if (
+          error.message?.includes("Token xác thực đã hết hạn") ||
+          error.message?.includes("Token hết hạn") ||
+          error.message?.includes("jwt expired") ||
+          error.message?.includes("Authentication failed") ||
           error.message?.includes("authentication") ||
           error.message?.includes("unauthorized")
         ) {
-          reject(new Error(`Lỗi xác thực WebSocket: ${error.message}`));
+          console.warn("🔐 Authentication failed during connect, will trigger logout");
+          // Dispatch event to trigger logout
+          try {
+            window.dispatchEvent(
+              new CustomEvent("tokenExpired", {
+                detail: {
+                  error,
+                  message: "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
+                },
+              })
+            );
+          } catch {}
+          reject(new Error(`Authentication failed: ${error.message}`));
         }
+        // Don't reject immediately for other errors, let reconnection attempts happen
       });
     });
   }
@@ -116,6 +133,28 @@ class SocketService {
     this.socket.on("connect_error", (error) => {
       console.error("Socket.IO connection error:", error);
       // Don't crash the app, just log and notify
+      
+      // Check if it's an authentication error (token expired)
+      if (
+        error.message?.includes("Token xác thực đã hết hạn") ||
+        error.message?.includes("Token hết hạn") ||
+        error.message?.includes("jwt expired") ||
+        error.message?.includes("Authentication failed")
+      ) {
+        console.warn("🔐 Token expired, triggering logout...");
+        try {
+          // Dispatch event to trigger logout
+          window.dispatchEvent(
+            new CustomEvent("tokenExpired", {
+              detail: {
+                error,
+                message: "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
+              },
+            })
+          );
+        } catch {}
+      }
+      
       try {
         window.dispatchEvent(
           new CustomEvent("socketConnectError", {
@@ -134,6 +173,27 @@ class SocketService {
     // Handle WebSocket errors gracefully
     this.socket.on("error", (error) => {
       console.error("Socket.IO error:", error);
+      
+      // Check if it's an authentication error
+      if (
+        error?.message?.includes("Token xác thực đã hết hạn") ||
+        error?.message?.includes("Token hết hạn") ||
+        error?.message?.includes("jwt expired") ||
+        error?.message?.includes("Authentication failed")
+      ) {
+        console.warn("🔐 Token expired in error event");
+        try {
+          window.dispatchEvent(
+            new CustomEvent("tokenExpired", {
+              detail: {
+                error,
+                message: "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
+              },
+            })
+          );
+        } catch {}
+      }
+      
       try {
         window.dispatchEvent(
           new CustomEvent("socketError", {

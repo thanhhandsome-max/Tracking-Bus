@@ -4,6 +4,7 @@ import React, { createContext, useContext, useEffect, useState, ReactNode } from
 import * as authService from './services/auth.service'
 import { api, apiClient } from './api'
 import { socketService } from './socket'
+import { useToast } from '@/hooks/use-toast'
 
 export type UserRole = "admin" | "driver" | "parent"
 
@@ -26,6 +27,7 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState<boolean>(true)
+  const { toast } = useToast()
 
   useEffect(() => {
     // Only access localStorage after component mounts (client-side only)
@@ -58,7 +60,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (u) setUser(u)
       setLoading(false)
     }
-  }, [])
+
+    // Listen for token expiration events from socket
+    const handleTokenExpired = (event: any) => {
+      console.warn('⚠️ Token expired event received, logging out...')
+      
+      // Show toast notification
+      toast({
+        title: "Phiên đăng nhập hết hạn",
+        description: "Vui lòng đăng nhập lại để tiếp tục.",
+        variant: "destructive",
+      })
+      
+      // Logout after a short delay to allow toast to show
+      setTimeout(() => {
+        logout()
+      }, 1500)
+    }
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('tokenExpired', handleTokenExpired as EventListener)
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('tokenExpired', handleTokenExpired as EventListener)
+      }
+    }
+  }, [toast]) // Add toast to dependencies
 
   async function login(email: string, password: string) {
     setLoading(true)
