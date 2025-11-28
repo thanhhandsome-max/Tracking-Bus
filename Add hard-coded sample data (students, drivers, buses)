@@ -1,0 +1,14 @@
+Message: Add sample hard-coded data for students, drivers, and buses
+
+Nội dung commit:
+
+Thêm file students.json chứa danh sách học sinh mẫu
+
+Thêm file drivers.json chứa dữ liệu tài xế mẫu
+
+Thêm file buses.json mô phỏng danh sách xe
+
+Cập nhật các file code sử dụng dữ liệu hard-code
+
+Ý nghĩa:
+Cung cấp dữ liệu mô phỏng để test chức năng khi chưa connect database thật.
